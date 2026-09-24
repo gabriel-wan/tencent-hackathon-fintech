@@ -1,0 +1,77 @@
+# ---- Secrets and credentials (never commit) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
+*service-account*.json
+secrets/
+.secrets/
+
+# ---- Local databases and data dumps ----
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+data/local/
+*.dump
+
+# ---- Build output ----
+build/
+dist/
+out/
+target/
+*.egg-info/
+.next/
+.nuxt/
+.svelte-kit/
+
+# ---- Dependencies ----
+node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+vendor/
+
+# ---- Coverage and test artifacts ----
+coverage/
+.coverage
+htmlcov/
+.nyc_output/
+junit.xml
+
+# ---- IDE and editor files ----
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ---- OS files ----
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ---- Temporary and log files ----
+tmp/
+temp/
+*.tmp
+*.log
+logs/
+
+# ---- AI tool local state (keep shared rules, drop caches) ----
+.codebuddy/cache/
+.claude/settings.local.json
