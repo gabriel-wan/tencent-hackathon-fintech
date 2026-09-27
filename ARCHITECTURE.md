@@ -2,9 +2,11 @@
 
 > **STATUS: INITIAL / SUBJECT TO CHANGE.**
 > This document describes the *shape* of the system and the questions the team
-> must answer. It does not describe a decided architecture. No database, vector
-> store, framework, LLM provider or cloud service has been chosen; those are
-> ADRs in [DECISIONS.md](DECISIONS.md). Anything concrete below is marked
+> must answer. It does not describe a decided architecture. The stack
+> (Next.js, FastAPI, PostgreSQL + pgvector) is decided in ADR-001; the LLM
+> provider, cloud services and everything else are open ADRs in
+> [DECISIONS.md](DECISIONS.md). What is actually built is in
+> [docs/MERMAID.md](docs/MERMAID.md). Anything concrete below is marked
 > `ASSUMPTION` or `OPTION`.
 
 ## 1. The one thing that must be true

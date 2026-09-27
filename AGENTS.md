@@ -13,10 +13,10 @@ agent session.
   system with RBAC, security logging and an audit trail. Full statement in
   [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 - **Team:** 3 students. Submission deadline **16 Oct 2026**.
-- **Current stage:** repository initialization and architecture design.
-  **No product code exists yet, and none should be written until the team has
-  reviewed [ARCHITECTURE.md](ARCHITECTURE.md) and recorded the stack decision
-  in [DECISIONS.md](DECISIONS.md) (ADR-001).**
+- **Current stage:** stack decided ([DECISIONS.md](DECISIONS.md), ADR-001);
+  a running skeleton exists (`docker compose up`, `/health` only). **Do not
+  build authorization, retrieval or LLM code until ADR-002 to ADR-006 are
+  decided.**
 
 What the system must eventually do: answer natural-language questions using
 knowledge spread across Confluence, Jira, Slack and Google Drive, while
@@ -80,7 +80,7 @@ While working:
 - Prefer simple implementations over premature abstractions.
 - Keep changes focused on one concern. Do not mix refactors with features.
 - Add tests for security-sensitive logic (authorization, filtering, audit
-  integrity, permission revocation). See [tests/README.md](tests/README.md).
+  integrity, permission revocation). See [backend/tests/README.md](backend/tests/README.md).
 - **Never silently change security behaviour.** Any change to authorization,
   filtering, audit logging or what the LLM receives must be called out
   explicitly in the change description and, where it is a design change,

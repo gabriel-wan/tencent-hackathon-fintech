@@ -1,38 +1,50 @@
 # DEVELOPMENT.md
 
-Development guidelines. The technology stack is **not yet chosen**
-(DECISIONS.md, ADR-001), so setup, run, test and lint instructions below are
-framework-agnostic placeholders. **Update this file in the same PR that
-introduces the stack.**
+Development guidelines. Stack: Next.js + FastAPI + PostgreSQL/pgvector,
+run with Docker Compose (DECISIONS.md, ADR-001).
 
 ## 1. Local setup
 
 1. Clone the repository.
-2. Copy `.env.example` to `.env` and fill in local values. `.env` is
-   git-ignored and must never be committed.
-3. Install the toolchain and dependencies: `TBD (ADR-001)`.
-4. Run the checks in section 4 to confirm the environment works.
+2. Copy `backend/.env.example` to `backend/.env` and
+   `frontend/.env.example` to `frontend/.env`, then fill in local values.
+   `.env` files are git-ignored and must never be committed.
+3. Install Docker Desktop (with Compose v2). Nothing else is needed to run
+   the app; Node and Python are only needed for editing outside containers.
 
 ## 2. Environment variables
 
 All configuration and every secret come from the environment. Rules:
 
-- `.env.example` lists every variable the application reads, with a comment
-  and a placeholder value. It is the documentation of configuration.
-- Add a variable to `.env.example` in the same change that introduces it.
+- Each app owns its config: `backend/.env.example` and
+  `frontend/.env.example` list every variable that app reads, with a comment
+  and a placeholder value. They are the documentation of configuration.
+- Add a variable to its app's `.env.example` in the same change that
+  introduces it.
+- `docker-compose.yml` loads each app's `.env` and sets only container
+  hostnames (`POSTGRES_HOST`, `BACKEND_URL`), which differ inside Docker.
 - Never log a secret. Never put one in a prompt, fixture, screenshot or commit.
 - Scripts and tests read credentials from the environment, never from
   arguments or hard-coded values.
 
 ## 3. Running the application
 
-`TBD (ADR-001)`. When defined, this section will contain one command to run
-the application locally and one to run it with mocked connectors for demos.
-Mocked mode must be visibly labelled in the UI or output.
+```
+docker compose up --build
+```
+
+- Frontend: http://localhost:3000 (shows the backend health result)
+- Backend: http://localhost:8000/health returns `{"db": "ok", "pgvector": "<version>"}`
+- Postgres is reachable only inside the Compose network. `backend/db/init.sql` runs
+  once on an empty volume; `docker compose down -v` resets the database.
+
+A mocked-connector demo mode will be added with the first connector. Mocked
+mode must be visibly labelled in the UI or output.
 
 ## 4. Running tests
 
-`TBD (ADR-001)`. Expectations regardless of framework:
+Backend: pytest in `backend/tests/` (no tests yet; the first ones come with
+permission filtering). Expectations:
 
 - One command runs the whole suite.
 - Security-invariant tests (SECURITY.md section 2) are tagged so they can be
@@ -41,7 +53,7 @@ Mocked mode must be visibly labelled in the UI or output.
 
 ## 5. Linting and formatting
 
-`TBD (ADR-001)`. Whatever is chosen, it runs in one command and in CI, and the
+`TBD` (still open in ADR-001). Whatever is chosen, it runs in one command and in CI, and the
 repository stays clean under it. Do not argue about style in PRs; let the tool
 decide.
 
@@ -102,7 +114,7 @@ Small PRs. One concern each. Reviewers check the security-impact line first.
 3. The connector exposes content *and* permission data. It never makes an
    authorization decision itself; that is the authorization layer's job.
 4. Use least-privilege credentials, configured only via environment variables
-   listed in `.env.example`.
+   listed in `backend/.env.example`.
 5. Add tests: content fetch, permission fetch, and at least one negative
    permission case for this platform.
 6. Add the audit events the connector's actions produce.
@@ -110,7 +122,8 @@ Small PRs. One concern each. Reviewers check the security-impact line first.
 
 ## 8. How to add tests
 
-- Put tests under `tests/`, mirroring the structure of `src/`.
+- Backend tests go under `backend/tests/`, mirroring `backend/app/`; frontend
+  tests live in `frontend/`.
 - Name tests after the behaviour, not the function:
   `revoked_channel_membership_excludes_messages`, not `test_filter_2`.
 - Every security invariant in SECURITY.md gets at least one test that would

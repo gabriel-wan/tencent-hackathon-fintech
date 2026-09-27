@@ -27,11 +27,13 @@ statement: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 
 ## Current status
 
-**Repository initialised. Architecture under design. No product code exists.**
+**Stack chosen (ADR-001). Skeleton running; no product features yet.**
 
-Nothing described in this repository is implemented yet. The documents lay out
-requirements, security principles, open architectural questions and team
-conventions so that implementation can start from a shared understanding.
+`docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector, wired
+together through a `/health` check. Nothing else described in this repository
+is implemented yet. The documents lay out requirements, security principles,
+open architectural questions and team conventions so that implementation can
+start from a shared understanding.
 
 ## Planned architecture
 
@@ -45,9 +47,9 @@ USER → AUTHENTICATION → AUTHORIZATION → PERMISSION-AWARE RETRIEVAL
 
 Authorization is evaluated by deterministic code that knows the user's
 identity, **before** anything reaches the LLM. The LLM never decides who may
-see what. Every stage emits audit events. No database, framework, LLM provider
-or cloud service has been chosen yet; those are open ADRs in
-[DECISIONS.md](DECISIONS.md).
+see what. Every stage emits audit events. Stack: Next.js, FastAPI,
+PostgreSQL + pgvector (ADR-001). LLM provider and cloud services are still open
+ADRs in [DECISIONS.md](DECISIONS.md).
 
 ## Repository structure
 
@@ -60,8 +62,7 @@ or cloud service has been chosen yet; those are open ADRs in
 ├── ARCHITECTURE.md      initial architecture, security boundary, open questions
 ├── SECURITY.md          threat model and security invariants (design principles)
 ├── DEVELOPMENT.md       setup, workflow, conventions, how to add integrations and tests
-├── DECISIONS.md         architecture decision log (ADR-000 accepted, 001–008 open)
-├── .env.example         configuration placeholders; never commit .env
+├── DECISIONS.md         architecture decision log (ADR-000 and 001 accepted, 002–008 open)
 ├── .gitignore
 ├── docs/
 │   ├── hackathon/
@@ -73,16 +74,19 @@ or cloud service has been chosen yet; those are open ADRs in
 │   │   └── evidence/        real screenshots / recordings, captured during development
 │   ├── architecture/        detailed diagrams and designs (empty until agreed)
 │   └── decisions/           full ADRs and the ADR template
-├── src/                     application code (empty until ADR-001)
-├── tests/                   tests (empty until ADR-001)
-└── scripts/                 helper scripts (empty until ADR-001)
+├── docker-compose.yml       runs db + backend + frontend
+├── frontend/                Next.js app (localhost:3000), config in .env.example
+├── backend/                 FastAPI app (localhost:8000), config in .env.example, tests in tests/, db/init.sql enables pgvector
+└── scripts/                 helper scripts (empty)
 ```
 
 ## Development
 
-See [DEVELOPMENT.md](DEVELOPMENT.md). Until the stack is chosen there is
-nothing to install or run. Copy `.env.example` to `.env` for local
-configuration; `.env` is git-ignored and must never be committed.
+Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to
+`frontend/.env`, then `docker compose up --build`. Frontend at
+http://localhost:3000, backend at http://localhost:8000/health. `.env` is
+git-ignored and must never be committed. Details in
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Security principles
 
