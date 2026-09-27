@@ -5,8 +5,8 @@
 > must answer. It does not describe a decided architecture. The stack
 > (Next.js, FastAPI, PostgreSQL + pgvector) is decided in ADR-001; the LLM
 > provider, cloud services and everything else are open ADRs in
-> [DECISIONS.md](DECISIONS.md). What is actually built is in
-> [docs/MERMAID.md](docs/MERMAID.md). Anything concrete below is marked
+> [DECISIONS.md](../decisions/DECISIONS.md). What is actually built is in
+> [CURRENT.md](CURRENT.md). Anything concrete below is marked
 > `ASSUMPTION` or `OPTION`.
 
 ## 1. The one thing that must be true
@@ -113,8 +113,7 @@ trust boundary. Nothing reaches the green box (the LLM) without passing through
 them. The audit log receives events from every stage, including denials.
 
 The hackathon submission requires a **trust-boundary diagram** as a
-deliverable. A refined version of the above will live in
-[docs/architecture/](docs/architecture/) once the design is agreed.
+deliverable. The diagram above is refined here once the design is agreed.
 
 ## 3. Layers and the questions each one raises
 

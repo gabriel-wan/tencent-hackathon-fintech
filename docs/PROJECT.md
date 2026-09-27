@@ -12,8 +12,8 @@ name: **TBD**.
 | **Deadline** | Submission 16 Oct 2026; finalists 23 Oct; Demo Day 3 Nov (TBC) |
 | **Status** | Stack chosen (ADR-001); running skeleton with health check only; no product features |
 
-Authoritative challenge text: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
-Requirements and judging: [docs/hackathon/requirements.md](docs/hackathon/requirements.md).
+Authoritative challenge text: [docs/hackathon/challenge.md](hackathon/challenge.md).
+Requirements and judging: [docs/hackathon/requirements.md](hackathon/requirements.md).
 
 ## Problem
 

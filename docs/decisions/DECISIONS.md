@@ -1,8 +1,7 @@
 # DECISIONS.md – architecture decision log
 
-Short record of every significant decision. Longer ADRs go in
-[docs/decisions/](docs/decisions/) using
-[adr-template.md](docs/decisions/adr-template.md) and are linked from here.
+Short record of every significant decision. Longer ADRs go in this folder
+using [adr-template.md](adr-template.md) and are linked from here.
 
 Rules: a decision is only "Accepted" once the team has actually discussed it.
 Placeholders stay "Proposed" with empty content; do not fill them in

@@ -105,7 +105,7 @@ Small PRs. One concern each. Reviewers check the security-impact line first.
 ## 7. How to add an integration (source connector)
 
 1. Read the platform's native permission model and write it down in
-   `docs/architecture/permission-model.md` before writing code. Confluence,
+   [ARCHITECTURE.md](architecture/ARCHITECTURE.md) before writing code. Confluence,
    Jira, Slack and Google Drive each differ; the handbook forbids flattening.
 2. Decide, and record in the PR, whether the connector is **real** or
    **mocked**. A mock must be named as such in code, be visibly labelled in
