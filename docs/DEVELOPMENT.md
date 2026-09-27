@@ -29,14 +29,21 @@ All configuration and every secret come from the environment. Rules:
 
 ## 3. Running the application
 
-```
-docker compose up --build
-```
+| Step | Command |
+|---|---|
+| First run, or after pulling changes | `docker compose up --build` |
+| Start developing | `docker compose up` |
+| After editing code | `docker compose up --build` (or one service: `docker compose up --build backend`) |
+| Stop | Ctrl+C, or `docker compose stop` from another terminal |
 
+- Code is copied into the images, so edits only take effect after `--build`.
+  Docker's layer cache keeps rebuilds fast; dependencies are reinstalled only
+  when `package.json` or `requirements.txt` change.
+- Stopping keeps containers, images and the database. `docker compose down`
+  also removes containers; `docker compose down -v` also wipes the database.
 - Frontend: http://localhost:3000 (shows the backend health result)
 - Backend: http://localhost:8000/health returns `{"db": "ok", "pgvector": "<version>"}`
-- Postgres is reachable only inside the Compose network. `docker compose down -v`
-  resets the database.
+- Postgres is reachable only inside the Compose network.
 - Schema changes are Alembic migrations in `backend/migrations/versions/`. The
   `migrate` service applies them before the backend starts; deployments run the
   same `alembic upgrade head` against TencentDB. New migration: add the next
