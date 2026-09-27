@@ -77,7 +77,7 @@ ADRs in [DECISIONS.md](docs/decisions/DECISIONS.md).
 │       └── evidence/        real screenshots / recordings, captured during development
 ├── docker-compose.yml       runs db + backend + frontend
 ├── frontend/                Next.js app (localhost:3000), config in .env.example
-├── backend/                 FastAPI app (localhost:8000), config in .env.example, tests in tests/, db/init.sql enables pgvector
+├── backend/                 FastAPI app (localhost:8000), config in .env.example, tests in tests/, Alembic migrations in migrations/
 └── scripts/                 helper scripts (empty)
 ```
 

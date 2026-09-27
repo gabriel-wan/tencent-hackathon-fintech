@@ -35,8 +35,14 @@ docker compose up --build
 
 - Frontend: http://localhost:3000 (shows the backend health result)
 - Backend: http://localhost:8000/health returns `{"db": "ok", "pgvector": "<version>"}`
-- Postgres is reachable only inside the Compose network. `backend/db/init.sql` runs
-  once on an empty volume; `docker compose down -v` resets the database.
+- Postgres is reachable only inside the Compose network. `docker compose down -v`
+  resets the database.
+- Schema changes are Alembic migrations in `backend/migrations/versions/`. The
+  `migrate` service applies them before the backend starts; deployments run the
+  same `alembic upgrade head` against TencentDB. New migration: add the next
+  numbered file there, with `down_revision` set to the previous `revision`.
+- The images are production images (non-root, health checks); local runs use
+  exactly what gets deployed.
 
 A mocked-connector demo mode will be added with the first connector. Mocked
 mode must be visibly labelled in the UI or output.

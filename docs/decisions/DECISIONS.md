@@ -90,6 +90,7 @@ implementation:
 - Database: PostgreSQL 17 with the pgvector extension, so documents,
   permissions, embeddings and the audit log live in one database.
 - Local run: Docker Compose (`db`, `backend` on :8000, `frontend` on :3000).
+- Schema: Alembic migrations, applied by the same command locally and on deploy.
 - Still open: linter/formatter, Tencent Cloud services, LLM provider (ADR-006).
 
 ### Consequences
