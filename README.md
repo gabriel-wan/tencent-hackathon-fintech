@@ -27,15 +27,17 @@ statement: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 
 ## Current status
 
-**Repository initialised. Architecture under design. No product code exists.**
+**Stack chosen (ADR-001). Skeleton running; no product features yet.**
 
-Nothing described in this repository is implemented yet. The documents lay out
-requirements, security principles, open architectural questions and team
-conventions so that implementation can start from a shared understanding.
+`docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector, wired
+together through a `/health` check. Nothing else described in this repository
+is implemented yet. The documents lay out requirements, security principles,
+open architectural questions and team conventions so that implementation can
+start from a shared understanding.
 
 ## Planned architecture
 
-Initial and subject to change; see [ARCHITECTURE.md](ARCHITECTURE.md). The
+Initial and subject to change; see [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md). The
 non-negotiable security boundary:
 
 ```
@@ -45,49 +47,52 @@ USER → AUTHENTICATION → AUTHORIZATION → PERMISSION-AWARE RETRIEVAL
 
 Authorization is evaluated by deterministic code that knows the user's
 identity, **before** anything reaches the LLM. The LLM never decides who may
-see what. Every stage emits audit events. No database, framework, LLM provider
-or cloud service has been chosen yet; those are open ADRs in
-[DECISIONS.md](DECISIONS.md).
+see what. Every stage emits audit events. Stack: Next.js, FastAPI,
+PostgreSQL + pgvector (ADR-001). LLM provider and cloud services are still open
+ADRs in [DECISIONS.md](docs/decisions/DECISIONS.md).
 
 ## Repository structure
 
 ```
 .
-├── README.md            this file
-├── AGENTS.md            instructions for AI coding agents (CodeBuddy, WorkBuddy, Claude Code, ...)
-├── CLAUDE.md            pointer to AGENTS.md
-├── PROJECT.md           problem, personas, scenarios, proposed MVP, open items
-├── ARCHITECTURE.md      initial architecture, security boundary, open questions
-├── SECURITY.md          threat model and security invariants (design principles)
-├── DEVELOPMENT.md       setup, workflow, conventions, how to add integrations and tests
-├── DECISIONS.md         architecture decision log (ADR-000 accepted, 001–008 open)
-├── .env.example         configuration placeholders; never commit .env
-├── .gitignore
+├── README.md                this file
+├── AGENTS.md                instructions for AI coding agents (CodeBuddy, WorkBuddy, Claude Code, ...)
+├── CLAUDE.md                pointer to AGENTS.md
 ├── docs/
-│   ├── hackathon/
-│   │   ├── handbook.pdf     official handbook (source of truth)
-│   │   ├── challenge.md     the Internal Brain challenge, organised
-│   │   ├── requirements.md  mandatory requirements, timeline, judging, credits
-│   │   ├── submission.md    submission checklist with deadline
-│   │   ├── tool-usage.md    CodeBuddy/WorkBuddy usage log and checklist
-│   │   └── evidence/        real screenshots / recordings, captured during development
-│   ├── architecture/        detailed diagrams and designs (empty until agreed)
-│   └── decisions/           full ADRs and the ADR template
-├── src/                     application code (empty until ADR-001)
-├── tests/                   tests (empty until ADR-001)
-└── scripts/                 helper scripts (empty until ADR-001)
+│   ├── PROJECT.md           problem, personas, scenarios, proposed MVP, open items
+│   ├── SECURITY.md          threat model and security invariants
+│   ├── DEVELOPMENT.md       setup, workflow, conventions, integrations, tests
+│   ├── architecture/
+│   │   ├── ARCHITECTURE.md  planned architecture, security boundary, open questions
+│   │   └── CURRENT.md       diagram of what is built right now
+│   ├── decisions/
+│   │   ├── DECISIONS.md     decision log (ADR-000 and 001 accepted, 002–008 open)
+│   │   └── adr-template.md
+│   └── hackathon/
+│       ├── handbook.pdf     official handbook (source of truth)
+│       ├── challenge.md     the Internal Brain challenge, organised
+│       ├── requirements.md  mandatory requirements, timeline, judging, credits
+│       ├── submission.md    submission checklist with deadline
+│       ├── tool-usage.md    CodeBuddy/WorkBuddy usage log and checklist
+│       └── evidence/        real screenshots / recordings, captured during development
+├── docker-compose.yml       runs db + backend + frontend
+├── frontend/                Next.js app (localhost:3000), config in .env.example
+├── backend/                 FastAPI app (localhost:8000), config in .env.example, tests in tests/, Alembic migrations in migrations/
+└── scripts/                 helper scripts (empty)
 ```
 
 ## Development
 
-See [DEVELOPMENT.md](DEVELOPMENT.md). Until the stack is chosen there is
-nothing to install or run. Copy `.env.example` to `.env` for local
-configuration; `.env` is git-ignored and must never be committed.
+Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to
+`frontend/.env`, then `docker compose up --build`. Frontend at
+http://localhost:3000, backend at http://localhost:8000/health. `.env` is
+git-ignored and must never be committed. Details in
+[DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Security principles
 
 Design principles, not claims about the implementation. Full list and threat
-model in [SECURITY.md](SECURITY.md).
+model in [SECURITY.md](docs/SECURITY.md).
 
 - Unauthorized content never enters the LLM context.
 - The LLM is never the component that decides authorization.

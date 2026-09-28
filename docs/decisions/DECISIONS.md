@@ -1,8 +1,7 @@
 # DECISIONS.md – architecture decision log
 
-Short record of every significant decision. Longer ADRs go in
-[docs/decisions/](docs/decisions/) using
-[adr-template.md](docs/decisions/adr-template.md) and are linked from here.
+Short record of every significant decision. Longer ADRs go in this folder
+using [adr-template.md](adr-template.md) and are linked from here.
 
 Rules: a decision is only "Accepted" once the team has actually discussed it.
 Placeholders stay "Proposed" with empty content; do not fill them in
@@ -11,7 +10,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | ADR | Title | Status |
 |---|---|---|
 | [000](#adr-000-repository-initialization) | Repository initialization | Accepted |
-| [001](#adr-001-technology-stack) | Technology stack | Proposed (not discussed) |
+| [001](#adr-001-technology-stack) | Technology stack | Accepted |
 | [002](#adr-002-authentication-and-identity-model) | Authentication and identity model | Proposed (not discussed) |
 | [003](#adr-003-authorization-model) | Authorization model | Proposed (not discussed) |
 | [004](#adr-004-retrieval-architecture) | Retrieval architecture | Proposed (not discussed) |
@@ -74,14 +73,31 @@ implementation:
 
 ## ADR-001: Technology stack
 
-- **Status:** Proposed (not yet discussed)
+- **Status:** Accepted
+- **Date:** 2026-09-27
+- **Deciders:** v1-nce
 - **Scope:** language, web/API framework, test runner, linter/formatter,
   package manager. Also whether any Tencent Cloud service is part of the
   stack.
 - **Must consider:** what all three members can work in productively for
   three weeks; what CodeBuddy/WorkBuddy support well; what is easiest to demo.
 
-*Content to be added after team discussion.*
+### Decision
+
+- Frontend: Next.js (TypeScript, App Router, npm) in `frontend/`.
+- Backend: FastAPI (Python 3.12, pip) in `backend/`; tests with pytest in
+  `backend/tests/`.
+- Database: PostgreSQL 17 with the pgvector extension, so documents,
+  permissions, embeddings and the audit log live in one database.
+- Local run: Docker Compose (`db`, `backend` on :8000, `frontend` on :3000).
+- Schema: Alembic migrations, applied by the same command locally and on deploy.
+- Still open: linter/formatter, Tencent Cloud services, LLM provider (ADR-006).
+
+### Consequences
+
+- Two runtimes (Node, Python), kept apart by folder; no monorepo tooling.
+- One `docker compose up` runs everything; the database is not exposed to
+  the host.
 
 ## ADR-002: Authentication and identity model
 

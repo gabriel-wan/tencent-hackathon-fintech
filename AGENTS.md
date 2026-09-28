@@ -13,10 +13,10 @@ agent session.
   system with RBAC, security logging and an audit trail. Full statement in
   [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 - **Team:** 3 students. Submission deadline **16 Oct 2026**.
-- **Current stage:** repository initialization and architecture design.
-  **No product code exists yet, and none should be written until the team has
-  reviewed [ARCHITECTURE.md](ARCHITECTURE.md) and recorded the stack decision
-  in [DECISIONS.md](DECISIONS.md) (ADR-001).**
+- **Current stage:** stack decided ([DECISIONS.md](docs/decisions/DECISIONS.md), ADR-001);
+  a running skeleton exists (`docker compose up`, `/health` only). **Do not
+  build authorization, retrieval or LLM code until ADR-002 to ADR-006 are
+  decided.**
 
 What the system must eventually do: answer natural-language questions using
 knowledge spread across Confluence, Jira, Slack and Google Drive, while
@@ -71,8 +71,8 @@ component.
 ## 3. Rules for coding agents
 
 Before substantial changes:
-1. Read [PROJECT.md](PROJECT.md), [ARCHITECTURE.md](ARCHITECTURE.md),
-   [SECURITY.md](SECURITY.md) and the relevant files under `docs/`.
+1. Read [PROJECT.md](docs/PROJECT.md), [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md),
+   [SECURITY.md](docs/SECURITY.md) and the relevant files under `docs/`.
 2. Inspect the existing code before creating new abstractions. Reuse what is there.
 
 While working:
@@ -80,11 +80,11 @@ While working:
 - Prefer simple implementations over premature abstractions.
 - Keep changes focused on one concern. Do not mix refactors with features.
 - Add tests for security-sensitive logic (authorization, filtering, audit
-  integrity, permission revocation). See [tests/README.md](tests/README.md).
+  integrity, permission revocation). See [backend/tests/README.md](backend/tests/README.md).
 - **Never silently change security behaviour.** Any change to authorization,
   filtering, audit logging or what the LLM receives must be called out
   explicitly in the change description and, where it is a design change,
-  recorded in [DECISIONS.md](DECISIONS.md).
+  recorded in [DECISIONS.md](docs/decisions/DECISIONS.md).
 - Update documentation in the same change when architecture or important
   behaviour changes. Stale docs are treated as bugs.
 - Clearly distinguish **assumptions** from **confirmed requirements**. Mark
@@ -95,7 +95,7 @@ While working:
 - Do not choose a database, vector store, framework, LLM provider or cloud
   service on the team's behalf. Those are ADRs (see DECISIONS.md).
 
-Conventions (see [DEVELOPMENT.md](DEVELOPMENT.md)): branch naming, commit
+Conventions (see [DEVELOPMENT.md](docs/DEVELOPMENT.md)): branch naming, commit
 messages, PR expectations and how to add integrations and tests.
 
 ## 4. Tencent tools and proof of usage
@@ -123,5 +123,5 @@ the design to look compliant.
 ## 5. Things that are TBD
 
 Anything marked `TBD` or `ASSUMPTION` in this repository is undecided. The
-current list is maintained in [PROJECT.md](PROJECT.md) under "Open items". Do
+current list is maintained in [PROJECT.md](docs/PROJECT.md) under "Open items". Do
 not resolve a TBD in code without a matching ADR.

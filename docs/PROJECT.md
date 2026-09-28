@@ -10,10 +10,10 @@ name: **TBD**.
 | **Challenge** | The Internal Brain – Building a Context-Aware Enterprise Knowledge System with RBAC, Security Logging & Audit Trail |
 | **Team** | 3 students (names TBD in this file) |
 | **Deadline** | Submission 16 Oct 2026; finalists 23 Oct; Demo Day 3 Nov (TBC) |
-| **Status** | Repository initialised; architecture under design; no product code |
+| **Status** | Stack chosen (ADR-001); running skeleton with health check only; no product features |
 
-Authoritative challenge text: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
-Requirements and judging: [docs/hackathon/requirements.md](docs/hackathon/requirements.md).
+Authoritative challenge text: [docs/hackathon/challenge.md](hackathon/challenge.md).
+Requirements and judging: [docs/hackathon/requirements.md](hackathon/requirements.md).
 
 ## Problem
 
@@ -117,7 +117,6 @@ Open MVP questions for the team:
 | Team member names and roles | PROJECT.md |
 | Personas to design around | PROJECT.md |
 | MVP scope | PROJECT.md |
-| Technology stack | DECISIONS.md ADR-001 |
 | Authentication / identity model | DECISIONS.md ADR-002 |
 | Authorization model | DECISIONS.md ADR-003 |
 | Retrieval architecture | DECISIONS.md ADR-004 |

@@ -1,7 +1,7 @@
 # scripts/
 
 Developer and operational helper scripts (setup, seeding demo data, running
-checks). Intentionally empty until the stack is chosen.
+checks). Empty until a script is needed.
 
 Rules:
 - Scripts must read credentials from the environment, never from arguments or

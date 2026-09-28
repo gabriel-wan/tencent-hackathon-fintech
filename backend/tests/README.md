@@ -1,6 +1,6 @@
-# tests/
+# backend/tests/
 
-Automated tests live here. It is intentionally empty until the stack is chosen.
+Backend tests (pytest) live here, mirroring `backend/app/`. Empty until the first real logic lands.
 
 Priority order for tests once implementation starts (see DEVELOPMENT.md):
 
