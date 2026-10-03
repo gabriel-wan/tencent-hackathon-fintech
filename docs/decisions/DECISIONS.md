@@ -85,8 +85,9 @@ implementation:
 ### Decision
 
 - Frontend: Next.js (TypeScript, App Router, npm) in `frontend/`.
-- Backend: FastAPI (Python 3.12, pip) in `backend/`; tests with pytest in
-  `backend/tests/`.
+- Backend: FastAPI (Python 3.12, uv) in `backend/`; tests with pytest in
+  `backend/tests/`. Dependencies in `backend/pyproject.toml` (dev tools in the
+  `dev` dependency group), pinned by `backend/uv.lock`.
 - Database: PostgreSQL 17 with the pgvector extension, so documents,
   permissions, embeddings and the audit log live in one database.
 - Local run: Docker Compose (`db`, `backend` on :8000, `frontend` on :3000).
@@ -98,6 +99,15 @@ implementation:
 - Two runtimes (Node, Python), kept apart by folder; no monorepo tooling.
 - One `docker compose up` runs everything; the database is not exposed to
   the host.
+
+### Amendment (2026-10-03): pip → uv
+
+- **Was:** pip with `backend/requirements.txt`.
+- **Now:** uv with `backend/pyproject.toml` + `uv.lock`.
+- **Why:** dependency groups (PEP 735) keep dev tools such as pytest out of
+  the production image, and pip cannot install a project's dependencies
+  without packaging the app. uv also locks every transitive dependency.
+- **Cost:** each developer installs uv once (`docs/DEVELOPMENT.md` §1).
 
 ## ADR-002: Authentication and identity model
 

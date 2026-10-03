@@ -1,0 +1,24 @@
+[project]
+name = "internal-brain-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+# Lower bounds only; exact versions live in uv.lock. Upgrade with `uv lock --upgrade-package <pkg>`.
+dependencies = [
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.54.0",
+    "psycopg[binary]>=3.3.6",
+    "alembic>=1.20.0",
+    "sqlalchemy>=2.1.1",
+    "httpx>=0.28.1",
+    "google-api-python-client>=2.201.0",
+    "google-auth>=2.59.1",
+    "slack-sdk>=3.45.0",
+]
+
+[dependency-groups]
+# cryptography and httplib2 are imported directly by tests, so they are declared, not inherited.
+dev = ["pytest>=9.1.1", "cryptography>=50.0.2", "httplib2>=0.32.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
