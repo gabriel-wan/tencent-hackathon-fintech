@@ -27,13 +27,14 @@ statement: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 
 ## Current status
 
-**Stack chosen (ADR-001). Skeleton running; no product features yet.**
+**Architecture decided (ADR-000 to ADR-008). Backend query pipeline built; connectors and UI in progress.**
 
-`docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector, wired
-together through a `/health` check. Nothing else described in this repository
-is implemented yet. The documents lay out requirements, security principles,
-open architectural questions and team conventions so that implementation can
-start from a shared understanding.
+`docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector. The backend
+answers questions over permission-filtered, audited search
+([QUERY_PIPELINE.md](docs/architecture/QUERY_PIPELINE.md)), currently against
+fictional development seed data. Not built yet: the real connectors, connector
+sign-in, the live permission check (a stub stands in), the audit hash chain and
+the frontend beyond a health check.
 
 ## Planned architecture
 
@@ -65,7 +66,8 @@ ADRs in [DECISIONS.md](docs/decisions/DECISIONS.md).
 │   ├── architecture/
 │   │   ├── ARCHITECTURE.md  planned architecture, security boundary, open questions
 │   │   ├── CURRENT.md       diagram of what is built right now
-│   │   └── CONNECTORS_ARCHITECTURE.md  planned data flow from the 4 sources
+│   │   ├── CONNECTORS_ARCHITECTURE.md  planned data flow from the 4 sources
+│   │   └── QUERY_PIPELINE.md  query flow, schema and API contracts (Task 3)
 │   ├── decisions/
 │   │   ├── DECISIONS.md     decision log (ADR-000 to ADR-008 accepted)
 │   │   └── adr-template.md

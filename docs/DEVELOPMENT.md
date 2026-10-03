@@ -61,12 +61,34 @@ All configuration and every secret come from the environment. Rules:
 - The images are production images (non-root, health checks); local runs use
   exactly what gets deployed.
 
-A mocked-connector demo mode will be added with the first connector. Mocked
-mode must be visibly labelled in the UI or output.
+**Development seed data.** Until the connectors land, load a fictional company
+(four users, seven documents covering each permission case) with:
+
+```
+docker compose run --rm backend python -m app.seed
+```
+
+Add `--embed` to also compute embeddings through TokenHub. The seed refuses to
+run unless `APP_ENV=development`. In development, `GET /api/dev/users` lists the
+seeded users and `POST /api/dev/session` signs in as one of them; see
+[QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md).
 
 ## 4. Running tests
 
-Backend: pytest in `backend/tests/`. From `backend/`: `uv run pytest`.
+Backend: pytest in `backend/tests/`. Tests need Postgres and refuse to run
+unless `POSTGRES_DB` ends in `_test`, so they never touch development data.
+They create and migrate that database themselves, and each test rolls back.
+
+Run them in Docker from the repo root (no local Python needed):
+
+```
+docker compose run --rm --build --user root -e POSTGRES_DB=brain_test -v ./backend/tests:/app/tests backend sh -c "uv sync --locked --group dev --quiet && pytest -q"
+```
+
+Add `-m security` after `pytest` to run only the security-invariant tests.
+With a local Python and Postgres instead: from `backend/`, `uv run pytest`
+with `POSTGRES_DB=brain_test` and the other `POSTGRES_*` variables set.
+
 Expectations:
 
 - One command runs the whole suite.
