@@ -11,6 +11,16 @@ run with Docker Compose (DECISIONS.md, ADR-001).
    `.env` files are git-ignored and must never be committed.
 3. Install Docker Desktop (with Compose v2). Nothing else is needed to run
    the app; Node and Python are only needed for editing outside containers.
+4. For backend work outside containers (tests, editor autocomplete), install
+   [uv](https://docs.astral.sh/uv/getting-started/installation/) and run
+   `uv sync` in `backend/`. It creates `backend/.venv` with Python 3.12 and
+   every dependency; select that interpreter in your editor. Add a package
+   with `uv add <pkg>` (or `uv add --dev <pkg>` for dev-only tools), which
+   updates `pyproject.toml` and `uv.lock` together; commit both.
+   No activation needed: `uv run <command>` (e.g. `uv run pytest`) uses
+   `backend/.venv` automatically. To type plain `python` or `pytest` instead,
+   activate it first: `source .venv/bin/activate` (macOS/Linux) or
+   `.venv\Scripts\activate` (Windows).
 
 ## 2. Environment variables
 
@@ -38,7 +48,7 @@ All configuration and every secret come from the environment. Rules:
 
 - Code is copied into the images, so edits only take effect after `--build`.
   Docker's layer cache keeps rebuilds fast; dependencies are reinstalled only
-  when `package.json` or `requirements.txt` change.
+  when `package.json` or `uv.lock` change.
 - Stopping keeps containers, images and the database. `docker compose down`
   also removes containers; `docker compose down -v` also wipes the database.
 - Frontend: http://localhost:3000 (shows the backend health result)
@@ -56,8 +66,8 @@ mode must be visibly labelled in the UI or output.
 
 ## 4. Running tests
 
-Backend: pytest in `backend/tests/` (no tests yet; the first ones come with
-permission filtering). Expectations:
+Backend: pytest in `backend/tests/`. From `backend/`: `uv run pytest`.
+Expectations:
 
 - One command runs the whole suite.
 - Security-invariant tests (SECURITY.md section 2) are tagged so they can be
