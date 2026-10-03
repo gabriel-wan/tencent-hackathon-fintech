@@ -64,7 +64,8 @@ ADRs in [DECISIONS.md](docs/decisions/DECISIONS.md).
 │   ├── DEVELOPMENT.md       setup, workflow, conventions, integrations, tests
 │   ├── architecture/
 │   │   ├── ARCHITECTURE.md  planned architecture, security boundary, open questions
-│   │   └── CURRENT.md       diagram of what is built right now
+│   │   ├── CURRENT.md       diagram of what is built right now
+│   │   └── CONNECTORS_ARCHITECTURE.md  planned data flow from the 4 sources
 │   ├── decisions/
 │   │   ├── DECISIONS.md     decision log (ADR-000 and 001 accepted, 002–008 open)
 │   │   └── adr-template.md
