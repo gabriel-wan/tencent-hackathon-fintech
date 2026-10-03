@@ -27,7 +27,7 @@ reproduced exactly, not approximated.
 | CQL | Confluence Query Language, used here to find pages changed since a time. |
 | Cursor | The `_links.next` URL in a response, which you call to get the next page of results. |
 | Checkpoint | The last-modified time we synced up to, stored in `sync_state`. |
-| Principal | A namespaced ID our system stores in ACLs, e.g. `atlassian:user:<accountId>` or `atlassian:group:<groupId>`. |
+| Principal | A namespaced ID our system stores in ACLs: `atlassian:user:<accountId>`. Groups are expanded into their users (4.8), as in Jira. |
 | ACL | The list of principals stored on a page, any one of which lets search include it (the live check has the final say). |
 | Free plan | Confluence's free tier, which has **no permissions** (every user sees everything), so it can't be used. |
 

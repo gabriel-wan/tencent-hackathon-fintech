@@ -13,11 +13,12 @@ dependencies = [
     "google-api-python-client>=2.201.0",
     "google-auth>=2.59.1",
     "slack-sdk>=3.45.0",
+    "cryptography>=50.0.2",
 ]
 
 [dependency-groups]
-# cryptography and httplib2 are imported directly by tests, so they are declared, not inherited.
-dev = ["pytest>=9.1.1", "cryptography>=50.0.2", "httplib2>=0.32.0"]
+# httplib2 is imported directly by tests, so it is declared, not inherited.
+dev = ["pytest>=9.1.1", "httplib2>=0.32.0"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

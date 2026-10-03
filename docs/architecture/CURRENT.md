@@ -11,9 +11,9 @@ flowchart LR
 
     subgraph COMPOSE["Docker Compose (docker-compose.yml)"]
         FE["frontend<br/>Next.js, :3000<br/>app/page.tsx"]
-        BE["backend<br/>FastAPI, :8000<br/>GET /health"]
+        BE["backend<br/>FastAPI, :8000<br/>GET /health<br/>auth: sessions, /logout<br/>connectors: /connectors, /oauth/*/callback"]
         MIG["migrate<br/>alembic upgrade head<br/>runs once, then exits"]
-        DB[("db<br/>PostgreSQL 17 + pgvector<br/>internal only")]
+        DB[("db<br/>PostgreSQL 17 + pgvector<br/>users, sessions, connections<br/>(tokens encrypted)<br/>internal only")]
     end
 
     MIG -->|"migrations"| DB
@@ -22,4 +22,15 @@ flowchart LR
     USER -.->|"HTTP :8000 (direct)"| BE
     FE -->|"server-side fetch<br/>BACKEND_URL/health"| BE
     BE -->|"SQLAlchemy engine (app/db.py)<br/>POSTGRES_* from backend/.env"| DB
+
+    subgraph SRC["External sources (real, not mocked)"]
+        JI["Jira"]
+        CF["Confluence"]
+        GD["Google Drive"]
+        SL["Slack"]
+    end
+
+    USER -.->|"connect: OAuth sign-in<br/>(redirects via the browser)"| SRC
+    BE -->|"OAuth code exchange, token refresh;<br/>API calls as the user (/connectors/*/ping)"| SRC
+    BE -.->|"admin clients: python -m app.connectors<br/>can_read (Drive, Slack) built, not yet called<br/>no sync, no documents stored yet"| SRC
 ```

@@ -66,6 +66,8 @@ channel is public and you are a full member.
 4. /invite @ourbot in every private channel to be indexed
 ```
 
+Check with `python -m app.connectors slack` (see `backend/README.md`): it fails if any scope above is missing.
+
 ```python
 from slack_sdk import WebClient
 slack = WebClient(token=SLACK_BOT_TOKEN)
@@ -174,7 +176,7 @@ or `["slack:members"]` for a public one.
 |---|---|---|
 | `sync(cursor)` | 4.1 → 4.2 `oldest = cursor` per channel → 4.3 for threads → ACL (4.4 cached per channel). New cursor = newest `ts` seen | every 5 min |
 | `sweep()` | 4.1 → 4.2 over the retention window: every thread ID + ACL (4.4). Re-fetch (4.3) threads whose `latest_reply` is newer than the stored `updated_at`. 4.5 refreshes `slack:members` identities | every 30 min |
-| `can_read(principal, ids)` | 4.4 for each private channel in the final context. Public channel: the user must hold `slack:members` | each question, final context only |
+| `can_read(user_id, channel_ids)` | 4.4 for each private channel in the final context. Public channel: any full member (4.5 flags), or a guest who joined it | each question, final context only |
 
 One module: `backend/app/connectors/slack.py`.
 
