@@ -13,10 +13,11 @@ agent session.
   system with RBAC, security logging and an audit trail. Full statement in
   [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 - **Team:** 3 students. Submission deadline **16 Oct 2026**.
-- **Current stage:** stack decided ([DECISIONS.md](docs/decisions/DECISIONS.md), ADR-001);
-  a running skeleton exists (`docker compose up`, `/health` only). **Do not
-  build authorization, retrieval or LLM code until ADR-002 to ADR-006 are
-  decided.**
+- **Current stage:** architecture decided ([DECISIONS.md](docs/decisions/DECISIONS.md),
+  ADR-000 to ADR-008); a running skeleton exists (`docker compose up`,
+  `/health` only). Work follows [ROADMAP.md](docs/ROADMAP.md). **Read the
+  ADRs before building authorization, retrieval, LLM or audit code, and do not
+  deviate from them without a new ADR.**
 
 What the system must eventually do: answer natural-language questions using
 knowledge spread across Confluence, Jira, Slack and Google Drive, while
