@@ -18,7 +18,7 @@ from app.auth.principals import principals_for
 from app.auth.session import User
 from app.llm.client import ChatResult
 from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, build_messages, ground
-from app.retrieval.search import Candidate, hybrid_search
+from app.retrieval.search import Candidate, hybrid_search, restricted_matches
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +86,15 @@ def answer_question(
     ]
     allowed = [c for c, d in zip(candidates, decisions) if d.allowed][:MAX_DOCS_TO_LLM]
     audit["sent_to_llm"] = [c.key for c in allowed]
+
+    # AUDIT ONLY (ADR-007): restricted documents this question would have reached.
+    # Runs in a savepoint so a failure here cannot lose the audit event itself.
+    try:
+        with conn.begin_nested():
+            audit["restricted_matches"] = restricted_matches(conn, principals, question)
+    except Exception as exc:
+        log.error("restricted-match audit search failed: %s", exc)
+        audit["restricted_matches_error"] = type(exc).__name__
 
     citations: list[Citation] = []
     if not allowed:

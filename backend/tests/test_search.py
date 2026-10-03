@@ -58,3 +58,26 @@ def test_semantic_search_finds_a_match_with_no_shared_words(conn, add_doc):
 def test_semantic_search_also_respects_the_acl(conn, add_doc):
     add_doc("slack", "C1:6", ["slack:user:U999"], "secret", embedding=unit_vector(3))
     assert hybrid_search(conn, ALICE, "anything", question_embedding=unit_vector(3)) == []
+
+
+def test_restricted_matches_lists_only_documents_the_user_cannot_see(conn, add_doc):
+    from app.retrieval.search import restricted_matches
+
+    add_doc("slack", "C1:7", ["slack:members"], "gateway migration status")
+    add_doc("slack", "C9:7", ["slack:user:U999"], "gateway migration private notes")
+    add_doc("drive", "HR:7", ["public"], "gateway migration budget", scope_id="F_HR", in_boundary=False)
+
+    matches = {m["document"]: m["reason"] for m in restricted_matches(conn, ALICE, "gateway migration")}
+
+    assert matches == {
+        "slack:C9:7": "user not in document ACL",
+        "drive:HR:7": "outside admin boundary",
+    }
+
+
+def test_restricted_matches_ignore_documents_that_are_only_semantically_near(conn, add_doc):
+    from app.retrieval.search import restricted_matches
+
+    # Shares no words with the question; must not be logged as "reached".
+    add_doc("drive", "SALARY:8", ["slack:user:U999"], "compensation bands", embedding=unit_vector(1))
+    assert restricted_matches(conn, ALICE, "gateway migration") == []

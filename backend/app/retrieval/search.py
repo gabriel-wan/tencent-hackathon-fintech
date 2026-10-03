@@ -6,6 +6,10 @@ therefore never influence ranking or result counts (SECURITY.md INV-5).
 Keyword (Postgres full-text) and semantic (pgvector) ranks are merged with
 reciprocal rank fusion. This is the fast pre-filter only; the live check
 (app/auth/live_check.py) has the final say.
+
+`restricted_matches` is an AUDIT-ONLY search without the filter (ADR-007): it
+records which restricted documents a question would have reached. Its results
+must never be returned to the user or sent to the LLM.
 """
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -15,17 +19,9 @@ from sqlalchemy import Connection, text
 
 RRF_K = 60
 
-SEARCH_SQL = text(
-    """
-    WITH allowed AS (
-        SELECT d.id
-        FROM documents d
-        WHERE d.deleted_at IS NULL
-          AND d.acl && CAST(:principals AS text[])
-          AND EXISTS (
-              SELECT 1 FROM boundary b
-              WHERE b.source = d.source AND b.scope_id = d.scope_id
-          )
+_SEARCH_TEMPLATE = """
+    WITH pool AS (
+        {pool}
     ),
     q AS (
         -- Natural-language questions: match ANY meaningful word, rank by coverage.
@@ -37,7 +33,7 @@ SEARCH_SQL = text(
     kw AS (
         SELECT c.id, row_number() OVER (ORDER BY ts_rank_cd(c.tsv, q.query) DESC, c.id) AS r
         FROM chunks c
-        JOIN allowed a ON a.id = c.document_id
+        JOIN pool p ON p.id = c.document_id
         CROSS JOIN q
         WHERE c.tsv @@ q.query
         ORDER BY r
@@ -47,7 +43,7 @@ SEARCH_SQL = text(
         SELECT c.id,
                row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector), c.id) AS r
         FROM chunks c
-        JOIN allowed a ON a.id = c.document_id
+        JOIN pool p ON p.id = c.document_id
         WHERE :use_vec AND c.embedding IS NOT NULL
         ORDER BY r
         LIMIT :chunk_limit
@@ -58,13 +54,35 @@ SEARCH_SQL = text(
         GROUP BY id
     )
     SELECT f.score, c.id AS chunk_id, c.ordinal, c.text,
-           d.id AS document_id, d.source, d.source_id, d.title, d.url, d.updated_at, d.acl
+           d.id AS document_id, d.source, d.source_id, d.title, d.url, d.updated_at, d.acl,
+           EXISTS (
+               SELECT 1 FROM boundary b WHERE b.source = d.source AND b.scope_id = d.scope_id
+           ) AS in_boundary
     FROM fused f
     JOIN chunks c ON c.id = f.id
     JOIN documents d ON d.id = c.document_id
     ORDER BY f.score DESC, c.id
-    """
-)
+"""
+
+# What the user may see: not deleted, ACL overlap, inside the admin boundary.
+_PERMITTED_POOL = """
+        SELECT d.id
+        FROM documents d
+        WHERE d.deleted_at IS NULL
+          AND d.acl && CAST(:principals AS text[])
+          AND EXISTS (
+              SELECT 1 FROM boundary b
+              WHERE b.source = d.source AND b.scope_id = d.scope_id
+          )
+"""
+
+# AUDIT ONLY: every live document, regardless of permissions.
+_UNFILTERED_POOL = """
+        SELECT d.id FROM documents d WHERE d.deleted_at IS NULL
+"""
+
+SEARCH_SQL = text(_SEARCH_TEMPLATE.format(pool=_PERMITTED_POOL))
+_AUDIT_ONLY_SQL = text(_SEARCH_TEMPLATE.format(pool=_UNFILTERED_POOL))
 
 
 @dataclass(frozen=True)
@@ -85,6 +103,7 @@ class Candidate:
     updated_at: datetime
     acl: list[str]
     score: float
+    in_boundary: bool = True
     chunks: list[ChunkHit] = field(default_factory=list)
 
     @property
@@ -97,17 +116,18 @@ def vector_literal(vec: Sequence[float]) -> str:
     return "[" + ",".join(format(float(x), ".8g") for x in vec) + "]"
 
 
-def hybrid_search(
+def _ranked(
     conn: Connection,
+    sql,
     principals: list[str],
     question: str,
-    question_embedding: Sequence[float] | None = None,
-    chunk_limit: int = 50,
-    doc_limit: int = 20,
-    chunks_per_doc: int = 3,
+    question_embedding: Sequence[float] | None,
+    chunk_limit: int,
+    doc_limit: int,
+    chunks_per_doc: int,
 ) -> list[Candidate]:
     rows = conn.execute(
-        SEARCH_SQL,
+        sql,
         {
             "principals": list(principals),
             "question": question,
@@ -133,7 +153,52 @@ def hybrid_search(
                 updated_at=row["updated_at"],
                 acl=list(row["acl"]),
                 score=row["score"],
+                in_boundary=row["in_boundary"],
             )
         if len(doc.chunks) < chunks_per_doc:
             doc.chunks.append(ChunkHit(row["chunk_id"], row["ordinal"], row["text"], row["score"]))
     return list(docs.values())
+
+
+def hybrid_search(
+    conn: Connection,
+    principals: list[str],
+    question: str,
+    question_embedding: Sequence[float] | None = None,
+    chunk_limit: int = 50,
+    doc_limit: int = 20,
+    chunks_per_doc: int = 3,
+) -> list[Candidate]:
+    """Documents the user may see, best first. This is what can reach the LLM."""
+    return _ranked(conn, SEARCH_SQL, principals, question, question_embedding,
+                   chunk_limit, doc_limit, chunks_per_doc)
+
+
+def restricted_matches(
+    conn: Connection,
+    principals: list[str],
+    question: str,
+    doc_limit: int = 20,
+) -> list[dict[str, str]]:
+    """AUDIT ONLY: restricted documents the question matched by keyword.
+
+    Returns document keys and the reason the user could not see them. Never
+    return these to the user or put them in an LLM prompt.
+
+    Keyword matches only, on purpose: semantic search always returns the
+    nearest documents, relevant or not, which would record a user as having
+    "reached" restricted documents unrelated to their question. A missed
+    paraphrase is a smaller harm than a false accusation in an audit log.
+    """
+    held = set(principals)
+    matches = []
+    for c in _ranked(conn, _AUDIT_ONLY_SQL, principals, question, None,
+                     chunk_limit=50, doc_limit=doc_limit, chunks_per_doc=1):
+        reasons = []
+        if not held & set(c.acl):
+            reasons.append("user not in document ACL")
+        if not c.in_boundary:
+            reasons.append("outside admin boundary")
+        if reasons:
+            matches.append({"document": c.key, "reason": "; ".join(reasons)})
+    return matches

@@ -78,6 +78,9 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
    reply becomes the fixed "not found" answer.
 8. One `audit_events` row: user, question, search mode, every candidate with
    its decision and reason, what was sent to the LLM, answer, citations, model.
+   It also records **restricted matches**: documents the question matched by
+   keyword but the user may not see, with the reason. These come from a
+   separate audit-only search and never reach the user or the LLM (ADR-007).
 
 ## 4. Not built yet, and stubs
 

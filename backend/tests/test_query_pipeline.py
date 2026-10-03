@@ -119,3 +119,28 @@ def test_audit_events_cannot_be_updated_or_deleted(conn, make_user, add_doc, fak
         with pytest.raises(DBAPIError, match="append-only"):
             conn.execute(text(statement), {"i": audit_id})
         savepoint.rollback()
+
+
+@pytest.mark.security
+def test_restricted_matches_are_audited_without_changing_what_the_user_or_llm_sees(
+    conn, make_user, add_doc, fake_llm
+):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked on certificate")
+    reply = json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]})
+
+    before_llm = fake_llm(reply=reply)
+    before = answer_question(conn, alice, "gateway migration", before_llm)
+
+    add_doc("slack", "C9:1", ["slack:user:U999"], "gateway migration SECRET-BREACH-77")
+    after_llm = fake_llm(reply=reply)
+    after = answer_question(conn, alice, "gateway migration", after_llm)
+
+    # The user and the model see exactly the same thing...
+    assert after_llm.chat_calls == before_llm.chat_calls
+    assert (after.answer, after.citations) == (before.answer, before.citations)
+    # ...and only the audit log records the restricted match.
+    assert audit_payload(conn, before.audit_id)["restricted_matches"] == []
+    assert audit_payload(conn, after.audit_id)["restricted_matches"] == [
+        {"document": "slack:C9:1", "reason": "user not in document ACL"}
+    ]
