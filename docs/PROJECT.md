@@ -10,7 +10,7 @@ name: **TBD**.
 | **Challenge** | The Internal Brain – Building a Context-Aware Enterprise Knowledge System with RBAC, Security Logging & Audit Trail |
 | **Team** | 3 students (names TBD in this file) |
 | **Deadline** | Submission 16 Oct 2026; finalists 23 Oct; Demo Day 3 Nov (TBC) |
-| **Status** | Stack chosen (ADR-001); running skeleton with health check only; no product features |
+| **Status** | Architecture decided (ADR-000 to ADR-008); running skeleton with health check only; no product features |
 
 Authoritative challenge text: [docs/hackathon/challenge.md](hackathon/challenge.md).
 Requirements and judging: [docs/hackathon/requirements.md](hackathon/requirements.md).
@@ -117,12 +117,5 @@ Open MVP questions for the team:
 | Team member names and roles | PROJECT.md |
 | Personas to design around | PROJECT.md |
 | MVP scope | PROJECT.md |
-| Authentication / identity model | DECISIONS.md ADR-002 |
-| Authorization model | DECISIONS.md ADR-003 |
-| Retrieval architecture | DECISIONS.md ADR-004 |
-| Data / indexing architecture | DECISIONS.md ADR-005 |
-| LLM / provider selection | DECISIONS.md ADR-006 |
-| Audit-log design | DECISIONS.md ADR-007 |
-| Deployment architecture | DECISIONS.md ADR-008 |
+| Linter / formatter | DECISIONS.md ADR-001 |
 | Track-specific judging criteria (if received) | docs/hackathon/requirements.md |
-| Which Tencent Cloud services, if any, are adopted | docs/hackathon/tool-usage.md, DECISIONS.md |
