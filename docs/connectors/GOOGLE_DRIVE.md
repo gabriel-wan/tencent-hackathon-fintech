@@ -75,12 +75,20 @@ domain is on its list, or the list has `anyone`.
 2. Workspace Admin console → Security → API controls → Domain-wide delegation → add the service account's client ID with scopes:
    https://www.googleapis.com/auth/drive.readonly
    https://www.googleapis.com/auth/admin.directory.group.member.readonly
-3. backend/.env: GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_ADMIN_EMAIL (the admin to impersonate for Directory calls)
+3. backend/.env: GOOGLE_SERVICE_ACCOUNT_JSON (key file contents, one line, single-quoted),
+   GOOGLE_ADMIN_EMAIL (the admin to impersonate for Directory calls)
 ```
 
-**Personal accounts (development):** OAuth client (Desktop app) → sign in
-once with `drive.readonly` → store `GOOGLE_REFRESH_TOKEN`. Publish the OAuth
-app, because Testing mode refresh tokens expire after 7 days.
+**Personal accounts (development):** used when `GOOGLE_SERVICE_ACCOUNT_JSON` is unset.
+```
+1. Google Cloud project → enable Drive API → OAuth consent screen → Publish app   ← Testing mode tokens expire after 7 days
+2. Credentials → OAuth client ID → type "Web application" → redirect URI https://developers.google.com/oauthplayground
+3. developers.google.com/oauthplayground → ⚙ → "Use your own OAuth credentials" → paste ID + secret
+   → scope https://www.googleapis.com/auth/drive.readonly → Authorize → Exchange code for tokens
+4. backend/.env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
+```
+
+Check either mode with `python -m app.connectors drive` (see `backend/README.md`).
 
 ```python
 from google.oauth2 import service_account
@@ -164,10 +172,11 @@ Notes: use when the embedded `permissions` in 4.1/4.2 are missing or truncated.
 
 | | |
 |---|---|
-| Request | `GET /files/{fileId}?fields=id`, authenticated **as that user** (`creds.with_subject(email)`) |
+| Request | `GET /files/{fileId}?fields=id`, authenticated **as that user**: their own OAuth sign-in (ADR-002), or `creds.with_subject(email)` in Workspace mode |
 
 Response: `200` = the user can read it, `404` = they can't. Notes: Google's
-own answer. In personal mode, match 4.5 against the user's principals instead.
+own answer. Up to 100 checks go in one batch request (`POST /batch/drive/v3`).
+Implemented as `drive.can_read(credentials, file_ids)`.
 
 ### 4.7 Directory API: group members
 
@@ -221,7 +230,7 @@ One document per file:
 |---|---|---|
 | `sync(cursor)` | 4.2 from the cursor → 4.3 / 4.4 for changed files → ACL from embedded `permissions` (4.5 if missing, 4.7 for groups). First run: 4.1, then save 4.2's start token | every 5 min (content and sharing) |
 | `sweep()` | 4.1 with `permissions` → every file ID + ACL (group members cached per run). Safety net only: 4.2 already reports sharing changes and deletions | daily |
-| `can_read(principal, ids)` | 4.6 as that user (Workspace), or 4.5 + principal match (personal) | each question, final context only |
+| `can_read(credentials, ids)` | 4.6 as that user, batched | each question, final context only |
 
 In Workspace mode, run 4.2 per user (impersonated) or per shared drive
 (`driveId=`), each with its own cursor in `sync_state`. One module:
