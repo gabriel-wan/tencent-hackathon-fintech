@@ -1,8 +1,9 @@
 # backend/tests/
 
-Backend tests (pytest) live here, mirroring `backend/app/`. Empty until the first real logic lands.
+Backend tests (pytest) live here, mirroring `backend/app/`. Run from `backend/`: `uv run pytest`.
+No test calls a real external API: providers are faked at the HTTP layer.
 
-Priority order for tests once implementation starts (see DEVELOPMENT.md):
+Priority order for tests (see DEVELOPMENT.md):
 
 1. **Security invariants** (SECURITY.md) - negative permission cases, permission
    revocation, "no unauthorized content reaches the LLM". These are the tests the
