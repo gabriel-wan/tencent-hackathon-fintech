@@ -52,15 +52,15 @@ least one automated test. Until then they are **principles, not guarantees**.
 
 | ID | Invariant | Test status |
 |---|---|---|
-| INV-1 | An unauthorized document, message, ticket or file must never be included in LLM context, in whole, in part, or as embeddings-derived summary. | not yet tested |
-| INV-2 | The LLM must not be the component that decides whether a user is authorized. Authorization is evaluated by deterministic code before context assembly. | not yet tested |
-| INV-3 | User identity must be available and verified at the moment authorization is evaluated. No anonymous or "system" retrieval on a user's behalf. | not yet tested |
-| INV-4 | Authorization decisions are deterministic and inspectable: given the same user, document and permission state, the decision is the same, and the reason is recorded. | not yet tested |
-| INV-5 | The existence of restricted content is not unnecessarily revealed. A denied or filtered item must not change the response in a way that leaks beyond what the user's permissions already imply. | not yet tested |
-| INV-6 | Audit events capture enough to reconstruct important access decisions: identity, timestamp, query, candidate and retrieved document IDs, per-document decision and reason, final answer (or a reference to it). | not yet tested |
-| INV-7 | Audit records are tamper-evident: modification or deletion of any record is detectable by an auditor. | not yet tested |
-| INV-8 | A permission revocation in a source platform is reflected in query results within the stated freshness window, and never later than that. | not yet tested |
-| INV-9 | Retrieved content is treated as untrusted data. It is never executed and never allowed to change authorization, tool selection or audit behaviour. | not yet tested |
+| INV-1 | An unauthorized document, message, ticket or file must never be included in LLM context, in whole, in part, or as embeddings-derived summary. | Tested: [test_query_pipeline.py](../backend/tests/test_query_pipeline.py), [test_search.py](../backend/tests/test_search.py). Live check is still a stub |
+| INV-2 | The LLM must not be the component that decides whether a user is authorized. Authorization is evaluated by deterministic code before context assembly. | Tested: [test_search.py](../backend/tests/test_search.py), [test_live_check.py](../backend/tests/test_live_check.py) |
+| INV-3 | User identity must be available and verified at the moment authorization is evaluated. No anonymous or "system" retrieval on a user's behalf. | Partly: session-only identity tested in [test_api.py](../backend/tests/test_api.py); connector sign-in not built yet |
+| INV-4 | Authorization decisions are deterministic and inspectable: given the same user, document and permission state, the decision is the same, and the reason is recorded. | Partly: per-document decision and reason recorded in the audit log ([test_query_pipeline.py](../backend/tests/test_query_pipeline.py)) |
+| INV-5 | The existence of restricted content is not unnecessarily revealed. A denied or filtered item must not change the response in a way that leaks beyond what the user's permissions already imply. | Partly: filter runs before ranking; same reply for nothing found and nothing permitted ([test_query_pipeline.py](../backend/tests/test_query_pipeline.py)) |
+| INV-6 | Audit events capture enough to reconstruct important access decisions: identity, timestamp, query, candidate and retrieved document IDs, per-document decision and reason, final answer (or a reference to it). | Partly: query events tested ([test_query_pipeline.py](../backend/tests/test_query_pipeline.py)); admin events not built yet |
+| INV-7 | Audit records are tamper-evident: modification or deletion of any record is detectable by an auditor. | Not yet: table is append-only (tested), hash chain due 5–6 Oct |
+| INV-8 | A permission revocation in a source platform is reflected in query results within the stated freshness window, and never later than that. | Not yet: live check is a stub that reads the stored ACL until connectors provide can_read |
+| INV-9 | Retrieved content is treated as untrusted data. It is never executed and never allowed to change authorization, tool selection or audit behaviour. | Partly: retrieved text cannot break out of its source block ([test_grounding.py](../backend/tests/test_grounding.py)) |
 | INV-10 | Secrets exist only in the environment. None are in source, tests, fixtures, logs, prompts or committed evidence. | not yet tested |
 
 ## 3. What the LLM must never see

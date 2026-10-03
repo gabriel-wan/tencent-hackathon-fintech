@@ -1,10 +1,19 @@
 # backend/
 
-FastAPI service (see DECISIONS.md, ADR-001). Currently a skeleton: one `/health`
-route that checks Postgres and the pgvector extension.
+FastAPI service (ADR-001). Contracts and the query flow are described in
+[docs/architecture/QUERY_PIPELINE.md](../docs/architecture/QUERY_PIPELINE.md).
 
-As code lands here, keep the security boundary visible in the layout:
-authorization and permission-aware filtering should be a clearly separated
-module (`app/auth/`) that the retrieval and LLM layers depend on, not something
-spread across connectors. See SECURITY.md for the invariants that module must
-uphold.
+| Module | Responsibility |
+|---|---|
+| `app/api/` | HTTP routes and dependencies. Development-only routes exist only when `APP_ENV=development` |
+| `app/auth/` | Sessions, principals and the live permission check. The security boundary lives here and in the search SQL |
+| `app/retrieval/search.py` | Hybrid search, filtered by ACL and admin boundary before ranking |
+| `app/llm/` | TokenHub client (chat and the shared `embed()`), grounding rules |
+| `app/pipeline/query.py` | Question to answer, end to end, with one audit event |
+| `app/audit/log.py` | Audit event writes (hash chain not built yet) |
+| `app/seed.py` | Fictional development data. Not connector data |
+| `migrations/` | Alembic schema migrations |
+
+Keep authorization in `app/auth/` and the search filter: retrieval and LLM
+code depend on it, never the other way round. See
+[SECURITY.md](../docs/SECURITY.md) for the invariants and which tests cover them.
