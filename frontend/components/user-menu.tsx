@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, LogOut } from "lucide-react";
+import { ChevronDown, CircleUser, LogOut } from "lucide-react";
 import { useState } from "react";
 
 import { useMe } from "@/components/me-provider";
@@ -36,8 +36,10 @@ export function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="max-w-56 gap-1.5">
-          <span className="truncate">{me.name}</span>
+        <Button variant="ghost" className="min-w-0 max-w-56 gap-1.5" aria-label={`Account: ${me.name}`}>
+          {/* Phones: icon only; the name is in the menu and the label. */}
+          <CircleUser aria-hidden="true" className="sm:hidden" />
+          <span className="hidden truncate sm:inline">{me.name}</span>
           {me.is_admin ? <Badge variant="secondary">ADMIN</Badge> : null}
           <ChevronDown aria-hidden="true" />
         </Button>
