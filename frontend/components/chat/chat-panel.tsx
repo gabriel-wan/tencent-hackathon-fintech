@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { classifyAnswer } from "@/lib/answers";
 import { askQuestion } from "@/lib/api/client";
@@ -31,6 +31,23 @@ export function ChatPanel() {
   const [announcement, setAnnouncement] = useState("");
   const composer = useRef<ComposerHandle>(null);
 
+  // Follow new answers unless the reader has scrolled up to an older one.
+  const bottom = useRef<HTMLDivElement>(null);
+  const followNewest = useRef(true);
+  useEffect(() => {
+    const onScroll = () => {
+      const distanceFromEnd = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
+      followNewest.current = distanceFromEnd < 160;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    if (!followNewest.current || exchanges.length === 0) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    bottom.current?.scrollIntoView({ block: "end", behavior: reduceMotion ? "auto" : "smooth" });
+  }, [exchanges]);
+
   function put(next: Exchange) {
     setExchanges((all) => all.map((e) => (e.id === next.id ? next : e)));
   }
@@ -58,6 +75,7 @@ export function ChatPanel() {
   }
 
   function send(question: string) {
+    followNewest.current = true; // sending always brings the new question into view
     const id = crypto.randomUUID();
     setExchanges((all) => [...all, { id, question, status: "pending" }]);
     void ask(id, question);
@@ -89,6 +107,8 @@ export function ChatPanel() {
           ))}
         </ol>
       )}
+      {/* Scroll target; the margin keeps the newest answer clear of the sticky composer. */}
+      <div ref={bottom} aria-hidden="true" className="scroll-mb-40" />
       <div aria-live="polite" className="sr-only">
         {announcement}
       </div>
