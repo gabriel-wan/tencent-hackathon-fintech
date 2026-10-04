@@ -94,11 +94,16 @@ def callback(provider: str, request: Request, engine: Db, code: str | None = Non
     if not (code and state and secrets.compare_digest(expected, f"{provider}.{state}")):
         return finish(error="invalid_state")  # CSRF protection: this browser did not start this sign-in
 
+    tokens = None
     try:
         tokens = oauth.exchange_code(provider, code)
         account = oauth.account(provider, tokens)
     except (oauth.OAuthError, httpx.HTTPError, KeyError) as e:
         log.warning("%s sign-in failed: %s", provider, e if isinstance(e, oauth.OAuthError) else type(e).__name__)
+        # Account rejected (e.g. outside the company): drop the grant we were just given. Not on outages:
+        # a Google revoke ends the whole grant, which may also back this person's stored connection.
+        if tokens and isinstance(e, oauth.OAuthError) and e.status < 500:
+            oauth.revoke(provider, tokens.access_token, tokens.refresh_token)
         return finish(error="provider_error")
 
     with engine.begin() as db:  # committed before the redirect is sent

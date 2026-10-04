@@ -42,7 +42,8 @@ class FakeProviders:
         self.routes = {
             GOOGLE_TOKEN: {"access_token": "g-access", "refresh_token": "g-refresh", "expires_in": 3600,
                            "scope": "openid email drive.readonly"},
-            GOOGLE_ME: {"sub": "g-1", "email": "Alice@Corp.com", "email_verified": True, "name": "Alice"},
+            GOOGLE_ME: {"sub": "g-1", "email": "Alice@Corp.com", "email_verified": True, "name": "Alice",
+                        "hd": "corp.com"},
             GOOGLE_REVOKE: {},
             SLACK_TOKEN: {"ok": True, "authed_user": {"id": "U1", "access_token": "xoxp-alice", "scope": "users:read"},
                           "team": {"id": "T1", "name": "Corp"}},
@@ -74,6 +75,7 @@ def providers(monkeypatch):
         monkeypatch.setenv(f"{provider}_CLIENT_ID", f"{provider.lower()}-client")
         monkeypatch.setenv(f"{provider}_CLIENT_SECRET", f"{provider.lower()}-secret")
     monkeypatch.setenv("APP_URL", "http://localhost:8000")
+    monkeypatch.setenv("GOOGLE_ALLOWED_ACCOUNTS", "corp.com")  # the company Workspace domain
     monkeypatch.setenv("SLACK_TEAM_ID", "T1")  # the company workspace
     monkeypatch.setenv("ATLASSIAN_CLOUD_ID", "cloud-1")  # the company site
     return fake
@@ -139,10 +141,13 @@ def test_cookies_are_secure_on_https(client, providers, monkeypatch):
     assert "redirect_uri=https%3A%2F%2Fbrain.example.com%2Foauth%2Fgoogle%2Fcallback" in resp.headers["location"]
 
 
-@pytest.mark.parametrize("missing", ["APP_URL", "SLACK_CLIENT_ID", "SLACK_TEAM_ID", "TOKEN_ENCRYPTION_KEY"])
-def test_connect_unconfigured_fails_before_sign_in(client, providers, monkeypatch, missing):
+@pytest.mark.parametrize(("connector", "missing"), [
+    ("slack", "APP_URL"), ("slack", "SLACK_CLIENT_ID"), ("slack", "SLACK_TEAM_ID"), ("slack", "TOKEN_ENCRYPTION_KEY"),
+    ("drive", "GOOGLE_ALLOWED_ACCOUNTS"),
+])
+def test_connect_unconfigured_fails_before_sign_in(client, providers, monkeypatch, connector, missing):
     monkeypatch.delenv(missing)
-    resp = client.get("/connectors/slack/connect")
+    resp = client.get(f"/connectors/{connector}/connect")
     assert resp.status_code == 503
     assert missing in resp.json()["detail"]
 
@@ -187,7 +192,6 @@ def test_one_person_links_all_connectors_by_email(client, providers, engine):
         assert conn.execute(sa.select(sa.func.count()).select_from(auth.sessions)).scalar() == 1
 
 
-
 def test_principals_match_the_acl_formats(client, providers, engine):
     # The contract with search (docs/connectors/*.md section 5): a document is a candidate if its acl
     # holds one of these.
@@ -201,6 +205,23 @@ def test_principals_match_the_acl_formats(client, providers, engine):
             "atlassian:user:A1",
         }
         assert store.principals(conn, uuid.uuid4()) == set()  # nothing connected: matches nothing
+
+
+@pytest.mark.parametrize("guest_flag", ["is_restricted", "is_ultra_restricted"])
+def test_slack_guests_do_not_hold_slack_members(client, providers, engine, guest_flag):
+    providers.routes[SLACK_USER]["user"][guest_flag] = True
+    sign_in(client, "slack")
+    with engine.connect() as conn:
+        user = conn.execute(sa.select(auth.users.c.id)).scalar_one()
+        assert store.principals(conn, user) == {"slack:user:U1"}
+
+
+def test_slack_connection_without_guest_status_counts_as_guest(client, providers, engine):
+    sign_in(client, "slack")
+    with engine.begin() as conn:  # a connection stored before guest status was recorded
+        conn.execute(store.connections.update().values(extra={"team_id": "T1"}))
+        user = conn.execute(sa.select(auth.users.c.id)).scalar_one()
+        assert store.principals(conn, user) == {"slack:user:U1"}
 
 
 def test_atlassian_site_without_confluence(client, providers):
@@ -260,6 +281,33 @@ def test_slack_sign_in_from_another_workspace_is_rejected(client, providers):
     assert sign_in(client, "slack").headers["location"].endswith("error=provider_error")
     assert providers.sent(SLACK_USER) == []  # rejected before the email is even read
     assert statuses(client)["slack"] is False
+
+
+@pytest.mark.parametrize("allowed", ["corp.com", "gmail.com", "bob@corp.com"])
+def test_google_sign_in_outside_the_company_is_rejected(client, providers, engine, monkeypatch, allowed):
+    # Anyone can create a Gmail account; a domain entry matches only Workspace accounts (hd), never gmail.com.
+    monkeypatch.setenv("GOOGLE_ALLOWED_ACCOUNTS", allowed)
+    providers.routes[GOOGLE_ME] = {"sub": "g-9", "email": "mallory@gmail.com", "email_verified": True}
+    resp = sign_in(client, "drive")
+    assert resp.headers["location"].endswith("error=provider_error")
+    assert "session=" not in resp.headers.get("set-cookie", "")
+    assert len(providers.sent(GOOGLE_REVOKE)) == 1  # the outsider's grant is dropped, not kept
+    with engine.connect() as conn:
+        assert conn.execute(sa.select(sa.func.count()).select_from(auth.users)).scalar() == 0
+        assert conn.execute(sa.select(sa.func.count()).select_from(auth.sessions)).scalar() == 0
+
+
+def test_outage_after_sign_in_does_not_revoke(client, providers):
+    # Revoking would end the person's whole Google grant, including a connection they already have.
+    providers.routes[GOOGLE_ME] = httpx.Response(502, text="bad gateway")
+    assert sign_in(client, "drive").headers["location"].endswith("error=provider_error")
+    assert providers.sent(GOOGLE_REVOKE) == []
+
+
+def test_google_test_account_on_the_allowlist_signs_in(client, providers, monkeypatch):
+    monkeypatch.setenv("GOOGLE_ALLOWED_ACCOUNTS", "corp.com, Tester@Gmail.com")
+    providers.routes[GOOGLE_ME] = {"sub": "g-2", "email": "tester@gmail.com", "email_verified": True}
+    assert sign_in(client, "drive").headers["location"].endswith("connected=google")
 
 
 def test_atlassian_sign_in_without_the_company_site_is_rejected(client, providers):

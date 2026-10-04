@@ -79,9 +79,10 @@ class Account:
     extra: dict
 
 
-# Sign-ins are accepted only from the company's own workspace / site (ADR-002): anyone can create
-# a Slack workspace or Atlassian site and put any email on an account there.
-TENANT_ENV = {"slack": "SLACK_TEAM_ID", "atlassian": "ATLASSIAN_CLOUD_ID"}
+# Sign-ins are accepted only from the company (ADR-002): anyone can create a Google account, Slack
+# workspace or Atlassian site. Google: comma-separated Workspace domains (matched on the `hd` claim,
+# which personal Gmail accounts lack) and/or exact emails (test accounts).
+TENANT_ENV = {"google": "GOOGLE_ALLOWED_ACCOUNTS", "slack": "SLACK_TEAM_ID", "atlassian": "ATLASSIAN_CLOUD_ID"}
 
 
 def app_url() -> str:
@@ -161,7 +162,11 @@ def account(provider: str, tokens: Tokens) -> Account:
         me = _get("https://openidconnect.googleapis.com/v1/userinfo", token)
         if not me.get("email_verified"):
             raise OAuthError("google email not verified")
-        return Account(me["sub"], me["email"].lower(), me.get("name") or me["email"], {})
+        email = me["email"].lower()
+        allowed = {a.strip().lower() for a in os.environ["GOOGLE_ALLOWED_ACCOUNTS"].split(",") if a.strip()}
+        if email not in allowed and me.get("hd", "").lower() not in allowed:
+            raise OAuthError("google account is not a company account")
+        return Account(me["sub"], email, me.get("name") or me["email"], {})
     if provider == "slack":
         me = _get("https://slack.com/api/auth.test", token)
         if me["team_id"] != os.environ["SLACK_TEAM_ID"]:
@@ -171,7 +176,8 @@ def account(provider: str, tokens: Tokens) -> Account:
         if not email:
             raise OAuthError("slack email missing")
         return Account(me["user_id"], email.lower(), user.get("real_name") or user["name"],
-                       {"team_id": me["team_id"], "team": me.get("team")})
+                       {"team_id": me["team_id"], "team": me.get("team"),
+                        "guest": bool(user.get("is_restricted") or user.get("is_ultra_restricted"))})
     me = _get("https://api.atlassian.com/me", token)
     if me.get("email_verified") is False:
         raise OAuthError("atlassian email not verified")

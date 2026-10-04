@@ -104,12 +104,14 @@ def principals(db, user_id: uuid.UUID) -> set[str]:
     Search keeps a document if its `acl` shares one of these (Postgres: `acl && :principals`);
     the live check (can_read) has the final say. So this set may be too wide, never too narrow.
     """
-    rows = db.execute(sa.select(connections.c.provider, connections.c.account_id, connections.c.account_email)
-                      .where(connections.c.user_id == user_id))
+    rows = db.execute(sa.select(connections.c.provider, connections.c.account_id, connections.c.account_email,
+                                connections.c.extra).where(connections.c.user_id == user_id))
     held = set()
-    for provider, account_id, email in rows:
+    for provider, account_id, email, extra in rows:
         if provider == "slack":
-            held |= {f"slack:user:{account_id}", "slack:members"}  # guests too: slack.can_read drops them
+            held.add(f"slack:user:{account_id}")
+            if extra.get("guest") is False:  # as of sign-in (unknown = guest); slack.can_read re-checks live
+                held.add("slack:members")
         elif provider == "atlassian":
             held.add(f"atlassian:user:{account_id}")
         elif provider == "google":  # email is verified and lower-cased at sign-in
