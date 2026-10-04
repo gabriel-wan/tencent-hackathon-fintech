@@ -87,3 +87,19 @@ def test_stub_answers_from_stored_acl():
     cands = [Cand(1, "slack", "a", ["slack:user:U1"]), Cand(2, "slack", "b", ["slack:user:U9"])]
     decisions = live_check(cands, PRINCIPALS, default_checkers(cands, PRINCIPALS))
     assert [d.allowed for d in decisions] == [True, False]
+
+
+@pytest.mark.parametrize("reply", [None, {"a"}, ["a"], "a"])
+def test_a_reply_that_is_not_a_mapping_denies_instead_of_crashing(reply):
+    """Regression (review of PR #5): a bad reply must deny, not fail the request."""
+    [d] = live_check([Cand(1, "slack", "a")], PRINCIPALS, {"slack": lambda p, ids: reply})
+    assert not d.allowed and d.reason == "slack live check gave an invalid reply"
+
+
+def test_a_bad_reply_from_one_source_does_not_affect_another():
+    cands = [Cand(1, "slack", "a"), Cand(2, "drive", "f")]
+    decisions = live_check(cands, PRINCIPALS, {
+        "slack": lambda p, ids: None,
+        "drive": lambda p, ids: {"f": True},
+    })
+    assert [d.allowed for d in decisions] == [False, True]

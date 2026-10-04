@@ -144,3 +144,20 @@ def test_restricted_matches_are_audited_without_changing_what_the_user_or_llm_se
     assert audit_payload(conn, after.audit_id)["restricted_matches"] == [
         {"document": "slack:C9:1", "reason": "user not in document ACL"}
     ]
+
+
+@pytest.mark.security
+def test_a_broken_checker_still_answers_and_audits(conn, make_user, add_doc, fake_llm):
+    """Regression (review of PR #5): the request completes and the denial is audited."""
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
+    llm = fake_llm()
+
+    def broken_checkers(candidates, principals):
+        return {"slack": lambda p, ids: None, "drive": lambda p, ids: None}
+
+    result = answer_question(conn, alice, "gateway migration", llm, checkers_factory=broken_checkers)
+
+    assert result.answer == FALLBACK_ANSWER and llm.chat_calls == []
+    [candidate] = audit_payload(conn, result.audit_id)["candidates"]
+    assert candidate["reason"] == "slack live check gave an invalid reply"

@@ -76,13 +76,24 @@ _PERMITTED_POOL = """
           )
 """
 
-# AUDIT ONLY: every live document, regardless of permissions.
-_UNFILTERED_POOL = """
-        SELECT d.id FROM documents d WHERE d.deleted_at IS NULL
+# AUDIT ONLY: live documents the user may NOT see (the exact complement of
+# _PERMITTED_POOL). Searching only these means documents the user can see never
+# crowd restricted ones out of the results.
+_RESTRICTED_POOL = """
+        SELECT d.id
+        FROM documents d
+        WHERE d.deleted_at IS NULL
+          AND NOT (
+              d.acl && CAST(:principals AS text[])
+              AND EXISTS (
+                  SELECT 1 FROM boundary b
+                  WHERE b.source = d.source AND b.scope_id = d.scope_id
+              )
+          )
 """
 
 SEARCH_SQL = text(_SEARCH_TEMPLATE.format(pool=_PERMITTED_POOL))
-_AUDIT_ONLY_SQL = text(_SEARCH_TEMPLATE.format(pool=_UNFILTERED_POOL))
+_AUDIT_ONLY_SQL = text(_SEARCH_TEMPLATE.format(pool=_RESTRICTED_POOL))
 
 
 @dataclass(frozen=True)

@@ -81,3 +81,16 @@ def test_restricted_matches_ignore_documents_that_are_only_semantically_near(con
     # Shares no words with the question; must not be logged as "reached".
     add_doc("drive", "SALARY:8", ["slack:user:U999"], "compensation bands", embedding=unit_vector(1))
     assert restricted_matches(conn, ALICE, "gateway migration") == []
+
+
+def test_restricted_match_is_logged_even_when_many_visible_documents_match(conn, add_doc):
+    """Regression (review of PR #5): visible matches must not push restricted ones out."""
+    from app.retrieval.search import restricted_matches
+
+    for i in range(25):
+        add_doc("slack", f"C1:{100 + i}", ["slack:members"], f"gateway migration update {i}")
+    add_doc("slack", "C9:100", ["slack:user:U999"], "gateway migration private notes")
+
+    assert restricted_matches(conn, ALICE, "gateway migration") == [
+        {"document": "slack:C9:100", "reason": "user not in document ACL"}
+    ]

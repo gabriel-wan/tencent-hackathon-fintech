@@ -69,17 +69,22 @@ def live_check(
             if future not in done:
                 deny_all(cands, f"{source} live check timed out")
                 continue
+            # Everything about this source's answer is inside the try: a bad reply
+            # denies this source's documents and never fails the whole request.
             try:
                 answers = future.result()
+                if not isinstance(answers, Mapping):
+                    log.warning("live check for %s returned %s, not a mapping", source, type(answers).__name__)
+                    deny_all(cands, f"{source} live check gave an invalid reply")
+                    continue
+                for c in cands:
+                    if answers.get(c.source_id) is True:
+                        decisions[c.document_id] = Decision(c.document_id, True, f"allowed by {source} check")
+                    else:
+                        decisions[c.document_id] = Decision(c.document_id, False, f"denied by {source} check")
             except Exception as exc:  # any failure denies
                 log.warning("live check for %s failed: %s", source, exc)
                 deny_all(cands, f"{source} live check failed ({type(exc).__name__})")
-                continue
-            for c in cands:
-                if answers.get(c.source_id) is True:
-                    decisions[c.document_id] = Decision(c.document_id, True, f"allowed by {source} check")
-                else:
-                    decisions[c.document_id] = Decision(c.document_id, False, f"denied by {source} check")
     finally:
         # Do not wait for a hung checker: its documents are already denied.
         pool.shutdown(wait=False, cancel_futures=True)
