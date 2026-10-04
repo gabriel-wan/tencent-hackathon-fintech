@@ -8,18 +8,36 @@ this diagram.
 ```mermaid
 flowchart LR
     USER["Browser"]
+    TH["Tencent Cloud TokenHub<br/>hy3 chat + kinfra embeddings"]
 
     subgraph COMPOSE["Docker Compose (docker-compose.yml)"]
         FE["frontend<br/>Next.js, :3000<br/>app/page.tsx"]
-        BE["backend<br/>FastAPI, :8000<br/>GET /health"]
+        subgraph BE["backend: FastAPI, :8000"]
+            API["app/api<br/>/api/query, /api/me, /api/session<br/>/api/dev/* (development only)"]
+            PIPE["app/pipeline/query.py"]
+            AUTH["app/auth<br/>session, principals,<br/>live check (STUB)"]
+            SEARCH["app/retrieval/search.py<br/>ACL + boundary filter,<br/>keyword + vector"]
+            LLMC["app/llm<br/>client, grounding"]
+            AUD["app/audit/log.py"]
+        end
         MIG["migrate<br/>alembic upgrade head<br/>runs once, then exits"]
-        DB[("db<br/>PostgreSQL 17 + pgvector<br/>internal only")]
+        DB[("db<br/>PostgreSQL 17 + pgvector<br/>users, sessions, boundary,<br/>documents, chunks, audit_events")]
     end
 
-    MIG -->|"migrations"| DB
-
+    MIG -->|"migrations 0001 to 0003"| DB
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
     FE -->|"server-side fetch<br/>BACKEND_URL/health"| BE
-    BE -->|"SQLAlchemy engine (app/db.py)<br/>POSTGRES_* from backend/.env"| DB
+    API --> PIPE
+    PIPE --> AUTH
+    PIPE --> SEARCH
+    PIPE -->|"allowed sources only"| LLMC
+    PIPE --> AUD
+    SEARCH --> DB
+    AUTH --> DB
+    AUD --> DB
+    LLMC --> TH
 ```
+
+Details and contracts: [QUERY_PIPELINE.md](QUERY_PIPELINE.md). Connectors are
+not built yet; documents come from the development seed (`app/seed.py`).

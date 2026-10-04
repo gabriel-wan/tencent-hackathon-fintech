@@ -321,6 +321,13 @@ Data flow and per-source check calls are described in
 
 - **Also logged:** boundary changes, connector setup, "sync now", and every
   search of the audit log itself.
+- **Attempted access** (added 2026-10-04, Gabriel): each query record also
+  lists the restricted documents the question matched, with the reason the
+  user could not see them (not in the document's ACL, or outside the admin
+  boundary). A separate audit-only search produces this list; its results
+  never reach the user or the LLM. Only keyword matches count, because
+  semantic search always returns the nearest documents, relevant or not, and
+  would wrongly record users as reaching unrelated restricted documents.
 
 ### Consequences
 
