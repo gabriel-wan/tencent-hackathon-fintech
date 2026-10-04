@@ -2,18 +2,15 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import "./globals.css";
-import { Geist } from "next/font/google";
-import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "Internal Brain",
 };
 
+// System font stack (Tailwind's default font-sans): no web-font download.
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)}>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );
