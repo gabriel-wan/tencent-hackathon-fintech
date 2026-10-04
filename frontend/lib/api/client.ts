@@ -5,6 +5,7 @@
 // No function takes a user ID: who is asking comes only from the session
 // cookie (SECURITY.md INV-3).
 import { BackendUnreachableError, readResponse } from "./errors";
+import { isMockEnabled, mockAnswer } from "./mock";
 import type { DevUser, Me, QueryRequest, QueryResponse } from "./types";
 
 async function request<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
@@ -26,8 +27,12 @@ async function request<T>(path: string, init: { method?: string; body?: unknown 
   return readResponse<T>(res);
 }
 
-/** POST /api/query. Sends exactly {question}: the backend rejects any other field. */
+/**
+ * POST /api/query. Sends exactly {question}: the backend rejects any other field.
+ * In mock mode (development only, lib/api/mock.ts) the reply is a labelled fixture.
+ */
 export function askQuestion(question: string): Promise<QueryResponse> {
+  if (isMockEnabled()) return mockAnswer(question);
   const body: QueryRequest = { question };
   return request<QueryResponse>("/query", { method: "POST", body });
 }

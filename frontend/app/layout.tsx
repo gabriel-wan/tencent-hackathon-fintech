@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { AppHeader } from "@/components/app-header";
+import { MockBadge } from "@/components/mock-badge";
 import { ThemeProvider } from "@/components/theme-provider";
 
 import "./globals.css";
@@ -17,7 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <body className="flex min-h-dvh flex-col">
         <ThemeProvider>
-          <AppHeader />
+          <AppHeader actions={<MockBadge />} />
           {children}
         </ThemeProvider>
       </body>
