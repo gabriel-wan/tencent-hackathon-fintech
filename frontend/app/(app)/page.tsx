@@ -1,11 +1,10 @@
-import { PageContainer } from "@/components/page-container";
+import { ChatPanel } from "@/components/chat/chat-panel";
 
-// Placeholder until the chat page (ui-plan.md, Phase 4). Deliberately no fake chat UI.
-export default function Home() {
+export default function ChatPage() {
   return (
-    <PageContainer>
-      <h1 className="text-2xl font-semibold tracking-tight">Internal Brain</h1>
-      <p className="mt-2 text-muted-foreground">Chat is being built.</p>
-    </PageContainer>
+    <main className="flex flex-1 flex-col">
+      <h1 className="sr-only">Chat</h1>
+      <ChatPanel />
+    </main>
   );
 }
