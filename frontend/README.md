@@ -100,9 +100,11 @@ Rules:
 
 Sign in through the persona switcher with seed data loaded. Answers depend on
 the LLM: check the state and the sources, not the exact wording. Needs
-`LLM_API_KEY` in `backend/.env`; without it every question shows "The
-assistant isn't available right now" (the backend returns 503 before
-searching).
+`LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` in `backend/.env` (values in
+`backend/.env.example`), then `docker compose up -d --force-recreate backend`;
+if any is missing, every question shows "The assistant isn't available right
+now" (the backend returns 503 before searching). Checked 4 Oct with the real
+LLM: all seven rows below behaved as expected.
 
 | Persona | Question | Expected |
 |---|---|---|
