@@ -10,7 +10,7 @@ flowchart LR
     USER["Browser"]
 
     subgraph COMPOSE["Docker Compose (docker-compose.yml)"]
-        FE["frontend<br/>Next.js, :3000<br/>app/page.tsx"]
+        FE["frontend<br/>Next.js, :3000<br/>app/page.tsx<br/>app/connectors/page.tsx (test page)"]
         BE["backend<br/>FastAPI, :8000<br/>GET /health<br/>auth: sessions, /logout<br/>connectors: /connectors, /oauth/*/callback"]
         MIG["migrate<br/>alembic upgrade head<br/>runs once, then exits"]
         DB[("db<br/>PostgreSQL 17 + pgvector<br/>users, sessions, connections<br/>(tokens encrypted)<br/>internal only")]
@@ -20,7 +20,7 @@ flowchart LR
 
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
-    FE -->|"server-side fetch<br/>BACKEND_URL/health"| BE
+    FE -->|"server-side fetch, forwards the session cookie<br/>BACKEND_SERVER_URL/health, /connectors"| BE
     BE -->|"SQLAlchemy engine (app/db.py)<br/>POSTGRES_* from backend/.env"| DB
 
     subgraph SRC["External sources (real, not mocked)"]

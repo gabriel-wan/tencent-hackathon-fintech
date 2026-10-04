@@ -2,7 +2,7 @@ import { connection } from "next/server";
 
 async function getHealth() {
   try {
-    const res = await fetch(`${process.env.BACKEND_URL}/health`, { cache: "no-store" });
+    const res = await fetch(`${process.env.BACKEND_SERVER_URL}/health`, { cache: "no-store" });
     return await res.json();
   } catch {
     return { backend: "unreachable" };

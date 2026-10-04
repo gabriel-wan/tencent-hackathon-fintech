@@ -36,7 +36,7 @@ services:
     build: ./frontend
     env_file: frontend/.env
     environment:
-      BACKEND_URL: http://backend:8000
+      BACKEND_SERVER_URL: http://backend:8000
     ports:
       - "3000:3000"
     depends_on:
