@@ -1,8 +1,8 @@
 # frontend/
 
-Next.js app (see DECISIONS.md, ADR-001). Status: styled shell only. The home
-page is a placeholder; the chat, sign-in and admin pages are being built
-(roadmap Task 2).
+Next.js app (see DECISIONS.md, ADR-001). Status: sign-in (development persona
+switcher) and the signed-in shell work; the home page is a placeholder until
+the chat lands; admin pages are not built yet (roadmap Task 2).
 
 The frontend never makes authorization decisions; the backend filters by
 permission before anything reaches the LLM (SECURITY.md, INV-2). Frontend tests
@@ -22,10 +22,43 @@ live in this folder.
 
 | Route | What it shows |
 |---|---|
-| `/` | Placeholder until the chat page lands |
+| `/` | Signed in only. Placeholder until the chat page lands |
+| `/login` | Sign-in. Google button disabled until the connectors branch merges; development sign-in box when the backend is in development mode |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
+
+## Sign-in
+
+There is no app login form (ADR-002): sign-in will be "Sign in with Google",
+handled by the backend's connector OAuth (connectors branch, not merged yet).
+
+- **Session gate.** `app/(app)/layout.tsx` calls `GET /api/me` on the server
+  for every signed-in page. 401 → `/login`. Backend unreachable → "Can't reach
+  the server" (not a redirect, which would look like being signed out). The
+  user is passed to client components through `MeProvider` (`useMe()`), for
+  display only. This gate is UX: the backend checks the session on every call.
+- **`/login`.** Signed-in visitors go to `/`. `?error=` from the OAuth callback
+  is looked up in a fixed map of four values (`access_denied`,
+  `provider_error`, `invalid_state`, `account_mismatch`); any other value shows
+  nothing, so a crafted link cannot put its own text on the page.
+- **Sign out.** User menu → `DELETE /api/session` → full page load to
+  `/login`. If the request fails, the menu says so and the user stays signed in.
+
+### Development sign-in (persona switcher)
+
+DEVELOPMENT ONLY, and labelled as such on screen. Identity is not verified.
+
+- Shown only when the backend lists `GET /api/dev/users`, which exists only with
+  `APP_ENV=development` in `backend/.env`. There is no frontend flag: with
+  `APP_ENV=production` the routes return 404 and every development control
+  disappears (checked).
+- `/login` lists the seeded users (`docker compose run --rm backend python -m app.seed`);
+  names come from the backend, none are hard-coded.
+- Signed-in pages show an amber "Development tools" strip with the current user
+  and a **Switch user** menu.
+- Signing in or switching does a **full page load**, so nothing from the
+  previous person (such as chat history) survives (SECURITY.md T6).
 
 ## Talking to the backend
 
@@ -104,7 +137,10 @@ mode staying off in production.
 ## Folders
 
 ```
-app/                  routes (page.tsx per route), layout.tsx, globals.css
+app/(app)/            signed-in pages; layout.tsx is the session gate
+app/(public)/         /login and /status, no session needed
+app/api/[...path]/    the /api proxy to the backend
+app/                  root layout.tsx (theme), globals.css, healthz/
 components/ui/        shadcn-generated components: edit freely, keep them generic
 components/           our own components, built from components/ui
 lib/api/              backend client (client.ts, server.ts), errors, generated types, mock mode
