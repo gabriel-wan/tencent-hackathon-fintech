@@ -51,7 +51,7 @@ All configuration and every secret come from the environment. Rules:
   when `package.json` or `uv.lock` change.
 - Stopping keeps containers, images and the database. `docker compose down`
   also removes containers; `docker compose down -v` also wipes the database.
-- Frontend: http://localhost:3000 (shows the backend health result)
+- Frontend: http://localhost:3000; http://localhost:3000/status shows the backend health result
 - Backend: http://localhost:8000/health returns `{"db": "ok", "pgvector": "<version>"}`
 - Postgres is reachable only inside the Compose network.
 - Schema changes are Alembic migrations in `backend/migrations/versions/`. The
