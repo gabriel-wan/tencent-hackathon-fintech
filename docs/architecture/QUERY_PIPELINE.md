@@ -6,7 +6,8 @@ Decisions behind it: ADR-002, ADR-003, ADR-005, ADR-006, ADR-007 in
 
 ## 1. For connectors (Task 1): what to write
 
-Schema: [0002_core_schema.py](../../backend/migrations/versions/0002_core_schema.py).
+Schema: [0002_core_schema.py](../../backend/migrations/versions/0002_core_schema.py),
+plus an HNSW vector index in [0003_chunks_embedding_hnsw.py](../../backend/migrations/versions/0003_chunks_embedding_hnsw.py).
 
 | Table | Written by | Notes |
 |---|---|---|
@@ -69,7 +70,11 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
 3. One SQL query ([app/retrieval/search.py](../../backend/app/retrieval/search.py)):
    only documents that are not deleted, whose ACL shares a principal with the
    user, and whose scope is in the boundary. Keyword and vector ranks are merged
-   with reciprocal rank fusion; top 20 documents, up to 3 chunks each.
+   with reciprocal rank fusion; top 20 documents, up to 3 chunks each. Vector
+   search can use the HNSW index and runs with `hnsw.iterative_scan` on, so the
+   permission filter cannot starve it. The index is approximate: it can
+   occasionally miss a document, which makes an answer less complete but never
+   leaks, because only permitted documents are ever returned.
 4. Live check per source, in parallel, 2-second timeout. Deny by default.
 5. Nothing left: return the fixed "not found" reply without calling the LLM.
 6. Up to 10 documents go to the LLM as `<source id="S1">` blocks marked as

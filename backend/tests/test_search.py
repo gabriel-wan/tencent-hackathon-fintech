@@ -94,3 +94,33 @@ def test_restricted_match_is_logged_even_when_many_visible_documents_match(conn,
     assert restricted_matches(conn, ALICE, "gateway migration") == [
         {"document": "slack:C9:100", "reason": "user not in document ACL"}
     ]
+
+
+def test_vector_index_search_is_not_starved_by_restricted_neighbours(conn, add_doc):
+    """With the HNSW index in use, the 60 nearest chunks belong to documents the user
+    may not see. Iterative scan must keep searching and still find the permitted one."""
+    import math
+
+    from sqlalchemy import text
+
+    from app.llm.client import EMBEDDING_DIM
+    from app.retrieval.search import RRF_K, SEARCH_SQL, vector_literal
+
+    def at_angle(theta):
+        v = [0.0] * EMBEDDING_DIM
+        v[0], v[1] = math.cos(theta), math.sin(theta)
+        return v
+
+    for i in range(60):
+        add_doc("slack", f"X:{i}", ["slack:user:U999"], f"restricted {i}", embedding=at_angle(0.01 * i))
+    add_doc("slack", "OK:1", ["slack:user:U001"], "permitted", embedding=at_angle(0.9))
+    conn.execute(text("SET LOCAL enable_seqscan = off"))  # force the index path
+    conn.execute(text("SET LOCAL enable_sort = off"))
+
+    params = {"principals": ALICE, "question": "nomatch", "qvec": vector_literal(unit_vector(0)),
+              "use_vec": True, "chunk_limit": 5, "rrf_k": RRF_K}
+    plan = "\n".join(r[0] for r in conn.execute(text("EXPLAIN " + SEARCH_SQL.text), params))
+    assert "chunks_embedding_hnsw_idx" in plan  # the query shape can use the index
+
+    results = hybrid_search(conn, ALICE, "nomatch", question_embedding=unit_vector(0), chunk_limit=5)
+    assert keys(results) == ["slack:OK:1"]

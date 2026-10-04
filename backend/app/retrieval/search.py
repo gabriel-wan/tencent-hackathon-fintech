@@ -40,13 +40,16 @@ _SEARCH_TEMPLATE = """
         LIMIT :chunk_limit
     ),
     vec AS (
-        SELECT c.id,
-               row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector), c.id) AS r
-        FROM chunks c
-        JOIN pool p ON p.id = c.document_id
-        WHERE :use_vec AND c.embedding IS NOT NULL
-        ORDER BY r
-        LIMIT :chunk_limit
+        -- Inner ORDER BY distance + LIMIT is the shape the HNSW index can serve.
+        SELECT id, row_number() OVER (ORDER BY dist, id) AS r
+        FROM (
+            SELECT c.id, c.embedding <=> CAST(:qvec AS vector) AS dist
+            FROM chunks c
+            JOIN pool p ON p.id = c.document_id
+            WHERE :use_vec AND c.embedding IS NOT NULL
+            ORDER BY dist
+            LIMIT :chunk_limit
+        ) nearest
     ),
     fused AS (
         SELECT id, CAST(sum(1.0 / (:rrf_k + r)) AS double precision) AS score
@@ -137,6 +140,11 @@ def _ranked(
     doc_limit: int,
     chunks_per_doc: int,
 ) -> list[Candidate]:
+    # With an HNSW index, filtered vector search stops after `ef_search` nearest
+    # chunks; if most belong to documents the user may not see, too few results
+    # come back. Iterative scan keeps searching until the LIMIT is met (pgvector
+    # 0.8+). SET LOCAL lasts only until the end of the current transaction.
+    conn.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
     rows = conn.execute(
         sql,
         {

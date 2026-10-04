@@ -24,7 +24,7 @@ flowchart LR
         DB[("db<br/>PostgreSQL 17 + pgvector<br/>users, sessions, boundary,<br/>documents, chunks, audit_events")]
     end
 
-    MIG -->|"migrations 0001, 0002"| DB
+    MIG -->|"migrations 0001 to 0003"| DB
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
     FE -->|"server-side fetch<br/>BACKEND_URL/health"| BE
