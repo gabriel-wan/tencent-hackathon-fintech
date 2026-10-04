@@ -7,6 +7,7 @@ import { isMockResponse } from "@/lib/api/mock";
 import type { QueryResponse } from "@/lib/api/types";
 import { stripCitationMarkers } from "@/lib/citations";
 
+import { CitationList } from "./citation-list";
 import type { Exchange, FailureKind } from "./types";
 
 const FAILURE_MESSAGES: Record<FailureKind, string> = {
@@ -56,9 +57,11 @@ export function AnswerCard({ exchange, onRetry, retryDisabled }: Props) {
       return (
         <article aria-label="Answer" className="grid gap-4 rounded-xl border bg-card p-4">
           <AnswerText text={exchange.response.answer} />
-          {exchange.response.citations.length === 0 ? (
+          {exchange.response.citations.length > 0 ? (
+            <CitationList citations={exchange.response.citations} />
+          ) : (
             <p className="text-sm text-muted-foreground">No sources returned.</p>
-          ) : null}
+          )}
           <Reference response={exchange.response} />
         </article>
       );
