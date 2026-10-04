@@ -1,8 +1,8 @@
 # frontend/
 
-Next.js app (see DECISIONS.md, ADR-001). Status: sign-in (development persona
-switcher) and the signed-in shell work; the home page is a placeholder until
-the chat lands; admin pages are not built yet (roadmap Task 2).
+Next.js app (see DECISIONS.md, ADR-001). Status: chat, development sign-in
+(persona switcher) and the signed-in shell work; admin pages are not built yet;
+real Google sign-in waits for the connectors branch (roadmap Task 2).
 
 The frontend never makes authorization decisions; the backend filters by
 permission before anything reaches the LLM (SECURITY.md, INV-2). Frontend tests
@@ -22,7 +22,7 @@ live in this folder.
 
 | Route | What it shows |
 |---|---|
-| `/` | Signed in only. Placeholder until the chat page lands |
+| `/` | Signed in only. The chat (see below) |
 | `/login` | Sign-in. Google button disabled until the connectors branch merges; development sign-in box when the backend is in development mode |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
@@ -64,6 +64,61 @@ DEVELOPMENT ONLY, and labelled as such on screen. Identity is not verified.
   and a **Switch user** menu.
 - Signing in or switching does a **full page load**, so nothing from the
   previous person (such as chat history) survives (SECURITY.md T6).
+
+## Chat (`/`)
+
+Code: `components/chat/`. Each question is answered on its own: the backend
+receives only `{question}`, never earlier questions or answers, so a follow-up
+such as "what about last week?" has no context. History exists only in the
+browser's memory for this page load (never `localStorage`) and is wiped by the
+full page load on sign-out or user switch (SECURITY.md T6).
+
+| State | When | What the user sees |
+|---|---|---|
+| Pending | Request in flight (~6–9 s with the real LLM) | "Searching your sources…" with a skeleton. No invented progress steps |
+| Answered | 200, not a fixed sentence | Answer as plain text (`[S1]` markers removed), Sources list, `Ref #<audit_id>` |
+| Not found | 200, the fixed "I could not find this…" sentence | Muted card. **Identical whether nothing exists or nothing is permitted** (INV-5) |
+| Unavailable | 200, the fixed "The assistant is unavailable…" sentence | Warning with Try again |
+| Failed | 422, 503, other 5xx, backend unreachable | Short message with Try again (re-sends the same question in place) |
+| Signed out | 401 | Full page load to `/login`; the draft is not kept |
+
+Rules:
+- **Answers are plain text**, never HTML: they come from untrusted retrieved
+  content.
+- **Only absolute `http(s)` source URLs become links**, in a new tab with
+  `noopener noreferrer`; anything else is shown as plain text.
+- **Example questions are generic.** They are shown to every user, so naming
+  a real document would reveal that it exists (INV-5).
+- One question at a time; the box stays editable while an answer is pending.
+  Enter sends, Shift+Enter adds a line, and Enter is ignored while an input
+  method (Chinese, Japanese, ...) is composing.
+- Screen readers hear only the newest result (one polite live region). Focus
+  returns to the question box after each answer. The thread follows new
+  answers unless the reader has scrolled up.
+
+### Demo script (manual test)
+
+Sign in through the persona switcher with seed data loaded. Answers depend on
+the LLM: check the state and the sources, not the exact wording. Needs
+`LLM_API_KEY` in `backend/.env`; without it every question shows "The
+assistant isn't available right now" (the backend returns 503 before
+searching).
+
+| Persona | Question | Expected |
+|---|---|---|
+| Alice | What's blocking the payment gateway migration? | Answer citing `#payments-oncall` (Slack) |
+| Alice | What does the runbook say about failover? | Answer citing the Drive runbook and/or `#eng` |
+| Ben | What's blocking the payment gateway migration? | Less, or "not found" (not in `#payments-oncall`) |
+| Charlie | What happened in the Q3 security incident? | Fixed "not found" (scenario 3) |
+| Priya | What happened in the Q3 security incident? | Answer citing the incident report and/or `#security-incidents` |
+| anyone | What are the salary bands? | Fixed "not found" (folder outside the admin boundary) |
+| anyone | asdkjh qwe | Fixed "not found", looking identical to Charlie's |
+
+Also: stop the backend → "Couldn't reach the server"; sign out in another tab
+→ the next question goes to `/login`. States that cannot be triggered on
+demand (unavailable, 422, a `javascript:` source URL, very long answers) are
+checked in mock mode with `mock:unavailable`, `mock:422`, `mock:bad-url`,
+`mock:long`.
 
 ## Talking to the backend
 
