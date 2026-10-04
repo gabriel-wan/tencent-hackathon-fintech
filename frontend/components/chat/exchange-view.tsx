@@ -1,20 +1,17 @@
+import { AnswerCard } from "./answer-card";
 import type { Exchange } from "./types";
 
+type Props = { exchange: Exchange; onRetry: () => void; retryDisabled: boolean };
+
 // One question and its answer.
-export function ExchangeView({ exchange }: { exchange: Exchange }) {
+export function ExchangeView({ exchange, onRetry, retryDisabled }: Props) {
   return (
     <li className="grid gap-3">
-      <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 whitespace-pre-wrap">
+      <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 leading-relaxed whitespace-pre-wrap">
         <span className="sr-only">You asked: </span>
         {exchange.question}
       </div>
-      <div aria-busy={exchange.status === "pending"}>
-        {exchange.status === "pending"
-          ? "Searching your sources…"
-          : exchange.status === "failed"
-            ? `Failed: ${exchange.failure}`
-            : exchange.response.answer}
-      </div>
+      <AnswerCard exchange={exchange} onRetry={onRetry} retryDisabled={retryDisabled} />
     </li>
   );
 }
