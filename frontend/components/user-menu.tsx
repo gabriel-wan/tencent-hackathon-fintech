@@ -1,8 +1,11 @@
 "use client";
 
 import { ChevronDown, CircleUser, LogOut } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { isCurrent, useNavItems } from "@/components/main-nav";
 import { useMe } from "@/components/me-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +21,8 @@ import { signOut } from "@/lib/api/client";
 
 export function UserMenu() {
   const me = useMe();
+  const navItems = useNavItems();
+  const pathname = usePathname();
   const [state, setState] = useState<"idle" | "signingOut" | "failed">("idle");
 
   async function handleSignOut(event: Event) {
@@ -50,6 +55,17 @@ export function UserMenu() {
           <span className="text-xs font-normal text-muted-foreground">{me.email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {/* Phones: the header links live here (MainNav is hidden below 640 px). */}
+        <div className="sm:hidden">
+          {navItems.map((item) => (
+            <DropdownMenuItem key={item.href} asChild>
+              <Link href={item.href} aria-current={isCurrent(pathname, item.href) ? "page" : undefined}>
+                {item.label}
+              </Link>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+        </div>
         <DropdownMenuItem onSelect={handleSignOut} disabled={state === "signingOut"}>
           <LogOut aria-hidden="true" />
           {state === "signingOut" ? "Signing out…" : "Sign out"}
