@@ -1,6 +1,7 @@
 import { CircleAlert } from "lucide-react";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { connection } from "next/server";
 
 import { DevSignInList } from "@/components/dev-sign-in-list";
 import { PageContainer } from "@/components/page-container";
@@ -26,11 +27,19 @@ const SIGN_IN_ERRORS = new Map<string, string>([
 
 type Props = { searchParams: Promise<{ error?: string | string[] }> };
 
+async function sessionState(): Promise<"signedIn" | "signedOut" | "unreachable"> {
+  try {
+    await getMe();
+    return "signedIn";
+  } catch (error) {
+    unstable_rethrow(error); // let Next.js's own control-flow errors through
+    return error instanceof NotSignedInError ? "signedOut" : "unreachable";
+  }
+}
+
 export default async function LoginPage({ searchParams }: Props) {
-  const session = await getMe().then(
-    () => "signedIn" as const,
-    (error) => (error instanceof NotSignedInError ? ("signedOut" as const) : ("unreachable" as const)),
-  );
+  await connection(); // per request, never prerendered
+  const session = await sessionState();
   if (session === "signedIn") redirect("/");
 
   const { error } = await searchParams;

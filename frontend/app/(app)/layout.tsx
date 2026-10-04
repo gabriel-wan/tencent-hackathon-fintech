@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { connection } from "next/server";
 import type { ReactNode } from "react";
 
 import { AppHeader } from "@/components/app-header";
@@ -21,10 +22,13 @@ import type { Me } from "@/lib/api/types";
  * nothing. Done here rather than in Next.js middleware (renamed in Next 16).
  */
 export default async function SignedInLayout({ children }: { children: ReactNode }) {
+  // Per request, never prerendered: who is signed in differs for every visitor.
+  await connection();
   let me: Me;
   try {
     me = await getMe();
   } catch (error) {
+    unstable_rethrow(error); // let Next.js's own control-flow errors through
     if (error instanceof NotSignedInError) redirect("/login");
     console.error("Session check failed:", error);
     return (

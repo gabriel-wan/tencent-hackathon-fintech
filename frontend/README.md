@@ -42,6 +42,11 @@ handled by the backend's connector OAuth (connectors branch, not merged yet).
   is looked up in a fixed map of four values (`access_denied`,
   `provider_error`, `invalid_state`, `account_mismatch`); any other value shows
   nothing, so a crafted link cannot put its own text on the page.
+- **Pages that read the session must render per request.** Call
+  `await connection()` first, and start every server-side `catch` with
+  `unstable_rethrow(error)`. Next.js signals "this page is dynamic" and
+  `redirect()` by throwing; catching those by mistake made a production build
+  bake the signed-in page as a fixed "Can't reach the server" page.
 - **Sign out.** User menu → `DELETE /api/session` → full page load to
   `/login`. If the request fails, the menu says so and the user stays signed in.
 
