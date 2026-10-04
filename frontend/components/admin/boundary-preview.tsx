@@ -43,13 +43,13 @@ export function BoundaryPreview() {
             {source.scopes.map((scope) => {
               const id = `scope-${source.source}-${scope.scopeId}`;
               return (
-                <li key={scope.scopeId} className="flex items-center gap-3">
+                <li key={scope.scopeId} className="flex min-h-11 items-center gap-3">
                   <Checkbox
                     id={id}
                     checked={scope.inBoundary}
                     onCheckedChange={() => (scope.inBoundary ? setRemoving(scope) : undefined)}
                   />
-                  <label htmlFor={id} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <label htmlFor={id} className="flex min-h-11 flex-1 flex-wrap items-center gap-x-2 text-sm">
                     <span className="font-medium">{scope.title}</span>
                     <span className="text-xs text-muted-foreground">
                       {scope.detail}
