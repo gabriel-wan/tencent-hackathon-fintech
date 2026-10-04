@@ -57,13 +57,16 @@ function CitationItem({ citation }: { citation: Citation }) {
 /** The sources an answer was built from, in the order the answer first cites them. */
 export function CitationList({ citations }: { citations: Citation[] }) {
   return (
-    <section aria-label="Sources" className="grid gap-2 border-t pt-3">
+    // A plain group, not a landmark: every answer has one, and a page of
+    // identical "Sources" landmarks is noise. The heading still lets screen
+    // reader users jump between them.
+    <div className="grid gap-2 border-t pt-3">
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Sources</h2>
       <ul className="grid gap-2">
         {citations.map((citation) => (
           <CitationItem key={citation.id} citation={citation} />
         ))}
       </ul>
-    </section>
+    </div>
   );
 }
