@@ -58,7 +58,7 @@ function CitationItem({ citation }: { citation: Citation }) {
 export function CitationList({ citations }: { citations: Citation[] }) {
   return (
     <section aria-label="Sources" className="grid gap-2 border-t pt-3">
-      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Sources</h3>
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Sources</h2>
       <ul className="grid gap-2">
         {citations.map((citation) => (
           <CitationItem key={citation.id} citation={citation} />

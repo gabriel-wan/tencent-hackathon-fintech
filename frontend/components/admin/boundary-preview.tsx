@@ -29,9 +29,9 @@ export function BoundaryPreview() {
         <section key={source.source} aria-labelledby={`source-${source.source}`} className="grid gap-3 rounded-lg border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 id={`source-${source.source}`} className="font-medium">
+              <h2 id={`source-${source.source}`} className="font-medium">
                 {source.label}
-              </h3>
+              </h2>
               <p className="text-xs text-muted-foreground">Last synced: not built yet</p>
             </div>
             <Button variant="outline" size="sm" disabled>
