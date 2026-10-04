@@ -31,6 +31,26 @@ live in this folder.
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
 
+### Page map
+
+```mermaid
+flowchart TD
+    START(["Open the app"]) --> ME{"GET /api/me"}
+    ME -->|"401"| LOGIN["/login"]
+    ME -->|"200"| CHAT["/ (chat)"]
+    LOGIN -->|"Development: pick a seeded user"| CHAT
+    LOGIN -.->|"Google sign-in (after the connectors merge)"| CHAT
+    CHAT <-->|"admins only"| AUDIT["/admin/audit"]
+    CHAT <-->|"admins only"| BOUND["/admin/boundary"]
+    AUDIT <--> BOUND
+    CHAT -->|"Sign out"| LOGIN
+    AUDIT -.->|"not admin"| CHAT
+    BOUND -.->|"not admin"| CHAT
+```
+
+`/connectors` (connect Slack, Drive, Jira, Confluence) joins the map once the
+connectors branch merges; until then it is not linked.
+
 ## Sign-in
 
 There is no app login form (ADR-002): sign-in will be "Sign in with Google",
@@ -264,6 +284,85 @@ components.json       shadcn CLI settings
 - Every text/background pair meets WCAG AA. Re-check contrast when changing a
   value.
 - Animations are switched off under `prefers-reduced-motion`.
+
+## Design principles
+
+The product's claim is trust: answers from your own tools, limited to what you
+can already see, with a record of everything. The design shows that rather
+than explaining it.
+
+1. **Provenance first.** Every answer shows where it came from (platform,
+   title, last updated). Sources are not a footnote.
+2. **Calm, not chatty.** An enterprise tool: no avatar or personality for the
+   assistant, system fonts, thin borders, motion only for the pending state.
+3. **Honest states.** "Not found" is a normal, neutral outcome: never red,
+   never "denied", identical whatever the reason.
+4. **Development aids look like development aids.** The persona switcher, mock
+   mode and design previews are amber and labelled, so they cannot be mistaken
+   for features in screenshots or the demo.
+5. **Works side by side.** Layouts hold at ~640 px, so two personas can be
+   shown next to each other in the demo, and at 375 px on a phone.
+
+## Accessibility
+
+Target: WCAG 2.2 AA. Checked on 4 Oct with axe-core (the engine behind
+Lighthouse's accessibility audit) on every page and every chat state, light
+and dark: no violations.
+
+- **Keyboard.** The first Tab stop is "Skip to content". Every control has a
+  visible focus ring. Menus open with Enter, move with the arrow keys and
+  close with Escape back to their button. Dialogs and panels return focus to
+  whatever opened them.
+- **Screen readers.** Landmarks for the banner, the main navigation and the
+  page; the conversation is a list of "You asked" plus an "Answer" article.
+  One polite live region says only the newest result ("Answer received, with
+  2 sources", or the fixed reply). Badges and states always carry text, never
+  colour alone. Links that open a new tab say so.
+- **Contrast.** Every text pair meets 4.5:1 and input borders 3:1 (see the
+  theme rules above).
+- **Touch.** On touch screens, controls are at least 44×44 px.
+- **Zoom and motion.** No page scrolls sideways at 375 px or 640 px (the width
+  of a 1280 px screen at 200 % zoom); wide tables scroll inside their own box.
+  Animations stop under `prefers-reduced-motion`.
+
+Not checked by a person yet: a full pass with VoiceOver or NVDA.
+
+## Planned next (not built)
+
+| Waiting on | UI work |
+|---|---|
+| Connectors branch merges | Enable "Sign in with Google" (a plain link to the backend's `/connectors/drive/connect`); rename `BACKEND_URL` to `BACKEND_SERVER_URL` and add `BACKEND_LOCAL_URL`; restyle `/connectors` inside the signed-in shell (with its owner); show which sources are connected in the chat |
+| Return target after the OAuth callback | Show sign-in errors on `/login` rather than `/connectors`. The target must come from a fixed allowlist, never an arbitrary URL (open redirect) |
+| `label` on each citation | Turn `[S1]` markers into chips linked to the right source (today they are stripped: an answer citing `[S1]` and `[S3]` came back with two citations, so mapping by position would be wrong) |
+| `status` on query responses | Classify answers by status instead of matching the fixed sentences |
+| Audit API | Real `/admin/audit` (search, record detail, verify chain); make "Ref #" a link for admins |
+| Boundary and sync API | Real `/admin/boundary`; "Sync now" for the freshness demo (scenario 2) |
+| Freshness field | "Synced N minutes ago" under answers |
+| Redaction and injection flags (7–8 Oct) | Redaction chip on citations; blocked-injection notice on answers |
+
+Each replaces a stub or a reserved slot; remove the matching "Not built yet"
+panel and design preview in the same PR.
+
+**Deployment (ADR-008).** Outside `APP_ENV=development` the backend marks the
+session cookie `Secure`, which browsers only send over HTTPS. The live site
+must be served over HTTPS, or sign-in silently fails.
+
+## Open questions
+
+Raised while building the UI; answers belong in DECISIONS.md or the code.
+
+| For | Question |
+|---|---|
+| Whole team | **Admin designation for real sign-in.** `create_user` always sets `is_admin = false`, so no Google user can become admin (e.g. an `ADMIN_EMAILS` list). Who builds it? |
+| Whole team | May the audit page show titles of documents the admin cannot read? (ARCHITECTURE §3.12 vs ADR-007.) Until decided, documents are shown by key |
+| Whole team | Who sets up HTTPS on the Lighthouse server? |
+| Whole team | Demo accounts: which Gmails (listed in `GOOGLE_ALLOWED_ACCOUNTS` and as OAuth test users; Testing-mode tokens expire after 7 days). Contractor Google-only, since Slack guests need a paid plan? |
+| Whole team | Linter/formatter is still open (ADR-001) |
+| Query pipeline | Add `label` and `status` to the query response; should a 503 "LLM is not configured" become the fixed "unavailable" reply? |
+| Query pipeline | Without an LLM configured, `/api/query` returns 503 before the pipeline runs, so the question is not audited. Should it be? |
+| Query pipeline | Shape of the audit API (proposed: search, one record, verify) |
+| Connectors | Merge timing; return target after sign-in; who styles `/connectors`; what happens when someone disconnects their last connection; can personal Gmail users get `google:domain:gmail.com` as a principal? |
+| Connectors | Who owns the boundary and sync routes, and is there a sync worker for "Sync now"? |
 
 ## Adding a shadcn component
 
