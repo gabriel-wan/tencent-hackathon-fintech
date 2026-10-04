@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Dark mode is a `dark` class on <html>, set by next-themes (System / Light / Dark). */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Theme tokens: ui-plan.md section 5.3, mapped onto shadcn's variable names (5.8).
+ * Every text/background pair was checked against WCAG AA (4.5:1 text, 3:1 UI).
+ * Use these through Tailwind classes (bg-card, text-muted-foreground, ...);
+ * never hard-code colours in components.
+ */
+@theme inline {
+    --font-heading: var(--font-sans);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    --background: #fafaf9;
+    --foreground: #1c1c1e;
+    --card: #ffffff;
+    --card-foreground: #1c1c1e;
+    --popover: #ffffff;
+    --popover-foreground: #1c1c1e;
+    /* Brand accent. shadcn's own --accent is the hover background, below. */
+    --primary: #2457d6;
+    --primary-foreground: #ffffff;
+    --secondary: #f1f1ef;
+    --secondary-foreground: #1c1c1e;
+    --muted: #f1f1ef;
+    --muted-foreground: #5f6368;
+    --accent: #f1f1ef;
+    --accent-foreground: #1c1c1e;
+    /* Genuine failures only (network, 5xx). "Not found" is never red. */
+    --destructive: #b42318;
+    /* "Unavailable", the development banner and the MOCK DATA label. */
+    --warning: #fef3c7;
+    --warning-foreground: #92400e;
+    /* Decorative edges only: too faint for inputs. */
+    --border: #e5e5e3;
+    /* Input borders: 3:1 against the page, unlike --border. */
+    --input: #8a8f98;
+    --ring: #2457d6;
+    --radius: 0.625rem;
+}
+
+.dark {
+    --background: #0f1115;
+    --foreground: #ecedee;
+    --card: #171a21;
+    --card-foreground: #ecedee;
+    --popover: #171a21;
+    --popover-foreground: #ecedee;
+    --primary: #7fa2ff;
+    --primary-foreground: #0f1115;
+    --secondary: #222630;
+    --secondary-foreground: #ecedee;
+    --muted: #222630;
+    --muted-foreground: #9ba1a6;
+    --accent: #222630;
+    --accent-foreground: #ecedee;
+    --destructive: #f97066;
+    --warning: #3a2a06;
+    --warning-foreground: #fbbf24;
+    --border: #2a2f3a;
+    --input: #6b7280;
+    --ring: #7fa2ff;
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+    body {
+        @apply bg-background text-foreground antialiased;
+    }
+    html {
+        @apply font-sans;
+    }
+}
+
+/* Motion is decoration only: switch it off for people who ask. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
