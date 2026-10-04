@@ -88,7 +88,7 @@ domain is on its list, or the list has `anyone`.
 4. backend/.env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
 ```
 
-Check either mode with `python -m app.connectors drive` (see `backend/README.md`).
+Check either mode with `python -m app.connectors drive` (see [GUIDE.md §1.5](GUIDE.md#15-admin-credentials-for-sync)).
 
 ```python
 from google.oauth2 import service_account

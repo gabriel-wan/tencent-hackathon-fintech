@@ -66,7 +66,7 @@ channel is public and you are a full member.
 4. /invite @ourbot in every private channel to be indexed
 ```
 
-Check with `python -m app.connectors slack` (see `backend/README.md`): it fails if any scope above is missing.
+Check with `python -m app.connectors slack` (see [GUIDE.md §1.5](GUIDE.md#15-admin-credentials-for-sync)): it fails if any scope above is missing.
 
 ```python
 from slack_sdk import WebClient

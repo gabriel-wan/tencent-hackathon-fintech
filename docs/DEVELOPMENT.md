@@ -13,7 +13,7 @@ and [uv](https://docs.astral.sh/uv/getting-started/installation/) (uv is for tes
 2. Create the `.env` files ([section 2](#2-environment-variables)).
 3. Start everything: `docker compose up --build`
 4. Open:
-   - http://localhost:3000 for the frontend
+   - http://localhost:3000 for the frontend (http://localhost:3000/connectors to connect your tools)
    - http://localhost:8000/health for the backend; it returns `{"db": "ok", ...}`
    - http://localhost:8000/docs for every API route, each with "Try it out"
 
@@ -56,7 +56,8 @@ After editing, restart with `docker compose up`. If a setting needed to connect 
 
 | Variable | Value |
 |---|---|
-| `BACKEND_URL` | `http://localhost:8000` (Docker overrides it) |
+| `BACKEND_SERVER_URL` | `http://localhost:8000` (Docker overrides it) |
+| `BACKEND_LOCAL_URL` | `http://localhost:8000`: the backend address your browser uses |
 
 ### Backend: basics (required)
 
@@ -70,12 +71,13 @@ After editing, restart with `docker compose up`. If a setting needed to connect 
 
 ### Backend: users connecting their accounts
 
-In each tool's app settings, register the redirect URI `{APP_URL}/oauth/<google|slack|atlassian>/callback`.
+Step-by-step per tool, local and production: [connectors/GUIDE.md](connectors/GUIDE.md). In each tool's app settings, register the redirect URI `{APP_URL}/oauth/<google|slack|atlassian>/callback`.
 
 | Variable | Where to get it |
 |---|---|
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | console.cloud.google.com → APIs & Services → Credentials → OAuth client ID (Web). Enable the Drive API and add test users on the consent screen. |
-| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | api.slack.com/apps → your app → Basic Information. Add the User Token Scopes listed in `backend/README.md`. |
+| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | api.slack.com/apps → your app → Basic Information. Add the User Token Scopes listed in GUIDE.md §1.3. |
+| `GOOGLE_ALLOWED_ACCOUNTS` | Who may connect Google: your Workspace domain (e.g. `company.com`) and/or exact test emails, comma-separated |
 | `SLACK_TEAM_ID` | The `T…` part of `app.slack.com/client/T…/` in your browser |
 | `ATLASSIAN_CLIENT_ID`, `ATLASSIAN_CLIENT_SECRET` | developer.atlassian.com/console → OAuth 2.0 (3LO). Enable the Jira, Confluence and User identity APIs. |
 | `ATLASSIAN_CLOUD_ID` | `cloudId` at `https://<site>.atlassian.net/_edge/tenant_info` |
