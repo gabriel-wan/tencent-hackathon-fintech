@@ -11,7 +11,7 @@ flowchart LR
     TH["Tencent Cloud TokenHub<br/>hy3 chat + kinfra embeddings"]
 
     subgraph COMPOSE["Docker Compose (docker-compose.yml)"]
-        FE["frontend<br/>Next.js + Tailwind + shadcn/ui, :3000<br/>/ (placeholder), /status, /healthz"]
+        FE["frontend<br/>Next.js + Tailwind + shadcn/ui, :3000<br/>/ (placeholder), /status, /healthz<br/>/api/* proxy (app/api/[...path])"]
         subgraph BE["backend: FastAPI, :8000"]
             API["app/api<br/>/api/query, /api/me, /api/session<br/>/api/dev/* (development only)"]
             PIPE["app/pipeline/query.py"]
@@ -27,7 +27,7 @@ flowchart LR
     MIG -->|"migrations 0001 to 0003"| DB
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
-    FE -->|"/status: server-side fetch<br/>BACKEND_URL/health"| BE
+    FE -->|"/api/* proxy (cookie forwarded)<br/>/status: BACKEND_URL/health"| BE
     API --> PIPE
     PIPE --> AUTH
     PIPE --> SEARCH
