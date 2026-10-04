@@ -1,8 +1,9 @@
 # frontend/
 
 Next.js app (see DECISIONS.md, ADR-001). Status: chat, development sign-in
-(persona switcher) and the signed-in shell work; admin pages are not built yet;
-real Google sign-in waits for the connectors branch (roadmap Task 2).
+(persona switcher) and the signed-in shell work; the admin pages are honest
+stubs waiting for their APIs; real Google sign-in waits for the connectors
+branch (roadmap Task 2).
 
 The frontend never makes authorization decisions; the backend filters by
 permission before anything reaches the LLM (SECURITY.md, INV-2). Frontend tests
@@ -24,6 +25,8 @@ live in this folder.
 |---|---|
 | `/` | Signed in only. The chat (see below) |
 | `/login` | Sign-in. Google button disabled until the connectors branch merges; development sign-in box when the backend is in development mode |
+| `/admin/audit` | Admins only. Stub: waits for the audit API (see "Admin pages") |
+| `/admin/boundary` | Admins only. Stub: waits for the boundary and sync API |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
@@ -122,6 +125,31 @@ demand (unavailable, 422, a `javascript:` source URL, very long answers) are
 checked in mock mode with `mock:unavailable`, `mock:422`, `mock:bad-url`,
 `mock:long`.
 
+## Admin pages (stubs)
+
+`app/(app)/admin/`. ADR-007: one admin role, which also does compliance.
+
+- **Gate.** `app/(app)/admin/layout.tsx` sends non-admins back to the chat;
+  the header shows Chat for everyone and Audit / Boundary for admins (in the
+  user menu below 640 px). Both are UX only: every admin API route must check
+  `is_admin` itself and return 403.
+- **Not built yet.** No admin API exists on any branch (4 Oct). Each page says
+  so in a "Not built yet" panel naming the routes it waits for (proposed in
+  the UI plan, section 6.5):
+  - `/admin/audit`: `GET /api/admin/audit` (search) and
+    `POST /api/admin/audit/verify` (hash chain), Task 3, 5–6 Oct.
+  - `/admin/boundary`: `GET`/`POST`/`DELETE /api/admin/boundary` and
+    `POST /api/admin/sync`, owners to be agreed.
+- **Design preview (development only).** "Show design preview" reveals the
+  planned layout inside a dashed **MOCK DATA** frame. Filters, Verify chain
+  and Sync now are disabled, and confirming a boundary removal does nothing.
+  It only appears while the backend is in development mode. Fixtures live in
+  `lib/mock/`; the audit ones copy the payload keys the backend writes today
+  (`backend/app/pipeline/query.py`), so the real wiring should be a swap.
+- Documents are shown by key (`drive:D_Q3_INCIDENT`), not title, until the
+  team decides whether the admin may see titles of documents they cannot
+  read (UI plan question log, Q15).
+
 ## Talking to the backend
 
 ```
@@ -205,6 +233,8 @@ app/api/[...path]/    the /api proxy to the backend
 app/                  root layout.tsx (theme), globals.css, healthz/
 components/ui/        shadcn-generated components: edit freely, keep them generic
 components/           our own components, built from components/ui
+components/admin/     admin stubs: NotBuiltYet, DesignPreview, audit and boundary previews
+lib/mock/             DEVELOPMENT ONLY fixtures for the admin design previews
 lib/api/              backend client (client.ts, server.ts), errors, generated types, mock mode
 lib/                  answer, citation and date helpers; utils.ts is shadcn's cn()
 components.json       shadcn CLI settings
