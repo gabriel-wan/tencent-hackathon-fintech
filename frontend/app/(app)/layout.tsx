@@ -2,12 +2,14 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { AppHeader } from "@/components/app-header";
+import { DevPersonaBanner } from "@/components/dev-persona-banner";
 import { MeProvider } from "@/components/me-provider";
 import { MockBadge } from "@/components/mock-badge";
 import { PageContainer } from "@/components/page-container";
 import { ServerUnavailable } from "@/components/server-unavailable";
+import { UserMenu } from "@/components/user-menu";
 import { NotSignedInError } from "@/lib/api/errors";
-import { getMe } from "@/lib/api/server";
+import { getMe, listDevUsers } from "@/lib/api/server";
 import type { Me } from "@/lib/api/types";
 
 /**
@@ -35,9 +37,20 @@ export default async function SignedInLayout({ children }: { children: ReactNode
     );
   }
 
+  // null unless the backend runs with APP_ENV=development (lib/api/server.ts).
+  const devUsers = await listDevUsers();
+
   return (
     <MeProvider me={me}>
-      <AppHeader actions={<MockBadge />} />
+      {devUsers && devUsers.length > 0 ? <DevPersonaBanner users={devUsers} /> : null}
+      <AppHeader
+        actions={
+          <>
+            <MockBadge />
+            <UserMenu />
+          </>
+        }
+      />
       {children}
     </MeProvider>
   );
