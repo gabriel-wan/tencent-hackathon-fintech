@@ -6,9 +6,9 @@ GET    /oauth/{provider}/callback    provider redirects back here; stores the co
 GET    /connectors/{id}/ping         calls the API as you (proves the connection works)
 DELETE /connectors/{id}              disconnects (Jira and Confluence share one Atlassian sign-in)
 
-Signing in to the first connector also signs you in to the app (sessions: app/auth.py).
-Database work happens in short transactions committed inside each handler, never across a
-call to a provider, so no connection is held while waiting on the network.
+Signing in to the first connector creates the user (if new) and signs you in to the app: the same
+session as the rest of the API (app/auth/session.py, app/api/deps.py). Connector data is written
+in short transactions inside each handler, never across a call to a provider.
 """
 
 import logging
@@ -17,13 +17,14 @@ import secrets
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from googleapiclient.errors import HttpError
 from slack_sdk.errors import SlackApiError
 
-from app import auth
-from app.auth import MaybeUser, User
+from app.api.deps import current_user
+from app.auth import session
+from app.auth.session import User
 from app.connectors import atlassian, oauth, store
 from app.db import Db
 
@@ -39,6 +40,18 @@ CONNECTORS = {  # connector id -> (OAuth provider, display name)
 STATE_COOKIE = "oauth_state"
 
 
+def _secure() -> bool:
+    return oauth.app_url().startswith("https://")  # cookies are Secure only over https
+
+
+def _maybe_user(request: Request, engine: Db) -> User | None:
+    token = request.cookies.get(session.COOKIE_NAME)
+    if not token:
+        return None
+    with engine.connect() as db:
+        return session.user_for_token(db, token)
+
+
 def _provider(connector: str) -> str:
     if connector not in CONNECTORS:
         raise HTTPException(404, f"unknown connector: {connector}")
@@ -46,9 +59,9 @@ def _provider(connector: str) -> str:
 
 
 @router.get("/connectors")
-def list_connectors(engine: Db, user: MaybeUser):
+def list_connectors(engine: Db, user: User | None = Depends(_maybe_user)):
     with engine.connect() as db:
-        connected = store.list_connections(db, user) if user else {}
+        connected = store.list_connections(db, user.id) if user else {}
     result = []
     for connector, (provider, name) in CONNECTORS.items():
         conn = connected.get(provider)
@@ -72,7 +85,7 @@ def connect(connector: str):
         raise HTTPException(503, f"{provider} sign-in is not configured: {e}") from e
     resp = RedirectResponse(url, status_code=302)
     resp.set_cookie(STATE_COOKIE, f"{provider}.{state}", max_age=600, httponly=True,
-                    samesite="lax", secure=auth.secure_cookies(), path="/oauth")
+                    samesite="lax", secure=_secure(), path="/oauth")
     return resp
 
 
@@ -107,26 +120,30 @@ def callback(provider: str, request: Request, engine: Db, code: str | None = Non
         return finish(error="provider_error")
 
     with engine.begin() as db:  # committed before the redirect is sent
-        signed_in = auth.session_user(db, request.cookies.get(auth.SESSION_COOKIE))
-        user = auth.find_user(db, account.email)
+        token = request.cookies.get(session.COOKIE_NAME)
+        signed_in = session.user_for_token(db, token) if token else None
+        known = session.get_user_by_email(db, account.email)
+        user = known.id if known else None
         owner = store.connection_owner(db, provider, account.id)
         # ADR-002: one person = one company email, and each external account belongs to one person.
-        if (signed_in and signed_in != user) or (owner and owner != user):
+        if (signed_in and signed_in.id != user) or (owner and owner != user):
             return finish(error="account_mismatch")
-        user = user or auth.create_user(db, account.email)
+        user = user or session.create_user(db, account.email, account.name).id
         store.save_connection(db, user, provider, account, tokens)
-        session = None if signed_in else auth.create_session(db, user)
+        new_session = None if signed_in else session.create_session(db, user)
     # TODO(ADR-007): write this to the audit log once it exists.
     log.info("audit connector_connected user=%s provider=%s account=%s", user, provider, account.id)
 
     resp = finish(connected=provider)
-    if session:
-        auth.set_session_cookie(resp, session)
+    if new_session:
+        resp.set_cookie(session.COOKIE_NAME, new_session, max_age=session.SESSION_HOURS * 3600,
+                        httponly=True, samesite="lax", secure=_secure())
     return resp
 
 
 @router.get("/connectors/{connector}/ping")
-def ping(connector: str, engine: Db, user: User):
+def ping(connector: str, engine: Db, current: User = Depends(current_user)):
+    user = current.id
     _provider(connector)
     try:
         if connector == "slack":
@@ -147,7 +164,8 @@ def ping(connector: str, engine: Db, user: User):
 
 
 @router.delete("/connectors/{connector}", status_code=204)
-def disconnect(connector: str, engine: Db, user: User):
+def disconnect(connector: str, engine: Db, current: User = Depends(current_user)):
+    user = current.id
     provider = _provider(connector)
     with engine.begin() as db:
         tokens = store.delete_connection(db, user, provider)

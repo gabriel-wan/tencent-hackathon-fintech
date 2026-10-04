@@ -2,11 +2,7 @@ import os
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import URL, Engine, MetaData, create_engine
-
-# Every table registers here, defined in the module that owns it (app/auth.py, app/connectors/store.py).
-# migrations/env.py compares it with the database: `alembic check`.
-metadata = MetaData()
+from sqlalchemy import URL, Engine, create_engine
 
 engine = create_engine(
     URL.create(

@@ -1,11 +1,10 @@
 """Connect / list / call / disconnect each user's own accounts (ADR-002), end to end through the API.
 
-Providers are faked at the HTTP layer (httpx.MockTransport); the database is a SQLite file with a
-fresh connection per use, so separate transactions really are separate (as on Postgres).
+Providers are faked at the HTTP layer (httpx.MockTransport). The database is the real test database
+(migrated by conftest); handlers commit their own transactions, so its tables are emptied around each test.
 """
 
 import time
-import uuid
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -13,11 +12,10 @@ import pytest
 import sqlalchemy as sa
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from sqlalchemy.pool import NullPool
 
-from app import auth
+from app.auth.principals import principals_for
 from app.connectors import atlassian, drive, oauth, slack, store
-from app.db import get_engine, metadata
+from app.db import engine as db_engine
 from app.main import app
 
 GOOGLE_TOKEN = "POST https://oauth2.googleapis.com/token"
@@ -81,20 +79,22 @@ def providers(monkeypatch):
     return fake
 
 
+def empty_tables():
+    with db_engine.begin() as conn:  # also empties connections, sessions and user_principals
+        conn.execute(sa.text("TRUNCATE users CASCADE"))
+
+
 @pytest.fixture
-def engine(monkeypatch, tmp_path):
+def engine(monkeypatch):
     monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    eng = sa.create_engine(f"sqlite:///{tmp_path / 'test.db'}", poolclass=NullPool)
-    metadata.create_all(eng)
-    yield eng
-    eng.dispose()
+    empty_tables()
+    yield db_engine
+    empty_tables()
 
 
 @pytest.fixture
 def client(engine):
-    app.dependency_overrides[get_engine] = lambda: engine
-    yield TestClient(app, follow_redirects=False)
-    app.dependency_overrides.clear()
+    return TestClient(app, follow_redirects=False)
 
 
 def sign_in(client, connector, state=None):
@@ -104,6 +104,16 @@ def sign_in(client, connector, state=None):
     real_state = parse_qs(urlparse(resp.headers["location"]).query)["state"][0]
     return client.get(f"/oauth/{PROVIDER_OF[connector]}/callback",
                       params={"code": "the-code", "state": state or real_state})
+
+
+def count(engine, table):
+    with engine.connect() as conn:
+        return conn.execute(sa.text(f"SELECT count(*) FROM {table}")).scalar()
+
+
+def principals(engine):
+    with engine.connect() as conn:
+        return principals_for(conn, conn.execute(sa.text("SELECT id FROM users")).scalar_one())
 
 
 def statuses(client):
@@ -168,7 +178,7 @@ def test_sign_in_connects_and_starts_a_session(client, providers, engine):
     resp = sign_in(client, "drive")
     assert resp.status_code == 303
     assert resp.headers["location"] == "http://localhost:3000/connectors?connected=google"
-    assert "session=" in resp.headers["set-cookie"]
+    assert "ib_session=" in resp.headers["set-cookie"]
 
     listing = client.get("/connectors").json()
     assert statuses(client) == {"drive": True, "slack": False, "jira": False, "confluence": False}
@@ -187,41 +197,33 @@ def test_one_person_links_all_connectors_by_email(client, providers, engine):
     for connector in ("drive", "slack", "jira"):
         assert "connected=" in sign_in(client, connector).headers["location"]
     assert statuses(client) == {"drive": True, "slack": True, "jira": True, "confluence": True}
-    with engine.connect() as conn:
-        assert conn.execute(sa.select(sa.func.count()).select_from(auth.users)).scalar() == 1
-        assert conn.execute(sa.select(sa.func.count()).select_from(auth.sessions)).scalar() == 1
+    assert count(engine, "users") == 1 and count(engine, "sessions") == 1
 
 
 def test_principals_match_the_acl_formats(client, providers, engine):
     # The contract with search (docs/connectors/*.md section 5): a document is a candidate if its acl
-    # holds one of these.
+    # holds one of these. They are written to user_principals, read by the query pipeline.
     for connector in ("drive", "slack", "jira"):
         sign_in(client, connector)
-    with engine.connect() as conn:
-        user = conn.execute(sa.select(auth.users.c.id)).scalar_one()
-        assert store.principals(conn, user) == {
-            "google:user:alice@corp.com", "google:domain:corp.com", "public",
-            "slack:user:U1", "slack:members",
-            "atlassian:user:A1",
-        }
-        assert store.principals(conn, uuid.uuid4()) == set()  # nothing connected: matches nothing
+    assert principals(engine) == sorted({
+        "google:user:alice@corp.com", "google:domain:corp.com", "public",
+        "slack:user:U1", "slack:members",
+        "atlassian:user:A1",
+    })
+    client.delete("/connectors/slack")  # disconnecting removes that tool's principals
+    assert not [p for p in principals(engine) if p.startswith("slack:")]
 
 
 @pytest.mark.parametrize("guest_flag", ["is_restricted", "is_ultra_restricted"])
 def test_slack_guests_do_not_hold_slack_members(client, providers, engine, guest_flag):
     providers.routes[SLACK_USER]["user"][guest_flag] = True
     sign_in(client, "slack")
-    with engine.connect() as conn:
-        user = conn.execute(sa.select(auth.users.c.id)).scalar_one()
-        assert store.principals(conn, user) == {"slack:user:U1"}
+    assert principals(engine) == ["public", "slack:user:U1"]
 
 
-def test_slack_connection_without_guest_status_counts_as_guest(client, providers, engine):
-    sign_in(client, "slack")
-    with engine.begin() as conn:  # a connection stored before guest status was recorded
-        conn.execute(store.connections.update().values(extra={"team_id": "T1"}))
-        user = conn.execute(sa.select(auth.users.c.id)).scalar_one()
-        assert store.principals(conn, user) == {"slack:user:U1"}
+def test_unknown_slack_guest_status_counts_as_guest():
+    account = oauth.Account("U1", "alice@corp.com", "Alice", {"team_id": "T1"})  # no "guest" recorded
+    assert store.principals("slack", account) == {"slack:user:U1"}
 
 
 def test_atlassian_site_without_confluence(client, providers):
@@ -234,7 +236,7 @@ def test_atlassian_site_without_confluence(client, providers):
 def test_forged_state_is_rejected(client, providers):
     resp = sign_in(client, "drive", state="attacker-state")
     assert resp.headers["location"].endswith("error=invalid_state")
-    assert "session=" not in resp.headers.get("set-cookie", "")
+    assert "ib_session=" not in resp.headers.get("set-cookie", "")
     assert providers.sent(GOOGLE_TOKEN) == []  # the code is never even exchanged
 
 
@@ -290,11 +292,9 @@ def test_google_sign_in_outside_the_company_is_rejected(client, providers, engin
     providers.routes[GOOGLE_ME] = {"sub": "g-9", "email": "mallory@gmail.com", "email_verified": True}
     resp = sign_in(client, "drive")
     assert resp.headers["location"].endswith("error=provider_error")
-    assert "session=" not in resp.headers.get("set-cookie", "")
+    assert "ib_session=" not in resp.headers.get("set-cookie", "")
     assert len(providers.sent(GOOGLE_REVOKE)) == 1  # the outsider's grant is dropped, not kept
-    with engine.connect() as conn:
-        assert conn.execute(sa.select(sa.func.count()).select_from(auth.users)).scalar() == 0
-        assert conn.execute(sa.select(sa.func.count()).select_from(auth.sessions)).scalar() == 0
+    assert count(engine, "users") == 0 and count(engine, "sessions") == 0
 
 
 def test_outage_after_sign_in_does_not_revoke(client, providers):
@@ -328,11 +328,10 @@ def test_other_sites_are_not_stored(client, providers, engine):
 
 def test_external_account_stays_with_its_owner(client, providers, engine):
     sign_in(client, "slack")  # U1 belongs to alice
-    client.post("/logout")
+    client.delete("/api/session")
     providers.routes[SLACK_USER] = {"ok": True, "user": {"name": "a", "profile": {"email": "renamed@corp.com"}}}
     assert sign_in(client, "slack").headers["location"].endswith("error=account_mismatch")
-    with engine.connect() as conn:
-        assert conn.execute(sa.select(sa.func.count()).select_from(auth.users)).scalar() == 1
+    assert count(engine, "users") == 1
 
 
 def test_cannot_attach_someone_elses_account(client, providers):
@@ -511,9 +510,10 @@ def test_disconnect_requires_sign_in(client):
     assert client.delete("/connectors/drive").status_code == 401
 
 
-def test_logout_ends_the_session(client, providers):
+def test_connector_sign_in_is_the_app_session(client, providers):
     sign_in(client, "drive")
-    assert client.post("/logout").status_code == 204
+    assert client.get("/api/me").json() == {"email": "alice@corp.com", "name": "Alice", "is_admin": False}
+    assert client.delete("/api/session").status_code == 204
     assert statuses(client)["drive"] is False  # anonymous again
     assert client.get("/connectors/drive/ping").status_code == 401
 
@@ -521,5 +521,5 @@ def test_logout_ends_the_session(client, providers):
 def test_expired_session_is_ignored(client, providers, engine):
     sign_in(client, "drive")
     with engine.begin() as conn:
-        conn.execute(auth.sessions.update().values(expires_at=int(time.time()) - 1))
+        conn.execute(sa.text("UPDATE sessions SET expires_at = now() - interval '1 second'"))
     assert statuses(client)["drive"] is False

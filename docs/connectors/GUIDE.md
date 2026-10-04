@@ -125,14 +125,14 @@ Same steps as above, with these differences:
 
 From the repo root:
 
-- **Tests:** in `backend/`, run `uv run pytest`. ✅ All pass, with no real API calls.
+- **Tests:** see [DEVELOPMENT.md §3](../DEVELOPMENT.md#3-unit-tests). ✅ All pass, with no real API calls.
 - **Tokens are encrypted at rest:**
   ```
   docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "select provider, left(encode(access_token,'escape'),6) from connections;"
   ```
   ✅ The token column shows `gAAAAA` (ciphertext), never a raw token.
 - **Disconnect:** click **Disconnect**. ✅ The tool shows **Connect** again, and the app is gone from https://myaccount.google.com/permissions.
-- **Log out:** at http://localhost:8000/docs, run **`POST /logout`**. ✅ **Test** now returns `401`.
+- **Log out:** at http://localhost:8000/docs, run **`DELETE /api/session`**. ✅ **Test** now returns `401`.
 
 ## Troubleshooting
 
@@ -144,21 +144,20 @@ From the repo root:
 | `?error=account_mismatch` | That account belongs to another user, or you're signed in as someone else: log out first |
 | `?error=access_denied` | You clicked Cancel on the tool's sign-in page |
 | `401 … connect again` | The tool rejected the saved access: connect again |
-| `No module named 'app.connectors'` | Run tests from `backend/`, not the repo root |
 
 # Part 2. Development
 
 ## 2.1 How it fits
 
-1. **Connect.** A user clicks **Connect** and signs in to the tool. The `connections` table stores their tokens, encrypted, and signs them in to the app (session cookie). Accounts are linked by email.
+1. **Connect.** A user clicks **Connect** and signs in to the tool. The `connections` table stores their tokens, encrypted. The first connect creates the user (linked by email) and signs them in to the app: the same session as the rest of the API.
 2. **Call.** Backend code calls the tool as that user (`store.*`), or as the admin for sync (`atlassian`, `drive`, `slack`).
-3. **Permissions.** Search keeps the documents whose `acl` overlaps `store.principals(user)`. Then `can_read` re-checks the final results live, and has the final say.
+3. **Permissions.** Each connection writes the user's principals (2.4) to `user_principals`. Search keeps the documents whose `acl` overlaps them (`app/auth/principals.py`). Then the live check re-asks the tool, and has the final say.
 
-Code: `backend/app/connectors/`. Users and sessions are in `backend/app/auth.py`. Connectors depend on auth, never the reverse.
+Code: `backend/app/connectors/`. Users, sessions and principals are in `backend/app/auth/`. Connectors depend on auth, never the reverse.
 
 ## 2.2 HTTP API
 
-Auth is the `session` cookie, which is HttpOnly and set on first connect. Routes marked "user" return `401 {"detail": "not signed in: connect a connector first"}` without it.
+Auth is the `ib_session` cookie (HttpOnly, 12 hours), set on first connect. Routes marked "user" return `401 {"detail": "Not signed in"}` without it.
 
 - `{id}`: `drive`, `slack`, `jira` or `confluence`
 - `{provider}`: `google`, `slack` or `atlassian`
@@ -171,7 +170,7 @@ Auth is the `session` cookie, which is HttpOnly and set on first connect. Routes
 | `GET /oauth/{provider}/callback` | none (called by the tool) | `303` to `{FRONTEND_URL}/connectors?connected=<provider>` | `303` to `…?error=access_denied`, `provider_error`, `invalid_state` or `account_mismatch` |
 | `GET /connectors/{id}/ping` | user | `200 {"ok": true, "as": "<name or email>"}` | `404` not connected, `401` connect again, `502` tool API failed |
 | `DELETE /connectors/{id}` | user | `204`. Also revokes the grant at Google or Slack. Jira and Confluence share one sign-in, so this disconnects both. | none |
-| `POST /logout` | optional | `204`, and clears the cookie | none |
+| `DELETE /api/session` | optional | `204`, and clears the cookie (log out; `app/api/routes.py`) | none |
 
 `GET /connectors` response:
 ```json
@@ -186,16 +185,18 @@ Errors use FastAPI's shape, `{"detail": "<message>"}`. Every route is also liste
 
 ## 2.3 Python API
 
-Use these inside FastAPI handlers. `user` is the app user's `uuid.UUID`.
+Use these inside FastAPI handlers. `user` is the app user's id (`int`).
 
 ```python
-from fastapi import HTTPException
-from app.auth import User                       # 401 if not signed in
+from fastapi import Depends, HTTPException
+from app.api.deps import current_user           # 401 if not signed in
+from app.auth.session import User
 from app.db import Db                           # SQLAlchemy Engine
 from app.connectors import atlassian, store
 
 @router.get("/example")
-def example(engine: Db, user: User):
+def example(engine: Db, current: User = Depends(current_user)):
+    user = current.id
     try:
         channels = store.slack_client(engine, user).conversations_list(types="public_channel,private_channel")
         with store.atlassian_client(engine, user, "jira") as jira:
@@ -231,20 +232,20 @@ Every function above raises:
 
 | Function | Input | Returns |
 |---|---|---|
-| `store.principals(db, user)` | an open connection (`engine.connect()`) | `set[str]` of ACL entries the user holds (2.4) |
+| `principals_for(conn, user)` (`app/auth/principals.py`) | an open connection | The ACL entries the user holds (2.4), from `user_principals`, plus `public` |
 | `drive.can_read(credentials, file_ids)` | `store.google_credentials(...)`, Drive file IDs | IDs the user can read right now (one batched call per 100 files) |
 | `slack.can_read(slack_user_id, channel_ids)` | the user's Slack ID (`connections.account_id`), channel IDs | IDs the user can read right now (checked with the bot) |
 
 Both `can_read` functions deny by default: any error leaves the ID out. Jira and Confluence live checks don't exist yet.
 
 **Rules:**
-- Pass `engine`, not an open connection, to the `store.*` client functions. This means no database connection is held while a tool's API is called.
+- Pass `engine`, not an open connection, to the `store.*` client functions: they commit token refreshes in their own short transaction.
 - Never send tokens or raw tool errors to the browser.
 - Don't add retry loops: the clients above already retry rate limits.
 
 ## 2.4 Document schema (sync contract)
 
-Sync isn't built yet. When it is, every source will produce documents of this shape, one per Drive file, Slack thread, Jira ticket or Confluence page:
+Sync isn't built yet. When it is, every source will write one `documents` row (with its `chunks`) per Drive file, Slack thread, Jira ticket or Confluence page. Tables: `migrations/versions/0002_core_schema.py`; contract: [QUERY_PIPELINE.md](../architecture/QUERY_PIPELINE.md). The shape:
 
 ```jsonc
 {
@@ -259,7 +260,7 @@ Sync isn't built yet. When it is, every source will produce documents of this sh
 }
 ```
 
-`acl` entries, the same strings `store.principals` returns:
+`acl` entries, the same strings connections write to `user_principals`:
 
 | Principal | Meaning |
 |---|---|
@@ -268,7 +269,7 @@ Sync isn't built yet. When it is, every source will produce documents of this sh
 | `slack:user:<slack user id>` | That Slack user (private channels) |
 | `slack:members` | Every full member of the workspace (public channels). Guests never hold it. |
 | `atlassian:user:<accountId>` | That Atlassian user. Groups and roles are expanded into users. |
-| `public` | Anyone: a Drive file shared with "anyone", or a ticket every Jira user can see. Held by every Google-connected user. |
+| `public` | Anyone: a Drive file shared with "anyone", or a ticket every Jira user can see. Held by every user (`principals_for`). |
 
 An `acl` may include extra people but never leaves out a real reader: `can_read` removes the extras.
 

@@ -12,11 +12,11 @@ const ERRORS = ["access_denied", "provider_error", "invalid_state", "account_mis
 type Connector = { id: string; name: string; connected: boolean; account: { email: string } | null };
 
 async function backend(path: string, init?: RequestInit) {
-  const session = (await cookies()).get("session")?.value;
+  const session = (await cookies()).get("ib_session")?.value;
   return fetch(`${process.env.BACKEND_SERVER_URL}${path}`, {
     ...init,
     cache: "no-store",
-    headers: session ? { cookie: `session=${session}` } : {},
+    headers: session ? { cookie: `ib_session=${session}` } : {},
   });
 }
 

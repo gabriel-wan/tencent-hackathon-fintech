@@ -24,6 +24,18 @@ and [uv](https://docs.astral.sh/uv/getting-started/installation/) (uv is for tes
 | Stop | Ctrl+C |
 | Wipe the database | `docker compose down -v` |
 
+**Development seed data.** Until connector sync lands, load a fictional company
+(four users, seven documents covering each permission case) with:
+
+```
+docker compose run --rm backend python -m app.seed
+```
+
+Add `--embed` to also compute embeddings through TokenHub. The seed refuses to
+run unless `APP_ENV=development`. In development, `GET /api/dev/users` lists the
+seeded users and `POST /api/dev/session` signs in as one of them; see
+[QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md).
+
 **Backend dependencies (uv).** Dependencies are declared in `backend/pyproject.toml`, and exact versions are locked in `backend/uv.lock`. Run every command below from `backend/`.
 
 | Task | Command |
@@ -39,10 +51,9 @@ and [uv](https://docs.astral.sh/uv/getting-started/installation/) (uv is for tes
 - Never use `pip install`.
 
 **Database changes:**
-- Define the table once, on `app.db.metadata`, in the module that owns it (e.g. `users` in `app/auth.py`).
 - Write a numbered migration in `backend/migrations/versions/`, with `down_revision` set to the previous one.
-- Check that the migrations match the table definitions: `docker compose run --rm migrate alembic check`.
 - If two branches add the same migration number, whoever merges second renumbers theirs.
+- If your local database was migrated by a migration that was later renumbered, reset it: `docker compose down -v`.
 
 **Git:** work on a branch, then open a pull request to `main`.
 
@@ -63,11 +74,18 @@ After editing, restart with `docker compose up`. If a setting needed to connect 
 
 | Variable | Value |
 |---|---|
-| `APP_ENV`, `LOG_LEVEL` | `development`, `info` |
+| `APP_ENV`, `LOG_LEVEL` | `development`, `info`. Development-only routes and the seed need `development` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Any local values; the database is created with them |
 | `APP_URL` | `http://localhost:8000`. For Slack, use the `https://` address of a tunnel instead (`cloudflared tunnel --url http://localhost:8000`) |
 | `TOKEN_ENCRYPTION_KEY` | In `backend/`, run `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `FRONTEND_URL` | Optional. Default `http://localhost:3000` |
+
+### Backend: LLM and embeddings
+
+| Variable | Value |
+|---|---|
+| `LLM_BASE_URL`, `LLM_MODEL`, `EMBEDDING_MODEL` | Keep the values in `.env.example` (Tencent Cloud TokenHub) |
+| `LLM_API_KEY` | TokenHub console → API Key. It must be allowed to use both models (Access Scope). |
 
 ### Backend: users connecting their accounts
 
@@ -93,17 +111,21 @@ Check them with `docker compose run --rm --no-deps backend python -m app.connect
 | `GOOGLE_REFRESH_TOKEN` | Personal Gmail: see `docs/connectors/GOOGLE_DRIVE.md` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_ADMIN_EMAIL` | Google Workspace, instead of `GOOGLE_REFRESH_TOKEN`: the service-account key JSON on one line, in single quotes, and an admin's email |
 
-`LLM_*`, `AUDIT_LOG_SIGNING_KEY` and `TENCENTCLOUD_*` are not used yet.
+`AUDIT_LOG_SIGNING_KEY` and `TENCENTCLOUD_*` are not used yet.
 
 ## 3. Unit tests
 
+Tests need Postgres and refuse to run unless `POSTGRES_DB` ends in `_test`, so they never touch
+development data. They create and migrate that database themselves.
+
+Run them in Docker from the repo root (no local Python needed):
+
 ```
-cd backend
-uv sync          # first time, and after every pull
-uv run pytest    # all tests; one test: uv run pytest -k <name>
+docker compose run --rm --build --user root -e POSTGRES_DB=brain_test -v ./backend/tests:/app/tests backend sh -c "uv sync --locked --group dev --quiet && pytest -q"
 ```
 
-- Run them from `backend/`. Running from the repo root fails with `No module named 'app.connectors'`.
-- No Docker or database needed: tests use a temporary SQLite file.
-- Tests never call real external APIs; the tools are faked.
+- Add `-m security` after `pytest` to run only the security-invariant tests, or `-k <name>` for one test.
+- With a local Python and Postgres instead: from `backend/`, `uv run pytest` with `POSTGRES_DB=brain_test`
+  and the other `POSTGRES_*` variables set.
+- Tests never call real external APIs: the LLM and the tools are faked.
 - Tests go in `backend/tests/`, named after the behaviour they check.
