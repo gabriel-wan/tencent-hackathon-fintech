@@ -45,10 +45,10 @@ function CitationItem({ citation }: { citation: Citation }) {
       )}
       <span className="text-xs text-muted-foreground">
         updated{" "}
+        {/* title: exact time on hover; assistive tech also reads it as the name. */}
         <time dateTime={citation.updated_at} title={exact}>
           {formatRelative(citation.updated_at)}
         </time>
-        <span className="sr-only"> ({exact})</span>
       </span>
     </li>
   );

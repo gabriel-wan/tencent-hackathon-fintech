@@ -100,13 +100,17 @@ export function AnswerCard({ exchange, onRetry, retryDisabled }: Props) {
   }
 }
 
-/** Short text for the screen-reader announcement when an answer arrives. */
+/** The screen-reader announcement when a question finishes. */
 export function announcementFor(exchange: Exchange): string {
   switch (exchange.status) {
     case "pending":
       return "";
-    case "answered":
-      return `Answer: ${stripCitationMarkers(exchange.response.answer)}`;
+    case "answered": {
+      // Short on purpose: the answer itself is in the thread, and reading it
+      // here too would repeat it when someone browses the page.
+      const n = exchange.response.citations.length;
+      return n === 0 ? "Answer received, with no sources." : `Answer received, with ${n} source${n === 1 ? "" : "s"}.`;
+    }
     case "notFound":
     case "unavailable":
       return exchange.response.answer;
