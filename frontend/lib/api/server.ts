@@ -3,6 +3,7 @@
 // Cookie header, so it works whatever the session cookie is called.
 // Never import this from a client component.
 import { headers } from "next/headers";
+import { unstable_rethrow } from "next/navigation";
 
 import { ApiError, BackendUnreachableError, readResponse } from "./errors";
 import type { DevUser, Me } from "./types";
@@ -41,6 +42,7 @@ export async function listDevUsers(): Promise<DevUser[] | null> {
   try {
     return await request<DevUser[]>("/dev/users");
   } catch (error) {
+    unstable_rethrow(error); // let Next.js's own control-flow errors through
     if (!(error instanceof ApiError && error.status === 404)) {
       console.warn("Could not list development users:", error);
     }
