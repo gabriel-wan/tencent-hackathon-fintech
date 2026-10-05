@@ -11,7 +11,13 @@ const dev = process.env.APP_ENV === "development";
 const PROVIDERS = ["google", "slack", "atlassian"];
 const ERRORS = [
   "access_denied", "provider_error", "invalid_state", "account_mismatch", "disconnect_failed", "slack_token_rejected",
+  "no_company",
 ];
+const HINTS: Record<string, string> = {
+  no_company:
+    "This Slack workspace or Atlassian site belongs to a company you can't join (for example, you are a Slack " +
+    "guest, or you granted several Atlassian sites: grant only your company's).",
+};
 
 type Connector = { id: string; name: string; connected: boolean; account: { email: string } | null };
 
@@ -36,7 +42,7 @@ async function connectSlackWithToken(form: FormData) {
   if (session) {
     (await cookies()).set("ib_session", session, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 12 * 3600 });
   }
-  const error = res.status === 409 ? "account_mismatch" : "slack_token_rejected";
+  const error = res.status === 409 ? "account_mismatch" : res.status === 403 ? "no_company" : "slack_token_rejected";
   redirect(res.ok ? "/connectors?connected=slack" : `/connectors?error=${error}`);
 }
 
@@ -57,7 +63,9 @@ export default async function ConnectorsPage({
     <main>
       <h1>Connectors</h1>
       {PROVIDERS.includes(connected ?? "") && <p>Connected to {connected}.</p>}
-      {ERRORS.includes(error ?? "") && <p role="alert">Error: {error} (see docs/connectors/GUIDE.md)</p>}
+      {ERRORS.includes(error ?? "") && (
+        <p role="alert">Error: {error}. {HINTS[error ?? ""] ?? "See docs/connectors/GUIDE.md."}</p>
+      )}
       <ul>
         {connectors.map((c) => (
           <li key={c.id}>

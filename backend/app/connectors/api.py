@@ -24,7 +24,9 @@ from googleapiclient.errors import HttpError
 from pydantic import BaseModel, ConfigDict, Field
 from slack_sdk.errors import SlackApiError
 
+from app import companies
 from app.api.deps import current_user
+from app.audit.log import record_event
 from app.auth import session
 from app.auth.session import User
 from app.connectors import atlassian, oauth, store
@@ -67,13 +69,20 @@ def _link(request: Request, engine, provider: str, account: oauth.Account, token
         user = known.id if known else None
         owner = store.connection_owner(db, provider, account.id)
         # ADR-002: one person = one company email, and each external account belongs to one person.
-        if (signed_in and signed_in.id != user) or (owner and owner != user):
+        # A sign-in naming a company never moves someone out of theirs.
+        has_company = known is not None and known.company_id is not None
+        if (signed_in and signed_in.id != user) or (owner and owner != user) \
+                or (has_company and account.company_id not in (None, known.company_id)):
             return None
-        user = user or session.create_user(db, account.email, account.name).id
+        if user is None:
+            user = session.create_user(db, account.email, account.name, None).id
+        joins = account.company_id is not None and not has_company  # the first connection naming a company
+        made_admin = joins and companies.join(db, user, account.company_id)
+        company = account.company_id if joins else known and known.company_id  # the user's company now
         store.save_connection(db, user, provider, account, tokens)
         new_session = None if signed_in else session.create_session(db, user)
-    # TODO(ADR-007): write this to the audit log once it exists.
-    log.info("audit connector_connected user=%s provider=%s account=%s", user, provider, account.id)
+        record_event(db, user, "connector_connected", {"provider": provider, "account_id": account.id,
+                                                       "company_id": company, "made_admin": made_admin})
     return user, new_session
 
 
@@ -153,7 +162,7 @@ def callback(provider: str, request: Request, engine: Db, code: str | None = Non
         # a Google revoke ends the whole grant, which may also back this person's stored connection.
         if tokens and isinstance(e, oauth.OAuthError) and e.status < 500:
             oauth.revoke(provider, tokens.access_token, tokens.refresh_token)
-        return finish(error="provider_error")
+        return finish(error="no_company" if isinstance(e, oauth.NoCompany) else "provider_error")
 
     linked = _link(request, engine, provider, account, tokens)
     if linked is None:
@@ -168,14 +177,13 @@ def ping(connector: str, engine: Db, current: User = Depends(current_user)):
     user = current.id
     _provider(connector)
     try:
+        c = store.client(engine, user, connector)
         if connector == "slack":
-            return {"ok": True, "as": store.slack_client(engine, user).auth_test()["user"]}
+            return {"ok": True, "as": c.auth_test()["user"]}
         if connector == "drive":
-            about = store.drive_service(engine, user).about().get(fields="user(emailAddress)").execute(num_retries=3)
-            return {"ok": True, "as": about["user"]["emailAddress"]}
+            return {"ok": True, "as": c.about().get(fields="user(emailAddress)").execute(num_retries=3)["user"]["emailAddress"]}
         path = "/rest/api/3/myself" if connector == "jira" else "/wiki/rest/api/user/current"
-        with store.atlassian_client(engine, user, connector) as http:
-            return {"ok": True, "as": atlassian.request("GET", path, http=http).json()["displayName"]}
+        return {"ok": True, "as": atlassian.request("GET", path, http=c).json()["displayName"]}
     except store.NotConnected as e:
         raise HTTPException(404, f"{connector} is not connected") from e
     except store.ReconnectNeeded as e:
@@ -192,10 +200,10 @@ def disconnect(connector: str, engine: Db, current: User = Depends(current_user)
     user = current.id
     provider = _provider(connector)
     with engine.begin() as db:
-        tokens = store.delete_connection(db, user, provider)
-    if tokens:  # revoke only after the delete is committed
+        if tokens := store.delete_connection(db, user, provider):
+            record_event(db, user, "connector_disconnected", {"provider": provider})
+    if tokens and tokens[0]:  # revoke only after the delete is committed (and if the token was readable)
         oauth.revoke(provider, *tokens)
-        log.info("audit connector_disconnected user=%s provider=%s", user, provider)
     return Response(status_code=204)
 
 
@@ -210,15 +218,16 @@ def dev_connect_slack(body: SlackToken, request: Request, engine: Db):
     instead of the OAuth redirect, so local development needs no https tunnel. Same checks as sign-in."""
     try:
         store.cipher()
-        os.environ[oauth.TENANT_ENV["slack"]]
     except (KeyError, ValueError) as e:
         raise HTTPException(503, f"slack is not configured: {e}") from e
     tokens = oauth.Tokens(body.token, None, None, "")
     try:
         account = oauth.account("slack", tokens)
+    except oauth.NoCompany as e:
+        raise HTTPException(403, "no_company: this Slack workspace belongs to no company you can join") from e
     except (oauth.OAuthError, httpx.HTTPError, KeyError) as e:
         log.warning("slack dev token rejected: %s", e if isinstance(e, oauth.OAuthError) else type(e).__name__)
-        raise HTTPException(400, "Slack rejected the token, or it is not from the company workspace") from e
+        raise HTTPException(400, "Slack rejected the token") from e
     linked = _link(request, engine, "slack", account, tokens)
     if linked is None:
         raise HTTPException(409, "account_mismatch: this Slack account belongs to someone else")

@@ -13,6 +13,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from app import companies
+
 log = logging.getLogger(__name__)
 
 http = httpx.Client(timeout=15)  # replaced in tests
@@ -32,7 +34,7 @@ PROVIDERS = {
     "google": Provider(
         "https://accounts.google.com/o/oauth2/v2/auth",
         "https://oauth2.googleapis.com/token",
-        ("openid", "email", "profile", "https://www.googleapis.com/auth/drive.readonly"),
+        ("openid", "email", "https://www.googleapis.com/auth/drive.readonly"),  # no `profile`: the email is enough
         auth_params={"access_type": "offline", "prompt": "consent"},  # always return a refresh token
     ),
     "slack": Provider(
@@ -47,8 +49,11 @@ PROVIDERS = {
         "https://auth.atlassian.com/oauth/token",
         (
             "read:jira-work", "read:jira-user",
-            "read:confluence-content.all", "read:confluence-space.summary", "search:confluence",
-            "read:confluence-user", "read:me", "offline_access",  # identity, and a refresh token
+            # Confluence v2 (spaces, pages) takes only granular scopes; the v1 calls (restrictions, group
+            # members, search, current user) take classic ones.
+            "read:space:confluence", "read:page:confluence",
+            "read:confluence-content.all", "read:confluence-groups", "search:confluence", "read:confluence-user",
+            "read:me", "offline_access",  # identity, and a refresh token
         ),
         auth_params={"audience": "api.atlassian.com", "prompt": "consent"},
     ),
@@ -61,6 +66,10 @@ class OAuthError(Exception):
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
         self.status = status  # >= 500: the provider is having trouble, the grant may still be fine
+
+
+class NoCompany(OAuthError):
+    """The sign-in is valid but its workspace or site belongs to no company this person can join."""
 
 
 @dataclass
@@ -77,12 +86,7 @@ class Account:
     email: str
     name: str
     extra: dict
-
-
-# Sign-ins are accepted only from the company (ADR-002): anyone can create a Google account, Slack
-# workspace or Atlassian site. Google: comma-separated Workspace domains (matched on the `hd` claim,
-# which personal Gmail accounts lack) and/or exact emails (test accounts).
-TENANT_ENV = {"google": "GOOGLE_ALLOWED_ACCOUNTS", "slack": "SLACK_TEAM_ID", "atlassian": "ATLASSIAN_CLOUD_ID"}
+    company_id: int | None  # the company this sign-in names (app/companies.py); None for Google
 
 
 def app_url() -> str:
@@ -101,8 +105,6 @@ def _client(provider: str) -> tuple[str, str]:
 
 def authorize_url(provider: str, state: str) -> str:
     p = PROVIDERS[provider]
-    if provider in TENANT_ENV:
-        os.environ[TENANT_ENV[provider]]  # fail before the user signs in, not after
     params = {
         "client_id": _client(provider)[0],
         "redirect_uri": redirect_uri(provider),
@@ -156,38 +158,40 @@ def _get(url: str, token: str, **params):
 
 
 def account(provider: str, tokens: Tokens) -> Account:
-    """Who signed in. The email links one person's accounts across providers (ADR-002)."""
+    """Who signed in, and their company (app/companies.py). The email links one person's accounts
+    across providers (ADR-002).
+    """
     token = tokens.access_token
     if provider == "google":
         me = _get("https://openidconnect.googleapis.com/v1/userinfo", token)
         if not me.get("email_verified"):
             raise OAuthError("google email not verified")
-        email = me["email"].lower()
-        allowed = {a.strip().lower() for a in os.environ["GOOGLE_ALLOWED_ACCOUNTS"].split(",") if a.strip()}
-        if email not in allowed and me.get("hd", "").lower() not in allowed:
-            raise OAuthError("google account is not a company account")
-        return Account(me["sub"], email, me.get("name") or me["email"], {})
+        # Google names no company (personal accounts have no domain): the user keeps theirs, or gets one
+        # when they connect Slack or Atlassian, in any order.
+        return Account(me["sub"], me["email"].lower(), me.get("name") or me["email"], {}, None)
     if provider == "slack":
         me = _get("https://slack.com/api/auth.test", token)
-        if me["team_id"] != os.environ["SLACK_TEAM_ID"]:
-            raise OAuthError("slack workspace is not the company workspace")
         user = _get("https://slack.com/api/users.info", token, user=me["user_id"])["user"]
         email = user.get("profile", {}).get("email")
         if not email:
             raise OAuthError("slack email missing")
+        guest = bool(user.get("is_restricted") or user.get("is_ultra_restricted"))
+        company = companies.for_slack(me["team_id"], me.get("team") or me["team_id"], email.lower(), create=not guest)
+        if company is None:
+            raise NoCompany("slack workspace belongs to no company you can join")
         return Account(me["user_id"], email.lower(), user.get("real_name") or user["name"],
-                       {"team_id": me["team_id"], "team": me.get("team"),
-                        "guest": bool(user.get("is_restricted") or user.get("is_ultra_restricted"))})
+                       {"team_id": me["team_id"], "team": me.get("team"), "guest": guest}, company)
     me = _get("https://api.atlassian.com/me", token)
     if me.get("email_verified") is False:
         raise OAuthError("atlassian email not verified")
-    company = os.environ["ATLASSIAN_CLOUD_ID"]
-    sites = [s for s in _get("https://api.atlassian.com/oauth/token/accessible-resources", token)
-             if s["id"] == company]
-    if not sites:
-        raise OAuthError("atlassian sign-in did not grant the company site")
+    sites = _get("https://api.atlassian.com/oauth/token/accessible-resources", token)
+    found = companies.for_atlassian(sites, me["email"].lower())
+    if found is None:
+        raise NoCompany("atlassian sign-in must grant exactly one site of your company")
+    company, cloud_id = found
     return Account(me["account_id"], me["email"].lower(), me.get("name") or me["email"],
-                   {"sites": [{k: s[k] for k in ("id", "url", "name", "scopes")} for s in sites]})
+                   {"sites": [{k: s[k] for k in ("id", "url", "name", "scopes")} for s in sites if s["id"] == cloud_id]},
+                   company)
 
 
 def revoke(provider: str, access_token: str, refresh_token: str | None) -> None:

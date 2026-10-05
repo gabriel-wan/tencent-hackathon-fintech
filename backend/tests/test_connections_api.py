@@ -65,23 +65,33 @@ class FakeProviders:
         return [r for r in self.requests if f"{r.method} {r.url.copy_with(query=None)}" == route]
 
 
+def add_company(name, slack_team, atlassian_cloud) -> int:
+    with db_engine.begin() as conn:
+        return conn.execute(
+            sa.text("INSERT INTO companies (name, slack_team_id, atlassian_cloud_id) VALUES (:n, :s, :a) RETURNING id"),
+            {"n": name, "s": slack_team, "a": atlassian_cloud},
+        ).scalar_one()
+
+
 @pytest.fixture
-def providers(monkeypatch):
+def providers(monkeypatch, engine):
     fake = FakeProviders()
     monkeypatch.setattr(oauth, "http", httpx.Client(transport=httpx.MockTransport(fake.handle)))
     for provider in ("GOOGLE", "SLACK", "ATLASSIAN"):
         monkeypatch.setenv(f"{provider}_CLIENT_ID", f"{provider.lower()}-client")
         monkeypatch.setenv(f"{provider}_CLIENT_SECRET", f"{provider.lower()}-secret")
     monkeypatch.setenv("APP_URL", "http://localhost:8000")
-    monkeypatch.setenv("GOOGLE_ALLOWED_ACCOUNTS", "corp.com")  # the company Workspace domain
-    monkeypatch.setenv("SLACK_TEAM_ID", "T1")  # the company workspace
-    monkeypatch.setenv("ATLASSIAN_CLOUD_ID", "cloud-1")  # the company site
+    # The company (its Slack workspace and Atlassian site) and alice, a member who has not connected yet.
+    fake.company = add_company("Corp", "T1", "cloud-1")
+    with db_engine.begin() as conn:
+        conn.execute(sa.text("INSERT INTO users (email, name, company_id) VALUES ('alice@corp.com', 'Alice', :c)"),
+                     {"c": fake.company})
     return fake
 
 
 def empty_tables():
     with db_engine.begin() as conn:  # also empties connections, sessions and user_principals
-        conn.execute(sa.text("TRUNCATE users CASCADE"))
+        conn.execute(sa.text("TRUNCATE users, companies CASCADE"))
 
 
 @pytest.fixture
@@ -152,8 +162,7 @@ def test_cookies_are_secure_on_https(client, providers, monkeypatch):
 
 
 @pytest.mark.parametrize(("connector", "missing"), [
-    ("slack", "APP_URL"), ("slack", "SLACK_CLIENT_ID"), ("slack", "SLACK_TEAM_ID"), ("slack", "TOKEN_ENCRYPTION_KEY"),
-    ("drive", "GOOGLE_ALLOWED_ACCOUNTS"),
+    ("slack", "APP_URL"), ("slack", "SLACK_CLIENT_ID"), ("slack", "TOKEN_ENCRYPTION_KEY"), ("drive", "GOOGLE_CLIENT_ID"),
 ])
 def test_connect_unconfigured_fails_before_sign_in(client, providers, monkeypatch, connector, missing):
     monkeypatch.delenv(missing)
@@ -222,7 +231,7 @@ def test_slack_guests_do_not_hold_slack_members(client, providers, engine, guest
 
 
 def test_unknown_slack_guest_status_counts_as_guest():
-    account = oauth.Account("U1", "alice@corp.com", "Alice", {"team_id": "T1"})  # no "guest" recorded
+    account = oauth.Account("U1", "alice@corp.com", "Alice", {"team_id": "T1"}, 1)  # no "guest" recorded
     assert store.principals("slack", account) == {"slack:user:U1"}
 
 
@@ -283,24 +292,91 @@ def test_slack_error_is_a_failure_even_with_http_200(client, providers):
     assert sign_in(client, "slack").headers["location"].endswith("error=provider_error")
 
 
-def test_slack_sign_in_from_another_workspace_is_rejected(client, providers):
+def test_slack_sign_in_from_another_workspace_cannot_take_over_a_user(client, providers, engine):
     # Anyone can create a Slack workspace and put the victim's email on a profile there.
     providers.routes[SLACK_ME] = {**providers.routes[SLACK_ME], "team_id": "T-ATTACKER"}
-    assert sign_in(client, "slack").headers["location"].endswith("error=provider_error")
-    assert providers.sent(SLACK_USER) == []  # rejected before the email is even read
+    assert sign_in(client, "slack").headers["location"].endswith("error=no_company")
     assert statuses(client)["slack"] is False
+    assert count(engine, "companies") == 1  # alice is not an admin: she cannot add a workspace either
 
 
-@pytest.mark.parametrize("allowed", ["corp.com", "gmail.com", "bob@corp.com"])
-def test_google_sign_in_outside_the_company_is_rejected(client, providers, engine, monkeypatch, allowed):
-    # Anyone can create a Gmail account; a domain entry matches only Workspace accounts (hd), never gmail.com.
-    monkeypatch.setenv("GOOGLE_ALLOWED_ACCOUNTS", allowed)
-    providers.routes[GOOGLE_ME] = {"sub": "g-9", "email": "mallory@gmail.com", "email_verified": True}
-    resp = sign_in(client, "drive")
-    assert resp.headers["location"].endswith("error=provider_error")
-    assert "ib_session=" not in resp.headers.get("set-cookie", "")
-    assert len(providers.sent(GOOGLE_REVOKE)) == 1  # the outsider's grant is dropped, not kept
-    assert count(engine, "users") == 0 and count(engine, "sessions") == 0
+def test_connections_work_in_any_order_drive_first(client, providers, engine):
+    # Google names no company: Drive connects, and the person has no company (sees nothing) until
+    # Slack names one. Then they join it, as its admin since Corp has none yet.
+    providers.routes[GOOGLE_ME] = {"sub": "g-2", "email": "bob@corp.com", "email_verified": True}
+    assert sign_in(client, "drive").headers["location"].endswith("connected=google")
+    assert users_by_company(engine)["bob@corp.com"] == (None, False)
+    providers.routes[SLACK_ME] = {**providers.routes[SLACK_ME], "user_id": "U2"}
+    providers.routes[SLACK_USER] = {"ok": True, "user": {"name": "bob", "profile": {"email": "bob@corp.com"}}}
+    assert sign_in(client, "slack").headers["location"].endswith("connected=slack")
+    assert users_by_company(engine)["bob@corp.com"] == (providers.company, True)
+    assert statuses(client) == {"drive": True, "slack": True, "jira": False, "confluence": False}
+
+
+def users_by_company(engine):
+    with engine.connect() as conn:
+        return {e: (c, a) for e, c, a in conn.execute(sa.text("SELECT email, company_id, is_admin FROM users"))}
+
+
+def sign_in_from_new_workspace(client, providers, email, user_id="U2", guest=False):
+    client.delete("/api/session")
+    providers.routes[SLACK_ME] = {**providers.routes[SLACK_ME], "user_id": user_id, "team_id": "T2", "team": "Other"}
+    providers.routes[SLACK_USER] = {"ok": True, "user": {"name": email, "profile": {"email": email},
+                                                         "is_restricted": guest}}
+    return sign_in(client, "slack").headers["location"]
+
+
+def test_first_sign_in_from_a_new_workspace_creates_the_company_and_its_admin(client, providers, engine):
+    assert sign_in_from_new_workspace(client, providers, "bob@other.com").endswith("connected=slack")
+    assert sign_in_from_new_workspace(client, providers, "carol@other.com", "U3").endswith("connected=slack")
+    with engine.connect() as conn:
+        other = conn.execute(sa.text("SELECT id FROM companies WHERE slack_team_id = 'T2'")).scalar_one()
+    assert users_by_company(engine) == {"alice@corp.com": (providers.company, False),
+                                        "bob@other.com": (other, True), "carol@other.com": (other, False)}
+    with engine.connect() as conn:  # who joined, and who was made admin, is in the audit log
+        events = conn.execute(sa.text("SELECT a.payload->>'made_admin' FROM audit_events a JOIN users u "
+                                      "ON u.id = a.user_id ORDER BY a.id")).scalars().all()
+    assert events == ["true", "false"]
+
+
+def test_a_slack_guest_cannot_start_a_company(client, providers, engine):
+    assert sign_in_from_new_workspace(client, providers, "guest@agency.com", guest=True).endswith("error=no_company")
+    assert count(engine, "companies") == 1
+
+
+def test_a_person_cannot_join_a_second_company(client, providers, engine):
+    sign_in(client, "drive")  # alice@corp.com, in Corp
+    add_company("Other", "T2", None)
+    assert sign_in_from_new_workspace(client, providers, "alice@corp.com").endswith("error=account_mismatch")
+    assert users_by_company(engine) == {"alice@corp.com": (providers.company, False)}
+
+
+def test_admin_adds_their_companys_atlassian_site(client, providers, engine):
+    with engine.begin() as conn:
+        conn.execute(sa.text("UPDATE companies SET atlassian_cloud_id = NULL"))
+        conn.execute(sa.text("UPDATE users SET is_admin = true"))
+    assert sign_in(client, "jira").headers["location"].endswith("connected=atlassian")
+    with engine.connect() as conn:
+        assert conn.execute(sa.text("SELECT atlassian_cloud_id FROM companies")).scalar() == "cloud-1"
+
+
+def test_atlassian_listing_one_site_once_per_product_is_one_site(client, providers, engine):
+    # What Atlassian really returns for an app with Jira and Confluence scopes: the same site twice.
+    with engine.begin() as conn:
+        conn.execute(sa.text("UPDATE companies SET atlassian_cloud_id = NULL"))
+        conn.execute(sa.text("UPDATE users SET is_admin = true"))
+    site = {"id": "cloud-1", "url": "https://corp.atlassian.net", "name": "corp"}
+    providers.routes[ATL_SITES] = [{**site, "scopes": ["read:jira-work"]},
+                                   {**site, "scopes": ["read:confluence-content.all"]}]
+    assert sign_in(client, "jira").headers["location"].endswith("connected=atlassian")
+    assert statuses(client)["jira"] is True and statuses(client)["confluence"] is True
+
+
+def test_atlassian_sign_in_granting_several_new_sites_is_rejected(client, providers):
+    providers.routes[ATL_ME] = {**providers.routes[ATL_ME], "email": "new@elsewhere.com"}
+    providers.routes[ATL_SITES] = [{"id": f"cloud-{i}", "url": "https://x.atlassian.net", "name": "x",
+                                    "scopes": BOTH_PRODUCTS} for i in (8, 9)]
+    assert sign_in(client, "jira").headers["location"].endswith("error=no_company")
 
 
 def test_outage_after_sign_in_does_not_revoke(client, providers):
@@ -310,16 +386,10 @@ def test_outage_after_sign_in_does_not_revoke(client, providers):
     assert providers.sent(GOOGLE_REVOKE) == []
 
 
-def test_google_test_account_on_the_allowlist_signs_in(client, providers, monkeypatch):
-    monkeypatch.setenv("GOOGLE_ALLOWED_ACCOUNTS", "corp.com, Tester@Gmail.com")
-    providers.routes[GOOGLE_ME] = {"sub": "g-2", "email": "tester@gmail.com", "email_verified": True}
-    assert sign_in(client, "drive").headers["location"].endswith("connected=google")
-
-
 def test_atlassian_sign_in_without_the_company_site_is_rejected(client, providers):
     providers.routes[ATL_SITES] = [{"id": "cloud-attacker", "url": "https://evil.atlassian.net", "name": "evil",
                                     "scopes": BOTH_PRODUCTS}]
-    assert sign_in(client, "jira").headers["location"].endswith("error=provider_error")
+    assert sign_in(client, "jira").headers["location"].endswith("error=no_company")
     assert statuses(client)["jira"] is False
 
 
@@ -507,11 +577,25 @@ def test_ping_reports_api_failure_without_details(client, providers, monkeypatch
 
 # ---- Disconnecting and signing out ----
 
-def test_disconnect_removes_and_revokes(client, providers):
+def test_disconnect_removes_and_revokes(client, providers, engine):
     sign_in(client, "drive")
     assert client.delete("/connectors/drive").status_code == 204
     assert statuses(client)["drive"] is False
     assert parse_qs(providers.sent(GOOGLE_REVOKE)[0].content.decode())["token"] == ["g-refresh"]
+    with engine.connect() as conn:
+        assert conn.execute(sa.text(  # audit_events is append-only: this test's user only
+            "SELECT event_type FROM audit_events a JOIN users u ON u.id = a.user_id ORDER BY a.id")).scalars().all() == [
+            "connector_connected", "connector_disconnected"]
+
+
+def test_changed_encryption_key_means_connect_again_not_a_crash(client, providers, monkeypatch):
+    sign_in(client, "drive")
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    store.cipher.cache_clear()
+    resp = client.get("/connectors/drive/ping")
+    assert resp.status_code == 401 and "connect again" in resp.json()["detail"]
+    assert client.delete("/connectors/drive").status_code == 204  # still removable; nothing readable to revoke
+    assert statuses(client)["drive"] is False and providers.sent(GOOGLE_REVOKE) == []
 
 
 def test_disconnecting_jira_also_disconnects_confluence(client, providers):
@@ -561,8 +645,8 @@ def test_dev_slack_token_connects_like_sign_in(engine, providers):
 def test_dev_slack_token_from_another_workspace_is_rejected(engine, providers):
     providers.routes[SLACK_ME] = {**providers.routes[SLACK_ME], "team_id": "T-ATTACKER"}
     resp = TestClient(create_app("development")).post(DEV_SLACK, json={"token": "xoxp-mallory"})
-    assert resp.status_code == 400
-    assert count(engine, "users") == 0
+    assert resp.status_code == 403
+    assert count(engine, "users") == 1  # only alice, unchanged
 
 
 def test_dev_slack_rejects_anything_but_a_user_token(engine, providers):
@@ -580,7 +664,7 @@ def test_development_mode_refuses_an_https_deployment(monkeypatch):
 @pytest.mark.parametrize(("app_env", "hinted"), [("development", True), ("production", False)])
 def test_slack_connect_unconfigured_points_to_the_token_route_in_development(engine, providers, monkeypatch,
                                                                              app_env, hinted):
-    monkeypatch.delenv("SLACK_CLIENT_ID")  # the local setup: only SLACK_TEAM_ID is set
+    monkeypatch.delenv("SLACK_CLIENT_ID")  # the local setup: no Slack OAuth app
     detail = TestClient(create_app(app_env)).get("/connectors/slack/connect").json()["detail"]
     assert "SLACK_CLIENT_ID" in detail
     assert ("paste your Slack token" in detail) is hinted
