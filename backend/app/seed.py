@@ -11,6 +11,10 @@ Each document exercises one permission case:
   Contractor guide   Drive, shared with the domain and with Charlie
   Salary bands       Drive, company-wide BUT in a folder outside the admin boundary
 
+A second company, Kopi Labs, shares the database. Its #general thread is open to
+every Slack member, which Alice also is in her own company: she must never see it
+(company isolation).
+
 Run:  docker compose run --rm backend python -m app.seed [--embed]
 --embed also computes embeddings through TokenHub (needs LLM_* settings and an
 API key allowed to use the embedding model).
@@ -89,54 +93,93 @@ DOCUMENTS = [
 ]
 
 
+KOPI = "kopilabs.example"
+
+KOPI_USERS = [
+    ("dana@kopilabs.example", "Dana Koh (Kopi Labs engineer)", False,
+     ["slack:user:U101", "slack:members", "google:user:dana@kopilabs.example", f"google:domain:{KOPI}"]),
+]
+
+KOPI_BOUNDARY = [("slack", "C_GENERAL", "channel", "#general")]
+
+KOPI_DOCUMENTS = [
+    ("slack", "C_GENERAL:1727999000.000100", "C_GENERAL", "#general",
+     "https://kopilabs.slack.example/archives/C_GENERAL/p1727999000000100", "2026-10-03T10:00:00Z",
+     ["slack:members"],
+     "Dana: Our payment gateway migration finished last week with no blockers."),
+]
+
+COMPANIES = [
+    # Slack team ID (the seed's key for the company), name, users, boundary, documents
+    ("T_MERLION", "MerlionPay", USERS, BOUNDARY, DOCUMENTS),
+    ("T_KOPI", "Kopi Labs", KOPI_USERS, KOPI_BOUNDARY, KOPI_DOCUMENTS),
+]
+
+
+def seed_company(conn, team, company_name, users, boundary, documents) -> None:
+    company = conn.execute(
+        text(
+            "INSERT INTO companies (name, slack_team_id) VALUES (:n, :t) "
+            "ON CONFLICT (slack_team_id) DO UPDATE SET name = EXCLUDED.name RETURNING id"
+        ),
+        {"n": company_name, "t": team},
+    ).scalar_one()
+
+    for email, name, is_admin, principals in users:
+        user_id = conn.execute(
+            text(
+                "INSERT INTO users (email, name, is_admin, company_id) VALUES (:e, :n, :a, :c) "
+                "ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, is_admin = EXCLUDED.is_admin, "
+                "company_id = EXCLUDED.company_id "
+                "RETURNING id"
+            ),
+            {"e": email, "n": name, "a": is_admin, "c": company},
+        ).scalar_one()
+        conn.execute(text("DELETE FROM user_principals WHERE user_id = :u"), {"u": user_id})
+        for p in principals:
+            conn.execute(text("INSERT INTO user_principals VALUES (:u, :p)"), {"u": user_id, "p": p})
+
+    for source, scope_id, scope_type, title in boundary:
+        conn.execute(
+            text(
+                "INSERT INTO boundary (company_id, source, scope_id, scope_type, title) "
+                "VALUES (:c, :s, :i, :t, :ti) "
+                "ON CONFLICT (company_id, source, scope_id) DO UPDATE SET title = EXCLUDED.title"
+            ),
+            {"c": company, "s": source, "i": scope_id, "t": scope_type, "ti": title},
+        )
+
+    for source, source_id, scope_id, title, url, updated_at, acl, body in documents:
+        doc_id = conn.execute(
+            text(
+                "INSERT INTO documents (company_id, source, source_id, scope_id, title, url, updated_at, acl, "
+                "metadata, content_hash) VALUES (:c, :s, :sid, :scope, :t, :url, CAST(:u AS timestamptz), "
+                "CAST(:acl AS text[]), "
+                "CAST(:meta AS jsonb), :h) "
+                "ON CONFLICT (company_id, source, source_id) DO UPDATE SET scope_id = EXCLUDED.scope_id, "
+                "title = EXCLUDED.title, url = EXCLUDED.url, updated_at = EXCLUDED.updated_at, "
+                "acl = EXCLUDED.acl, content_hash = EXCLUDED.content_hash, deleted_at = NULL "
+                "RETURNING id"
+            ),
+            {"c": company, "s": source, "sid": source_id, "scope": scope_id, "t": title, "url": url,
+             "u": updated_at, "acl": acl, "meta": '{"seed": true}',
+             "h": hashlib.sha256(body.encode()).hexdigest()},
+        ).scalar_one()
+        conn.execute(text("DELETE FROM chunks WHERE document_id = :d"), {"d": doc_id})
+        conn.execute(
+            text("INSERT INTO chunks (document_id, ordinal, text, text_hash) VALUES (:d, 0, :t, :h)"),
+            {"d": doc_id, "t": body, "h": hashlib.sha256(body.encode()).hexdigest()},
+        )
+
+
 def main() -> None:
     if os.environ.get("APP_ENV") != "development":
         sys.exit("Refusing to seed: APP_ENV is not 'development'.")
     embed = "--embed" in sys.argv
 
     with engine.begin() as conn:
-        for email, name, is_admin, principals in USERS:
-            user_id = conn.execute(
-                text(
-                    "INSERT INTO users (email, name, is_admin) VALUES (:e, :n, :a) "
-                    "ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, is_admin = EXCLUDED.is_admin "
-                    "RETURNING id"
-                ),
-                {"e": email, "n": name, "a": is_admin},
-            ).scalar_one()
-            conn.execute(text("DELETE FROM user_principals WHERE user_id = :u"), {"u": user_id})
-            for p in principals:
-                conn.execute(text("INSERT INTO user_principals VALUES (:u, :p)"), {"u": user_id, "p": p})
-
-        for source, scope_id, scope_type, title in BOUNDARY:
-            conn.execute(
-                text(
-                    "INSERT INTO boundary (source, scope_id, scope_type, title) VALUES (:s, :i, :t, :ti) "
-                    "ON CONFLICT (source, scope_id) DO UPDATE SET title = EXCLUDED.title"
-                ),
-                {"s": source, "i": scope_id, "t": scope_type, "ti": title},
-            )
-
-        for source, source_id, scope_id, title, url, updated_at, acl, body in DOCUMENTS:
-            doc_id = conn.execute(
-                text(
-                    "INSERT INTO documents (source, source_id, scope_id, title, url, updated_at, acl, "
-                    "metadata, content_hash) VALUES (:s, :sid, :scope, :t, :url, CAST(:u AS timestamptz), "
-                    "CAST(:acl AS text[]), "
-                    "CAST(:meta AS jsonb), :h) "
-                    "ON CONFLICT (source, source_id) DO UPDATE SET scope_id = EXCLUDED.scope_id, "
-                    "title = EXCLUDED.title, url = EXCLUDED.url, updated_at = EXCLUDED.updated_at, "
-                    "acl = EXCLUDED.acl, content_hash = EXCLUDED.content_hash, deleted_at = NULL "
-                    "RETURNING id"
-                ),
-                {"s": source, "sid": source_id, "scope": scope_id, "t": title, "url": url, "u": updated_at,
-                 "acl": acl, "meta": '{"seed": true}', "h": hashlib.sha256(body.encode()).hexdigest()},
-            ).scalar_one()
-            conn.execute(text("DELETE FROM chunks WHERE document_id = :d"), {"d": doc_id})
-            conn.execute(
-                text("INSERT INTO chunks (document_id, ordinal, text, text_hash) VALUES (:d, 0, :t, :h)"),
-                {"d": doc_id, "t": body, "h": hashlib.sha256(body.encode()).hexdigest()},
-            )
+        for team, company_name, users, boundary, documents in COMPANIES:
+            seed_company(conn, team, company_name, users, boundary, documents)
 
         if embed:
             from app.llm.client import LLMClient
@@ -150,7 +193,7 @@ def main() -> None:
                     {"v": vector_literal(vec), "id": row.id},
                 )
 
-    print(f"Seeded {len(USERS)} users, {len(BOUNDARY)} boundary scopes, {len(DOCUMENTS)} documents"
+    print(f"Seeded {len(COMPANIES)} companies"
           f"{' with embeddings' if embed else ' (no embeddings: keyword search only)'}.")
 
 
