@@ -32,6 +32,16 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  sync:
+    build: ./backend
+    command: python -m app.sync --loop
+    env_file: backend/.env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   frontend:
     build: ./frontend
     env_file: frontend/.env
