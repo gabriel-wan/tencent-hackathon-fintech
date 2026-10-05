@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from app.auth.principals import principals_for
 from app.connectors import atlassian, drive, oauth, slack, store
 from app.db import engine as db_engine
-from app.main import app
+from app.main import app, create_app
 
 GOOGLE_TOKEN = "POST https://oauth2.googleapis.com/token"
 GOOGLE_ME = "GET https://openidconnect.googleapis.com/v1/userinfo"
@@ -245,6 +245,12 @@ def test_callback_without_starting_sign_in_is_rejected(client, providers):
     assert resp.headers["location"].endswith("error=invalid_state")
 
 
+def test_non_ascii_state_is_rejected_not_a_crash(client, providers):
+    client.get("/connectors/drive/connect")
+    resp = client.get("/oauth/google/callback", params={"code": "c", "state": "é"})
+    assert resp.headers["location"].endswith("error=invalid_state")
+
+
 def test_state_from_another_provider_is_rejected(client, providers):
     resp = client.get("/connectors/drive/connect")
     state = parse_qs(urlparse(resp.headers["location"]).query)["state"][0]
@@ -454,6 +460,14 @@ def test_rotated_token_is_kept_even_when_the_api_call_then_fails(client, provide
     assert store._decrypt(stored) == "a-refresh-2"  # ...but the spent refresh token was already replaced
 
 
+def test_provider_refusing_the_token_asks_user_to_reconnect(client, providers, monkeypatch):
+    sign_in(client, "confluence")
+    fake_atlassian(monkeypatch, status=401)  # e.g. a scope added after this sign-in
+    resp = client.get("/connectors/confluence/ping")
+    assert resp.status_code == 401
+    assert "connect again" in resp.json()["detail"]
+
+
 def test_google_refresh_keeps_the_original_refresh_token(client, providers, engine, monkeypatch):
     sign_in(client, "drive")
     expire_tokens(engine)
@@ -523,3 +537,50 @@ def test_expired_session_is_ignored(client, providers, engine):
     with engine.begin() as conn:
         conn.execute(sa.text("UPDATE sessions SET expires_at = now() - interval '1 second'"))
     assert statuses(client)["drive"] is False
+
+
+# ---- Development only: connect Slack with a pasted user token (no https tunnel) ----
+
+DEV_SLACK = "/api/dev/connectors/slack"
+
+
+def test_dev_slack_token_route_exists_only_in_development(engine, providers):
+    assert TestClient(create_app("production")).post(DEV_SLACK, json={"token": "xoxp-alice"}).status_code == 404
+
+
+def test_dev_slack_token_connects_like_sign_in(engine, providers):
+    dev = TestClient(create_app("development"))
+    resp = dev.post(DEV_SLACK, json={"token": "xoxp-alice"})
+    assert resp.json() == {"connected": "slack", "as": "Alice"}
+    assert "ib_session=" in resp.headers["set-cookie"]
+    assert statuses(dev)["slack"] is True
+    assert principals(engine) == ["public", "slack:members", "slack:user:U1"]
+    assert providers.sent(SLACK_ME)[0].headers["authorization"] == "Bearer xoxp-alice"
+
+
+def test_dev_slack_token_from_another_workspace_is_rejected(engine, providers):
+    providers.routes[SLACK_ME] = {**providers.routes[SLACK_ME], "team_id": "T-ATTACKER"}
+    resp = TestClient(create_app("development")).post(DEV_SLACK, json={"token": "xoxp-mallory"})
+    assert resp.status_code == 400
+    assert count(engine, "users") == 0
+
+
+def test_dev_slack_rejects_anything_but_a_user_token(engine, providers):
+    resp = TestClient(create_app("development")).post(DEV_SLACK, json={"token": "xoxb-bot\r\nX-Evil: 1"})
+    assert resp.status_code == 422
+    assert providers.sent(SLACK_ME) == []
+
+
+def test_development_mode_refuses_an_https_deployment(monkeypatch):
+    monkeypatch.setenv("APP_URL", "https://brain.example.com")
+    with pytest.raises(RuntimeError):
+        create_app("development")
+
+
+@pytest.mark.parametrize(("app_env", "hinted"), [("development", True), ("production", False)])
+def test_slack_connect_unconfigured_points_to_the_token_route_in_development(engine, providers, monkeypatch,
+                                                                             app_env, hinted):
+    monkeypatch.delenv("SLACK_CLIENT_ID")  # the local setup: only SLACK_TEAM_ID is set
+    detail = TestClient(create_app(app_env)).get("/connectors/slack/connect").json()["detail"]
+    assert "SLACK_CLIENT_ID" in detail
+    assert ("paste your Slack token" in detail) is hinted
