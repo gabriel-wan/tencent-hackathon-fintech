@@ -22,6 +22,7 @@ import sqlalchemy as sa
 from cryptography.fernet import Fernet
 from google.oauth2.credentials import Credentials
 from slack_sdk import WebClient
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.connectors import atlassian, drive, oauth, slack
 
@@ -103,9 +104,8 @@ def save_connection(db, user_id: int, provider: str, account: oauth.Account, tok
         "expires_at": tokens.expires_at, "scopes": tokens.scopes, "extra": account.extra,
         "updated_at": int(time.time()),
     }
-    key = (connections.c.user_id == user_id) & (connections.c.provider == provider)
-    if db.execute(connections.update().where(key).values(**values)).rowcount == 0:
-        db.execute(connections.insert().values(user_id=user_id, provider=provider, **values))
+    db.execute(pg_insert(connections).values(user_id=user_id, provider=provider, **values)
+               .on_conflict_do_update(index_elements=["user_id", "provider"], set_=values))  # atomic: no race
     _set_principals(db, user_id, provider, principals(provider, account))
 
 
