@@ -58,19 +58,15 @@ channel is public and you are a full member.
 
 ### Auth / setup
 
-```
-1. api.slack.com/apps → Create New App → Blank app → our workspace (keep it internal: never distribute)
-2. OAuth & Permissions → Bot scopes:
-   channels:read channels:history groups:read groups:history users:read users:read.email
-3. Install to Workspace → Bot token (xoxb-) → SLACK_BOT_TOKEN
-4. /invite @ourbot in every private channel to be indexed
-```
-
-Check with `python -m app.connectors slack` (see [GUIDE.md §7.5](GUIDE.md#75-admin-credentials-for-sync)): it fails if any scope above is missing.
+Every call uses one person's own **user token** (`xoxp-`) with the User Token Scopes
+`channels:read channels:history groups:read groups:history users:read users:read.email`
+([GUIDE.md §4](GUIDE.md#4-slack)): the company admin's for sync, the asking user's for the
+live check. There is no bot. Sync sees only channels the admin can see, so the admin must be
+in every private channel added to the boundary.
 
 ```python
-from slack_sdk import WebClient
-slack = WebClient(token=SLACK_BOT_TOKEN)
+from app.connectors import store
+slack = store.client(engine, user_id, "slack")   # slack_sdk WebClient as that user
 slack.conversations_list(types="public_channel,private_channel")
 ```
 
@@ -156,21 +152,23 @@ One document per thread (a message with no replies is a thread of one):
 }
 ```
 
-`acl` = the channel's members from 4.4 (bots removed) for a private channel,
-or `["slack:members"]` for a public one.
+`acl` = the channel's members from 4.4 for a private channel, or
+`["slack:members"]` plus the members (so guests who joined are included) for a
+public one. Live check: `conversations.info` as the user; Slack answers
+`channel_not_found` when they can't open the channel.
 
 ## 6. Summary
 
 **Takeaways**
 
 - **Access = channel membership.** Public channels go to full members only, not guests.
-- **Invite the bot to every private channel to be indexed**, or it's silently skipped.
-- **Keep the app internal.** That keeps normal rate limits, and it's the case Slack's API terms allow to store and index messages.
+- **The company admin must be in every private channel to be indexed**: sync reads as them.
+- **Rate limits for many companies.** An internal app (one workspace) keeps normal limits. An app installed in other companies' workspaces without Slack Marketplace approval gets the 2025 limits (about 1 history request per minute), which a 5-minute sync can't meet: get Marketplace approval before production, and check that Slack's terms allow storing and indexing messages for the use case.
 - History has **no replies**. Index whole threads via 4.3, and catch new replies to old threads through `latest_reply`.
 - Replace `<@U024>` / `<#C456|eng>` with names before storing text.
 - Free plan keeps only **90 days** of messages.
 
-**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md))
+**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md)). Built today (`app/sync.py`, `slack.py`): every 5 minutes, 4.2 and 4.4 over each boundary channel in full, 4.3 only for threads with a new reply or edit since the last sync, and `can_read` as the user. The table is the cursor-based design for when channels outgrow that.
 
 | Method | Calls | Runs |
 |---|---|---|

@@ -35,6 +35,10 @@ The team shares one workspace per tool, so everyone sees the same data. Each dev
 4. In `backend/.env`, set `TOKEN_ENCRYPTION_KEY=<the printed key>`, including its trailing `=`.
 5. From the repo root, run `docker compose up --build`. When it's running, open http://localhost:3000/connectors.
    - ✅ The 4 tools are listed. **Connect** on a tool you haven't set up returns 503, naming the missing variable.
+6. Nothing to register: the company is created by the first sign-in.
+   - The first person to connect **Slack or Jira/Confluence** from a new Slack workspace or Atlassian site creates the company and becomes its admin. Everyone after them from that workspace or site joins it.
+   - Connect the tools in any order, with the same email. Google Drive names no company: until you connect Slack or Jira/Confluence, you are in no company and the app shows you nothing.
+   - The admin can add the other tool later (for example the Atlassian site of a company started from Slack) by connecting it. Anyone else from an unknown workspace or site, Slack guests starting a company, and Atlassian sign-ins granting several unknown sites are refused with `?error=no_company`, and the page says what to do.
 
 Each tool row has **Connect**, **Test** and **Disconnect**. **Test** opens `{"ok": true, "as": "<your name or email>"}` when the connection works, or says `connect again` when it doesn't.
 
@@ -59,8 +63,8 @@ Each tool row has **Connect**, **Test** and **Disconnect**. **Test** opens `{"ok
    ```
    GOOGLE_CLIENT_ID=<Client ID>
    GOOGLE_CLIENT_SECRET=<Client secret>
-   GOOGLE_ALLOWED_ACCOUNTS=<your Google email>
    ```
+   Use the same email as on Slack and Jira/Confluence (section 2, step 6).
 3. Restart. Open http://localhost:3000/connectors, click **Connect** on Google Drive, and sign in with that Google account. At "Google hasn't verified this app", click **Continue**, then allow access.
    - ✅ Drive shows your email, and **Test** shows it too.
 
@@ -71,17 +75,14 @@ In Testing mode, Google ends the access after 7 days. When **Test** says `connec
 Locally, you connect Slack by pasting a token from your own Slack app. The **Connect** button only works in production, because Slack only redirects to `https://` addresses.
 
 **Set up once (one teammate):**
-1. Create a Slack workspace for the project (or pick an existing one), and invite every developer.
-2. Open it at https://app.slack.com. The address bar shows `https://app.slack.com/client/T…/…`. Copy the part starting with `T` (e.g. `T0123ABCD`): that's the workspace ID.
-3. Send the workspace ID to the team.
+1. Create a Slack workspace for the project (or pick an existing one), and invite every developer as a full member (not a guest).
 
 **Each developer:**
 1. Go to https://api.slack.com/apps. Click **Create New App → Blank app**, name it e.g. `<project> dev (<your name>)`, pick the team's workspace, and create it.
 2. Click **OAuth & Permissions** (left menu) and scroll to **Scopes**. Under **User Token Scopes** (not Bot Token Scopes), click **Add an OAuth Scope** once for each: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `users:read`, `users:read.email`. Leave **Required** unticked.
 3. Scroll back to the top of **OAuth & Permissions**. Click **Install to Workspace**, then **Allow**. (If the workspace requires admin approval, ask its admin to approve your app first.)
 4. Copy the **User OAuth Token** (`xoxp-…`) that now appears. It acts as you: never share it.
-5. In `backend/.env`, set `SLACK_TEAM_ID=<the workspace ID>`. Restart.
-6. Open http://localhost:3000/connectors. Paste your `xoxp-…` token into the Slack box and click **Connect with token**.
+5. Open http://localhost:3000/connectors. Paste your `xoxp-…` token into the Slack box and click **Connect with token**.
    - ✅ The page says "Connected to slack", and Slack shows your email. **Test** shows your Slack name.
 
 ## 5. Jira and Confluence
@@ -90,28 +91,26 @@ One Atlassian sign-in connects both. The team shares one Atlassian site. Each de
 
 **Set up once (one teammate, a site admin):**
 1. Go to https://admin.atlassian.com. Open **Users** (left menu), click **Invite users**, and invite every developer with access to Jira and Confluence.
-2. Open Jira. The address bar shows `https://<site>.atlassian.net/…`: that's the site address.
-3. Open `https://<site>.atlassian.net/_edge/tenant_info`. It shows `{"cloudId":"…"}`. Copy that value, without quotes: it's the site's cloud ID.
-4. Send the site address and the cloud ID to the team.
+2. Send the site address (`https://<site>.atlassian.net`) to the team.
 
 **Each developer:**
 1. Accept the invite email. Open the site address and check you can see Jira and Confluence.
 2. Go to https://developer.atlassian.com/console/myapps, signed in with that same Atlassian account. Click **Create → OAuth 2.0 integration**, name it e.g. `<project> dev (<your name>)`, accept the terms, and click **Create**. Your app opens.
 3. Click **Authorization** (left menu). Next to **OAuth 2.0 (3LO)**, click **Add**. Set **Callback URL** to `http://localhost:8000/oauth/atlassian/callback`, and click **Save changes**.
-4. Click **Permissions** (left menu). For each API below, click **Add** next to it, then **Configure**. Open the **Classic scopes** tab, click **Edit Scopes**, tick the scopes, and save:
-   - **Jira API:** `read:jira-work`, `read:jira-user`
-   - **Confluence API:** `read:confluence-content.all`, `read:confluence-space.summary`, `search:confluence`, `read:confluence-user`
-   - **User identity API:** `read:me`
+4. Click **Permissions** (left menu). For each API below, click **Add** next to it, then **Configure**. On each scopes tab named below, click **Edit Scopes**, tick the scopes, and save:
+   - **Jira API**, Classic scopes: `read:jira-work`, `read:jira-user`
+   - **Confluence API**, Classic scopes: `read:confluence-content.all`, `search:confluence`, `read:confluence-user`, `read:confluence-groups`
+   - **Confluence API**, Granular scopes: `read:space:confluence`, `read:page:confluence` (Confluence's newer v2 API accepts only these)
+   - **User identity API**, Classic scopes: `read:me`
 5. Skip **Distribution**: leave it as **Not sharing**.
-6. Click **Settings** (left menu). Under **Authentication details**, copy the **Client ID** and **Secret** into `backend/.env`, along with the team's cloud ID:
+6. Click **Settings** (left menu). Under **Authentication details**, copy the **Client ID** and **Secret** into `backend/.env`:
    ```
    ATLASSIAN_CLIENT_ID=<Client ID>
    ATLASSIAN_CLIENT_SECRET=<Secret>
-   ATLASSIAN_CLOUD_ID=<the team's cloud ID>
    ```
-   The long ID in this page's address is your app's ID, not the cloud ID.
 7. Restart. Open http://localhost:3000/connectors, click **Connect** on Jira, sign in with the same Atlassian account, then click **Accept**.
    - ✅ Jira and Confluence both show connected, and **Test** on each shows your name.
+   - Connected before the Confluence scopes changed (the two granular ones, and `read:confluence-groups`)? Add them to your app (step 4), then click **Connect** again. Atlassian refuses the whole sign-in ("Something went wrong") if any requested scope isn't ticked.
 
 ## 6. Production
 
@@ -129,13 +128,15 @@ Production uses its own apps and secrets, never the ones from your laptop. `<APP
 5. **Google.** Repeat section 3's set-up in a new project, with these changes:
    - **Audience:** **Internal** if the company uses Google Workspace (no review needed). Otherwise **External**, then publish the app, which requires Google's verification for Drive access.
    - **Authorized redirect URI:** `<APP_URL>/oauth/google/callback`
-   - Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_ALLOWED_ACCOUNTS=<company domain, e.g. company.com>`.
-6. **Slack.** The workspace admin creates one company app, following section 4 steps 1 and 2. Then:
+   - Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Serving many companies needs **External**, published and verified: Drive is a restricted scope, so Google's verification includes a security assessment and takes weeks.
+6. **Slack.** Create one app for the product, following section 4 steps 1 and 2. Then:
    - **OAuth & Permissions → Redirect URLs:** add `<APP_URL>/oauth/slack/callback`, and save.
    - **Basic Information → App Credentials:** copy the **Client ID** and **Client Secret**.
-   - Set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` and `SLACK_TEAM_ID`.
+   - **Manage Distribution:** activate public distribution, so other companies' workspaces can install it.
+   - Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`.
 7. **Jira and Confluence: blocked.** Every user signing in to one company app needs **Distribution → Sharing**. Sharing asks whether the app stores personal data: it does (Atlassian account IDs), so Atlassian requires the [Personal Data Reporting API](https://developer.atlassian.com/cloud/jira/platform/user-privacy-developer-guide/) (report stored account IDs every 7 days, erase data for closed accounts). Build it first, and never tick its confirmation box before then.
-8. Deploy. Open `<public frontend address>/connectors`, and click **Connect** on each tool.
+8. **Companies** sign themselves up: the first person to connect from a new Slack workspace or Atlassian site creates the company and becomes its admin (section 2, step 6).
+9. Deploy. The `sync` service (`docker-compose.yml`) syncs every company every 5 minutes. Open `<public frontend address>/connectors`, and click **Connect** on each tool.
    - ✅ **Test** shows your account on each.
 
 ## 7. Development
@@ -143,10 +144,10 @@ Production uses its own apps and secrets, never the ones from your laptop. `<APP
 ### 7.1 How it fits
 
 1. **Connect.** A user clicks **Connect** and signs in to the tool. The `connections` table stores their tokens, encrypted. The first connect creates the user (linked by email) and signs them in to the app: the same session as the rest of the API.
-2. **Call.** Backend code calls the tool as that user (`store.*`), or as the admin for sync (`atlassian`, `drive`, `slack`).
-3. **Permissions.** Each connection writes the user's principals (7.4) to `user_principals`. Search keeps the documents whose `acl` overlaps them (`app/auth/principals.py`). Then the live check re-asks the tool, and has the final say.
+2. **Sync.** Every 5 minutes (or on **sync now**), `app/sync.py` reads each boundary scope as the company admin's own connection and writes `documents` and `chunks` (7.4, 7.5).
+3. **Permissions.** Each connection writes the user's principals (7.4) to `user_principals`. Search keeps the user's own company's documents whose `acl` overlaps them (`app/auth/principals.py`). Then the live check re-asks each tool as that user (`app/connectors/live.py`), and has the final say.
 
-Code: `backend/app/connectors/`. Users, sessions and principals are in `backend/app/auth/`. Connectors depend on auth, never the reverse.
+Code: `backend/app/connectors/` (one module per source, each with `scopes`, `fetch` and `can_read`), `backend/app/sync.py`, `backend/app/companies.py`. Users, sessions and principals are in `backend/app/auth/`. Connectors depend on auth, never the reverse.
 
 ### 7.2 HTTP API
 
@@ -160,11 +161,16 @@ Auth is the `ib_session` cookie (HttpOnly, 12 hours), set on first connect. Rout
 |---|---|---|---|
 | `GET /connectors` | optional | `200` list (below). All `connected: false` if signed out. | none |
 | `GET /connectors/{id}/connect` | none | `302` to the tool's sign-in page | `503 "<provider> sign-in is not configured: set <VAR>"` |
-| `GET /oauth/{provider}/callback` | none (called by the tool) | `303` to `{FRONTEND_URL}/connectors?connected=<provider>` | `303` to `…?error=access_denied`, `provider_error`, `invalid_state` or `account_mismatch` |
+| `GET /oauth/{provider}/callback` | none (called by the tool) | `303` to `{FRONTEND_URL}/connectors?connected=<provider>` | `303` to `…?error=access_denied`, `provider_error`, `no_company`, `invalid_state` or `account_mismatch` |
 | `GET /connectors/{id}/ping` | user | `200 {"ok": true, "as": "<name or email>"}` | `404` not connected, `401` connect again, `502` tool API failed |
 | `DELETE /connectors/{id}` | user | `204`. Also revokes the grant at Google or Slack. Jira and Confluence share one sign-in, so this disconnects both. | none |
 | `DELETE /api/session` | optional | `204`, and clears the cookie (log out; `app/api/routes.py`) | none |
-| `POST /api/dev/connectors/slack` | none. **Development only** | `{"token": "xoxp-…"}`: connects Slack like **Connect**, starts a session. `200 {"connected": "slack", "as": "<name>"}` | `400` token rejected or other workspace, `409` account belongs to someone else, `503` not configured |
+| `GET /api/admin/scopes/{id}` | admin | `200 [{"id", "title"}]`: channels, folders, projects or spaces the admin can see | `403` not an admin, `404` not connected |
+| `GET /api/admin/boundary` | admin | `200` your company's boundary | `403` |
+| `PUT /api/admin/boundary/{id}/{scope_id}` | admin | `{"title": "<name>"}` → `204`. Audited. | `403`, `404` unknown tool |
+| `DELETE /api/admin/boundary/{id}/{scope_id}` | admin | `204`; its documents are hidden at once. Audited. | `403`, `404` |
+| `POST /api/admin/sync` | admin | `202`: syncs your company now, in the background | `403` |
+| `POST /api/dev/connectors/slack` | none. **Development only** | `{"token": "xoxp-…"}`: connects Slack like **Connect**, starts a session. `200 {"connected": "slack", "as": "<name>"}` | `400` token rejected, `403 no_company` workspace belongs to no company you can join, `409` account belongs to someone else, `503` not configured |
 
 `GET /connectors` response:
 ```json
@@ -192,8 +198,8 @@ from app.connectors import atlassian, store
 def example(engine: Db, current: User = Depends(current_user)):
     user = current.id
     try:
-        channels = store.slack_client(engine, user).conversations_list(types="public_channel,private_channel")
-        with store.atlassian_client(engine, user, "jira") as jira:
+        channels = store.client(engine, user, "slack").conversations_list(types="public_channel,private_channel")
+        with store.client(engine, user, "jira") as jira:
             issues = atlassian.request("POST", "/rest/api/3/search/jql", http=jira, json={"jql": "order by updated"}).json()
     except store.NotConnected as e:
         raise HTTPException(404, "not connected") from e
@@ -203,34 +209,27 @@ def example(engine: Db, current: User = Depends(current_user)):
 
 **As the signed-in user** (`store.py`). Tokens are refreshed automatically.
 
-| Function | Returns |
-|---|---|
-| `store.slack_client(engine, user)` | slack_sdk `WebClient` |
-| `store.drive_service(engine, user)` | Drive v3 service (`googleapiclient`). Call `.execute(num_retries=3)` on each request. |
-| `store.google_credentials(engine, user)` | google-auth `Credentials`, for `drive.can_read` |
-| `store.atlassian_client(engine, user, "jira" \| "confluence")` | `httpx.Client` for that product. Use it in a `with` block, through `atlassian.request(..., http=client)`. |
+`store.client(engine, user, source)` returns the API client for `source`:
 
-Every function above raises:
+| `source` | Returns |
+|---|---|
+| `slack` | slack_sdk `WebClient` |
+| `drive` | Drive v3 service (`googleapiclient`). Call `.execute(num_retries=3)` on each request. |
+| `jira`, `confluence` | `httpx.Client` for that product. Use it in a `with` block, through `atlassian.request(..., http=client)`, which retries 429/5xx and raises `httpx.HTTPStatusError` on other errors. |
+
+It raises:
 - `store.NotConnected` if the user hasn't connected that tool (or their Atlassian site lacks that product)
 - `store.ReconnectNeeded` if the tool revoked the access
 
-**As the admin** (for sync; set up in 7.5):
+**Each source module** (`store.SOURCES[source]`: `slack`, `drive`, `jira`, `confluence`) takes a client from `store.client`:
 
 | Function | Returns |
 |---|---|
-| `atlassian.request(method, path, http=None, **httpx_kwargs)` | `httpx.Response`. It uses the admin client when `http` is omitted, retries 429/5xx, and raises `httpx.HTTPStatusError` on other errors. |
-| `drive.service(drive.admin_credentials())` | Drive v3 service as the admin |
-| `slack.bot()` | slack_sdk `WebClient` as the workspace bot |
+| `scopes(client)` | `[{"id", "title"}]`: channels, folders, projects or spaces that person can see |
+| `fetch(client, scope_id, changed)` | the scope's documents (7.4), with ACLs. Text is downloaded only when `changed(source_id, updated_at)`; otherwise `text` is `None` |
+| `can_read(client, ids)` | the `source_id`s that person can read right now. Denies by default: any error leaves the ID out. |
 
-**Permissions:**
-
-| Function | Input | Returns |
-|---|---|---|
-| `principals_for(conn, user)` (`app/auth/principals.py`) | an open connection | The ACL entries the user holds (7.4), from `user_principals`, plus `public` |
-| `drive.can_read(credentials, file_ids)` | `store.google_credentials(...)`, Drive file IDs | IDs the user can read right now (one batched call per 100 files) |
-| `slack.can_read(slack_user_id, channel_ids)` | the user's Slack ID (`connections.account_id`), channel IDs | IDs the user can read right now (checked with the bot) |
-
-Both `can_read` functions deny by default: any error leaves the ID out. Jira and Confluence live checks don't exist yet.
+**Permissions:** `principals_for(conn, user)` (`app/auth/principals.py`) returns the ACL entries the user holds (7.4), from `user_principals`, plus `public`. The query pipeline's live check is `app/connectors/live.py`: it finds the asking user's connection from their principal and calls `can_read` as them.
 
 **Rules:**
 - Pass `engine`, not an open connection, to the `store.*` client functions: they commit token refreshes in their own short transaction.
@@ -239,12 +238,13 @@ Both `can_read` functions deny by default: any error leaves the ID out. Jira and
 
 ### 7.4 Document schema (sync contract)
 
-Sync isn't built yet. When it is, every source will write one `documents` row (with its `chunks`) per Drive file, Slack thread, Jira ticket or Confluence page. Tables: `migrations/versions/0002_core_schema.py`; contract: [QUERY_PIPELINE.md](../architecture/QUERY_PIPELINE.md). The shape:
+Each source's `fetch` yields one document per Drive file, Slack thread, Jira ticket or Confluence page, and `app/sync.py` writes it as one `documents` row (with its `chunks`) for the company. Tables: `migrations/versions/0002_core_schema.py` and `0005_companies.py`; contract: [QUERY_PIPELINE.md](../architecture/QUERY_PIPELINE.md). The shape:
 
 ```jsonc
 {
   "source": "drive",                      // drive | slack | jira | confluence
-  "source_id": "<id in the tool>",
+  "source_id": "<id in the tool>",        // Slack "<channel>:<ts>", Jira the numeric issue ID; unique per company
+  "scope_id": "<boundary scope>",         // channel, top folder, project key or space ID
   "title": "<title>",
   "text": "<plain text>",
   "url": "<link that opens it in the tool>",
@@ -263,22 +263,28 @@ Sync isn't built yet. When it is, every source will write one `documents` row (w
 | `slack:user:<slack user id>` | That Slack user (private channels) |
 | `slack:members` | Every full member of the workspace (public channels). Guests never hold it. |
 | `atlassian:user:<accountId>` | That Atlassian user. Groups and roles are expanded into users. |
-| `public` | Anyone: a Drive file shared with "anyone", or a ticket every Jira user can see. Held by every user (`principals_for`). |
+| `public` | Anyone in the company: a Drive file shared with "anyone", or an unrestricted Confluence page. Held by every user (`principals_for`); search never crosses companies. |
 
-An `acl` may include extra people but never leaves out a real reader: `can_read` removes the extras.
+An `acl` may include extra people but never leaves out a real reader: `can_read` removes the extras. Known widenings, all trimmed by the live check: a Drive group becomes its domain, Jira issue security levels are not applied, Confluence space permissions are not applied.
+
+Not synced yet: Drive files in shared drives (Drive doesn't list their sharing), PDFs and Office files (no text extraction), and Google Docs over Drive's 10 MB export limit. Each is skipped and logged; the rest of the folder still syncs.
 
 Field mappings per source are in §5 of [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md), [SLACK.md](SLACK.md), [JIRA.md](JIRA.md) and [CONFLUENCE.md](CONFLUENCE.md).
 
-### 7.5 Admin credentials (for sync)
+### 7.5 Sync: choose the boundary, then sync
 
-Background sync reads as an admin, not as a user. Only needed if you work on sync.
+Sync reads as the company admin's own connections (the first person who connected, section 2 step 6), so it needs no extra credentials. It sees only what the admin can see: they must be in every private channel, and able to open every folder, project and space, that they add.
 
-1. Set the admin variables listed in [DEVELOPMENT.md §2](../DEVELOPMENT.md#backend-admin-credentials-background-sync).
-2. From the repo root, run:
+1. Connect the tools as the admin (sections 3 to 5).
+2. At http://localhost:8000/docs, run **`GET /api/admin/scopes/slack`** (or `drive`, `jira`, `confluence`) and pick IDs.
+3. For each, run **`PUT /api/admin/boundary/{id}/{scope_id}`** with `{"title": "<name>"}`.
+4. Run **`POST /api/admin/sync`**, or from the repo root:
    ```
-   docker compose run --rm --no-deps backend python -m app.connectors
+   docker compose run --rm backend python -m app.sync
    ```
-   - ✅ Each tool prints `OK` and the account it acts as. `FAIL` names the bad setting.
+   - ✅ The log shows `slack C… synced, N items`. Questions in the app now answer from that content.
+
+`docker compose up` also starts the `sync` service, which repeats this every 5 minutes for every company. Chunks are embedded after each run; if the LLM key is missing or TokenHub is down, keyword search still works and the vectors are filled on a later run.
 
 ### 7.6 Check it works
 
@@ -296,6 +302,7 @@ Run from the repo root. Replace `<POSTGRES_USER>` and `<POSTGRES_DB>` with the v
   docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "select * from user_principals;"
   ```
   ✅ After connecting Drive: `google:user:<your email>` and `google:domain:<your domain>`.
-- **Outsiders are rejected:** connect with a Google test user that is *not* in `GOOGLE_ALLOWED_ACCOUNTS`. ✅ `?error=provider_error`, and no new row in `users`.
+- **Outsiders are rejected:** connect Slack with a token from another workspace while you are already in a company. ✅ `?error=no_company` (or `account_mismatch`), and your company is unchanged.
+- **Revocations apply at once:** after a sync, remove a teammate from a private channel in the boundary, then ask about it as them. ✅ The answer no longer uses that channel, before any new sync.
 - **Disconnect:** click **Disconnect**. ✅ The tool shows **Connect** again, its rows are gone from `user_principals`, and the app is gone from https://myaccount.google.com/permissions.
 - **Log out:** at http://localhost:8000/docs, run **`DELETE /api/session`**. ✅ **Test** now returns `401`.

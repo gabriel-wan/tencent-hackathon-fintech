@@ -64,19 +64,20 @@ layers as the ACL (Section 5), and Confluence itself (4.9) has the final say.
 
 ### Auth / setup
 
-```
-1. A plan with permissions: Standard (or the developer site go.atlassian.com/cloud-dev)   ← Free won't work
-2. As an org/site ADMIN: id.atlassian.com → Security → API tokens → Create
-3. backend/.env: ATLASSIAN_BASE_URL, ATLASSIAN_EMAIL, ATLASSIAN_API_TOKEN   (shared with Jira)
-```
+A plan with permissions is needed to restrict pages: Standard, or the developer site
+go.atlassian.com/cloud-dev (Free won't work). Every call uses one person's own Atlassian
+sign-in ([GUIDE.md §5](GUIDE.md#5-jira-and-confluence)), shared with Jira: the company admin's
+for sync, the asking user's for the live check. There is no API token. Sync sees what the admin
+sees, so the admin must be able to open every space added to the boundary.
 
 ```python
-import httpx
-atl = httpx.Client(base_url=ATLASSIAN_BASE_URL,               # https://yourteam.atlassian.net
-                   auth=(ATLASSIAN_EMAIL, ATLASSIAN_API_TOKEN), timeout=30)
+from app.connectors import atlassian, store
+with store.client(engine, user_id, "confluence") as http:   # httpx.Client via api.atlassian.com
+    atlassian.request("GET", "/wiki/api/v2/spaces", http=http)
 ```
 
-The token sees what **its creator** sees, so it must belong to an admin.
+Built today: unrestricted pages get `public` (the whole company) instead of the space's read
+principals (4.6); the live check, a CQL search as the user, trims anyone extra.
 
 ### 4.1 List spaces
 
@@ -214,7 +215,7 @@ so search never misses them, and 4.9 removes anyone extra.
 - Page bodies are HTML. Strip the tags.
 - People are `accountId`s. Emails are often hidden, so identity linking uses the Atlassian organization admin API.
 
-**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md))
+**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md)). Built today (`app/sync.py`, `confluence.py`): every 5 minutes, the space's pages (v2, with bodies and parents) in full, the deepest read restriction per page (groups expanded, cached per run; space permissions not applied: too wide, trimmed by the live check), and `can_read` as one CQL search `id in (...)` as the user. The table is the cursor-based design for when spaces outgrow that.
 
 | Method | Calls | Runs |
 |---|---|---|

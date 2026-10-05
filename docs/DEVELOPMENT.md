@@ -96,21 +96,12 @@ Step-by-step per tool, local and production: [connectors/GUIDE.md](connectors/GU
 |---|---|
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | console.cloud.google.com → APIs & Services → Credentials → OAuth client ID (Web). Enable the Drive API and add test users on the consent screen. |
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | api.slack.com/apps → your app → Basic Information. Add the User Token Scopes listed in GUIDE.md §4. |
-| `GOOGLE_ALLOWED_ACCOUNTS` | Who may connect Google: your Workspace domain (e.g. `company.com`) and/or exact test emails, comma-separated |
-| `SLACK_TEAM_ID` | The `T…` part of `app.slack.com/client/T…/` in your browser |
 | `ATLASSIAN_CLIENT_ID`, `ATLASSIAN_CLIENT_SECRET` | developer.atlassian.com/console → OAuth 2.0 (3LO). Enable the Jira, Confluence and User identity APIs. |
-| `ATLASSIAN_CLOUD_ID` | `cloudId` at `https://<site>.atlassian.net/_edge/tenant_info` |
 
-### Backend: admin credentials (background sync)
-
-Check them with `docker compose run --rm --no-deps backend python -m app.connectors`.
-
-| Variable | Where to get it |
-|---|---|
-| `ATLASSIAN_BASE_URL`, `ATLASSIAN_EMAIL`, `ATLASSIAN_API_TOKEN` | Your site URL, plus a site admin's email and API token from id.atlassian.com → Security → API tokens |
-| `SLACK_BOT_TOKEN` | `xoxb-…` from your app's OAuth & Permissions page (bot scopes: `docs/connectors/SLACK.md`) |
-| `GOOGLE_REFRESH_TOKEN` | Personal Gmail: see `docs/connectors/GOOGLE_DRIVE.md` |
-| `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_ADMIN_EMAIL` | Google Workspace, instead of `GOOGLE_REFRESH_TOKEN`: the service-account key JSON on one line, in single quotes, and an admin's email |
+Companies are not an environment variable: the first sign-in from a new Slack workspace or
+Atlassian site creates the company and makes that person its admin
+([connectors/GUIDE.md §2](connectors/GUIDE.md#2-basics-each-developer)). Sync needs no extra
+credentials either: it reads as the company admin's own connections.
 
 ## 3. Unit tests
 

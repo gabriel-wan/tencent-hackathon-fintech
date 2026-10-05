@@ -69,10 +69,15 @@ narrower of the two as the ACL (Section 5), and Jira itself (4.9) has the final 
 1. A plan with permissions: Standard (or the developer site go.atlassian.com/cloud-dev)   ← Free can't do this
 2. Create space → template → "Company-managed"                          ← not the default "My Team"
 3. Settings ⚙ → Work items → Issue security schemes → add levels → associate with the space
-4. Same admin API token and httpx client as Confluence
 ```
 
-The token must belong to an admin with **Administer Jira**, which 4.4–4.9 need.
+Every call uses one person's own Atlassian sign-in, shared with Confluence: the company admin's
+for sync, the asking user's for the live check (`store.client(engine, user_id, "jira")`).
+
+Built today: the ACL is everyone with **Browse projects**, from
+`GET /rest/api/3/user/permission/search?permissions=BROWSE_PROJECTS&projectKey=…` (Jira expands
+groups and roles itself), so issue security levels (4.5, 4.6) are not applied; the live check (4.9,
+as the user, one call) trims those. `source_id` is the numeric issue ID, which 4.9 takes.
 
 ### 4.1 Tickets changed since the checkpoint
 
@@ -188,7 +193,7 @@ One document per ticket:
 ```jsonc
 {
   "source": "jira",
-  "source_id": "PAY-13",                                          // issue.key
+  "source_id": "10013",                                           // issue.id (the live check, 4.9, takes IDs)
   "title": "PAY-13: Customer double-charged",                     // key + summary
   "text": "Card ending 4242 was charged twice. Refund issued.",   // description + comments, ADF flattened
   "url": "https://yourteam.atlassian.net/browse/PAY-13",          // site + /browse/ + key
@@ -220,7 +225,7 @@ One document per ticket:
 - Always send `fields`. Descriptions and comments are ADF JSON, so flatten them by joining every `"text"`.
 - People are `accountId`s. Emails are usually `null`.
 
-**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md))
+**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md)). Built today (`app/sync.py`, `jira.py`): every 5 minutes, 4.1 over each boundary project in full, with the project's ACL from the users who can browse it (issue security levels not applied: too wide, trimmed by the live check), and `can_read` (4.9) as the user. The table is the cursor-based design for when projects outgrow that.
 
 | Method | Calls | Runs |
 |---|---|---|

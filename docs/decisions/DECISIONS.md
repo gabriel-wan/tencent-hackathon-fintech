@@ -148,6 +148,26 @@ implementation:
 - Changing the boundary is a security-relevant admin action and is recorded
   in the audit log (ADR-007).
 
+### Amendment (2026-10-05): many companies per deployment
+
+- **Was:** one company per deployment, set by environment variables
+  (`SLACK_TEAM_ID`, `ATLASSIAN_CLOUD_ID`, `GOOGLE_ALLOWED_ACCOUNTS`), with sync
+  reading through company-wide admin credentials (Slack bot, Google service
+  account, Atlassian API token).
+- **Now:** a `companies` table; every document, boundary scope and sync cursor
+  belongs to one company, and so does every user once a connection names it. The first sign-in from a new Slack workspace or
+  Atlassian site creates its company, and the first member becomes the admin;
+  later sign-ins from it join. Google names no company, so tools connect in any
+  order: a user with only Google has no company and sees nothing. Sync reads as the admin's own connections; live checks ask
+  each source as the asking user.
+- **Why:** the product should serve any number of companies from one
+  deployment. Principals held in every company (`public`, `slack:members`) made
+  a company filter in search necessary, not optional.
+- **Cost:** sync sees only what the company admin can see. Whoever controls a
+  Slack workspace or Atlassian site can start a company from it (no approval step yet). Serving other
+  companies in production needs Google's verification for Drive, Atlassian's
+  Personal Data Reporting API, and Slack Marketplace approval (rate limits).
+
 ---
 
 ## ADR-003: Authorization model

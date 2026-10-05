@@ -15,17 +15,18 @@ flowchart LR
         subgraph BE["backend: FastAPI, :8000"]
             API["app/api<br/>/api/query, /api/me, /api/session<br/>/api/dev/* (development only)"]
             PIPE["app/pipeline/query.py"]
-            AUTH["app/auth<br/>session, principals,<br/>live check (STUB)"]
-            SEARCH["app/retrieval/search.py<br/>ACL + boundary filter,<br/>keyword + vector"]
+            AUTH["app/auth<br/>session, principals,<br/>live check runner"]
+            SEARCH["app/retrieval/search.py<br/>company + ACL + boundary filter,<br/>keyword + vector"]
             LLMC["app/llm<br/>client, grounding"]
             AUD["app/audit/log.py"]
-            CONN["app/connectors<br/>/connectors, /oauth/*/callback<br/>sign-in, tokens, API clients"]
+            CONN["app/connectors<br/>/connectors, /oauth/*/callback, /api/admin/*<br/>sign-in, tokens, fetch, live checks"]
         end
+        SYNC["sync<br/>python -m app.sync --loop<br/>every company, every 5 min"]
         MIG["migrate<br/>alembic upgrade head<br/>runs once, then exits"]
-        DB[("db<br/>PostgreSQL 17 + pgvector<br/>users, sessions, user_principals, boundary,<br/>documents, chunks, audit_events,<br/>connections (tokens encrypted)")]
+        DB[("db<br/>PostgreSQL 17 + pgvector<br/>companies, users, sessions, user_principals,<br/>boundary, documents, chunks, audit_events,<br/>connections (tokens encrypted)")]
     end
 
-    MIG -->|"migrations 0001 to 0004"| DB
+    MIG -->|"migrations 0001 to 0005"| DB
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
     FE -->|"server-side fetch, forwards the session cookie<br/>BACKEND_SERVER_URL/health, /connectors"| BE
@@ -48,10 +49,13 @@ flowchart LR
     end
 
     USER -.->|"connect: OAuth sign-in<br/>(redirects via the browser)"| SRC
-    CONN -->|"OAuth code exchange, token refresh;<br/>API calls as the user (/connectors/*/ping)"| SRC
-    CONN -.->|"admin clients: python -m app.connectors<br/>can_read (Drive, Slack) built, not yet wired<br/>into the live check; no sync yet"| SRC
+    CONN -->|"OAuth code exchange, token refresh;<br/>live checks as the asking user"| SRC
+    AUTH -->|"can_read per source"| CONN
+    SYNC -->|"fetch boundary scopes<br/>as the company admin"| SRC
+    SYNC -->|"documents, chunks"| DB
+    SYNC -->|"embeddings"| TH
 ```
 
-Details and contracts: [QUERY_PIPELINE.md](QUERY_PIPELINE.md). Connectors sign
-users in and record their principals, but do not sync yet; documents come from
-the development seed (`app/seed.py`).
+Details and contracts: [QUERY_PIPELINE.md](QUERY_PIPELINE.md). Many companies share
+one deployment; every query is limited to the user's own company. Documents come
+from sync, or from the development seed (`app/seed.py`).
