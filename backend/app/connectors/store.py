@@ -6,10 +6,10 @@ automatically when they are about to expire.
 
 Use from any endpoint (engine = `Db` from app.db; pass the engine, not an open
 connection, so no connection is held while the API call runs):
-    slack_client(engine, user_id).conversations_list()
-    drive_service(engine, user_id).files().list().execute()
-    with atlassian_client(engine, user_id, "jira") as jira:
-        atlassian.request("GET", "/rest/api/3/myself", http=jira)
+    client(engine, user_id, "slack").conversations_list()
+    client(engine, user_id, "drive").files().list().execute(num_retries=3)
+    atlassian.request("GET", "/rest/api/3/myself", http=client(engine, user_id, "jira"))
+    SOURCES["drive"].fetch(client(engine, user_id, "drive"), folder_id)
 """
 
 import logging
@@ -19,14 +19,17 @@ from functools import lru_cache
 
 import httpx
 import sqlalchemy as sa
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from google.oauth2.credentials import Credentials
 from slack_sdk import WebClient
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.connectors import atlassian, drive, oauth, slack
+from app.connectors import atlassian, confluence, drive, jira, oauth, slack
 
 log = logging.getLogger(__name__)
+
+# Each source module provides scopes(client), fetch(client, scope_id) and can_read(client, ids).
+SOURCES = {"slack": slack, "drive": drive, "jira": jira, "confluence": confluence}
 
 REFRESH_MARGIN_S = 60  # refresh a token this long before it expires
 
@@ -67,7 +70,10 @@ def _encrypt(value: str | None) -> bytes | None:
 
 
 def _decrypt(value: bytes | None) -> str | None:
-    return None if value is None else cipher().decrypt(value).decode()
+    try:
+        return None if value is None else cipher().decrypt(value).decode()
+    except InvalidToken as e:  # saved under another TOKEN_ENCRYPTION_KEY: unreadable, the user must connect again
+        raise ReconnectNeeded("stored token unreadable (encryption key changed)") from e
 
 
 # ---- Connections ----
@@ -121,15 +127,20 @@ def list_connections(db, user_id: int) -> dict[str, dict]:
     return {r["provider"]: dict(r) for r in rows}
 
 
-def delete_connection(db, user_id: int, provider: str) -> tuple[str, str | None] | None:
-    """Removes the connection and its principals; returns its (access, refresh) tokens for revoking, or None."""
+def delete_connection(db, user_id: int, provider: str) -> tuple[str | None, str | None] | None:
+    """Removes the connection and its principals; returns its (access, refresh) tokens for revoking
+    (None if unreadable), or None if there was no connection."""
     key = (connections.c.user_id == user_id) & (connections.c.provider == provider)
     row = db.execute(sa.select(connections.c.access_token, connections.c.refresh_token).where(key)).first()
     if row is None:
         return None
+    try:
+        tokens = _decrypt(row.access_token), _decrypt(row.refresh_token)
+    except ReconnectNeeded:  # saved under another encryption key: delete it anyway, nothing to revoke
+        tokens = (None, None)
     db.execute(connections.delete().where(key))
     _set_principals(db, user_id, provider, set())
-    return _decrypt(row.access_token), _decrypt(row.refresh_token)
+    return tokens
 
 
 def access_token(engine: sa.Engine, user_id: int, provider: str) -> tuple[str, dict]:
@@ -165,28 +176,20 @@ def access_token(engine: sa.Engine, user_id: int, provider: str) -> tuple[str, d
 
 # ---- API clients acting as the user ----
 
-def slack_client(engine: sa.Engine, user_id: int) -> WebClient:
-    return slack.client(access_token(engine, user_id, "slack")[0])
-
-
-def google_credentials(engine: sa.Engine, user_id: int) -> Credentials:
-    """For drive.service() or drive.can_read() as this user."""
-    return Credentials(access_token(engine, user_id, "google")[0])
-
-
-def drive_service(engine: sa.Engine, user_id: int):
-    return drive.service(google_credentials(engine, user_id))
-
-
 def atlassian_site(extra: dict, product: str) -> dict | None:
     """First granted site that includes `product` ("jira" or "confluence")."""
     return next((s for s in extra.get("sites", []) if any(product in scope for scope in s["scopes"])), None)
 
 
-def atlassian_client(engine: sa.Engine, user_id: int, product: str) -> httpx.Client:
-    # ponytail: first matching site; let the user pick a site if anyone connects several.
+def client(engine: sa.Engine, user_id: int, source: str) -> WebClient | httpx.Client:
+    """The API client for a source (SOURCES), acting as this user: a slack_sdk WebClient, a Drive v3
+    service, or an httpx.Client for Jira or Confluence (use with atlassian.request)."""
+    if source == "slack":
+        return slack.client(access_token(engine, user_id, "slack")[0])
+    if source == "drive":
+        return drive.service(Credentials(access_token(engine, user_id, "google")[0]))
+    # ponytail: first matching site, and the httpx client is left to the garbage collector.
     token, extra = access_token(engine, user_id, "atlassian")
-    site = atlassian_site(extra, product)
-    if site is None:
-        raise NotConnected(product)
-    return atlassian.user_client(token, product, site["id"])
+    if (site := atlassian_site(extra, source)) is None:
+        raise NotConnected(source)
+    return atlassian.user_client(token, source, site["id"])

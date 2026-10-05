@@ -1,9 +1,14 @@
-"""Slack connector. API details: docs/connectors/SLACK.md."""
+"""Slack connector. API details: docs/connectors/SLACK.md.
+
+Every call uses one person's own user token (store.client): the company admin's for sync and the
+scope list, the asking user's for the live check.
+"""
 
 import logging
-import os
-from collections.abc import Iterable
-from functools import lru_cache
+import re
+from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -11,54 +16,94 @@ from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
 
 log = logging.getLogger(__name__)
 
-SCOPES = {"channels:read", "channels:history", "groups:read", "groups:history", "users:read", "users:read.email"}
+MENTION = re.compile(r"<@(U[A-Z0-9]+)>")
 
 
 def client(token: str) -> WebClient:
-    """Client for any Slack token (the workspace bot, or later a user's sign-in token)."""
     # Default handlers already retry connection errors; add 429 (honours Retry-After).
     c = WebClient(token=token, timeout=30)
     c.retry_handlers.append(RateLimitErrorRetryHandler(max_retry_count=3))
     return c
 
 
-@lru_cache
-def bot() -> WebClient:
-    """The workspace bot the admin installed (ADR-002): reads channels inside the boundary."""
-    return client(os.environ["SLACK_BOT_TOKEN"])
+def scopes(c: WebClient) -> list[dict]:
+    """Channels this person can see, for the admin to choose the boundary from."""
+    return [{"id": ch["id"], "title": f"#{ch['name']}"}
+            for page in c.conversations_list(types="public_channel,private_channel", exclude_archived=True, limit=200)
+            for ch in page["channels"]]
 
 
-def ping() -> str:
-    resp = bot().auth_test()
-    headers = {k.lower(): v for k, v in resp.headers.items()}
-    granted = {s.strip() for s in headers.get("x-oauth-scopes", "").split(",")}
-    if missing := SCOPES - granted:
-        raise PermissionError(f"bot lacks scopes {', '.join(sorted(missing))}: add them and reinstall the app")
-    return f"as {resp['user']} in {resp['team']}"
+def fetch(c: WebClient, channel: str, changed: Callable[[str, str], bool] = lambda *_: True) -> Iterator[dict]:
+    """One document per thread (docs/connectors/SLACK.md section 5). Replies are downloaded only for
+    threads that `changed(source_id, updated_at)`; the others get `text` None."""
+    info = c.conversations_info(channel=channel)["channel"]
+    members = [f"slack:user:{m}" for page in c.conversations_members(channel=channel, limit=1000)
+               for m in page["members"]]
+    # Public: every full member, plus guests who joined (they are in the member list).
+    # ponytail: a public channel stores all its members, which is heavy for a workspace-wide channel;
+    # keep only guests (users.list flags them) when that matters.
+    acl = members if info["is_private"] else ["slack:members", *members]
+    workspace = c.auth_test()["url"]  # https://<team>.slack.com/
+    names: dict[str, str] = {}
+
+    def name(user: str) -> str:
+        if user not in names:
+            try:
+                u = c.users_info(user=user)["user"]
+                names[user] = u.get("real_name") or u["name"]
+            except SlackApiError:
+                names[user] = user
+        return names[user]
+
+    def line(m: dict) -> str:
+        return f"{name(m.get('user', '?'))}: {MENTION.sub(lambda x: '@' + name(x[1]), m.get('text', ''))}"
+
+    for page in c.conversations_history(channel=channel, limit=200):
+        for m in page["messages"]:
+            if m.get("subtype"):  # joins, bot posts, ...
+                continue
+            source_id = f"{channel}:{m['ts']}"
+            # Newest of: posted, last reply, first message edited. ponytail: an edited *reply* keeps its old
+            # text until the thread gets a new reply.
+            last = max(m["ts"], m.get("latest_reply", "0"), m.get("edited", {}).get("ts", "0"), key=float)
+            updated_at = datetime.fromtimestamp(float(last), UTC).isoformat()
+            body = None
+            if changed(source_id, updated_at):
+                thread = [m]
+                if m.get("reply_count"):
+                    thread = [r for p in c.conversations_replies(channel=channel, ts=m["ts"], limit=200)
+                              for r in p["messages"]]
+                body = "\n".join(line(r) for r in thread if not r.get("subtype"))
+            yield {
+                "source": "slack",
+                "source_id": source_id,
+                "scope_id": channel,
+                "title": f"#{info['name']}",
+                "url": f"{workspace}archives/{channel}/p{m['ts'].replace('.', '')}",
+                "updated_at": updated_at,
+                "acl": acl,
+                "text": body,
+            }
 
 
-def can_read(user_id: str, channel_ids: Iterable[str]) -> set[str]:
-    """Live check (ADR-003): which of these channels Slack user `user_id` can read right now.
+def can_read(c: WebClient, ids: Iterable[str]) -> set[str]:
+    """Live check (ADR-003): which of these threads (`<channel>:<ts>`) the token's owner can read now.
 
-    Public channel: any full member, or a guest who joined it. Private channel: members only.
-    Uses the bot, so only the user's Slack ID (from their Slack sign-in) is needed.
-    Deny by default: any error for a channel leaves it out.
+    Slack answers "channel_not_found" for a private channel they are not in, and for a public one when
+    they are a guest who has not joined it. Deny by default: any error leaves the channel out.
     """
-    c = bot()
-    try:
-        user = c.users_info(user=user_id)["user"]
-    except SlackApiError as e:
-        log.warning("Slack users.info failed, denying all: %s", e.response.get("error"))
-        return set()
-    full_member = not any(user.get(k) for k in ("deleted", "is_bot", "is_restricted", "is_ultra_restricted"))
+    ids = list(ids)
 
-    allowed = set()
-    for channel in set(channel_ids):
+    def readable(channel: str) -> bool:
         try:
-            if full_member and not c.conversations_info(channel=channel)["channel"]["is_private"]:
-                allowed.add(channel)
-            elif any(user_id in page["members"] for page in c.conversations_members(channel=channel, limit=1000)):
-                allowed.add(channel)
+            c.conversations_info(channel=channel)
+            return True
         except SlackApiError as e:
-            log.warning("Slack check for %s failed, denying: %s", channel, e.response.get("error"))
-    return allowed
+            log.info("Slack check for %s: %s", channel, e.response.get("error"))
+            return False
+
+    channels = list({i.split(":", 1)[0] for i in ids})
+    # In parallel: the live check has about 2 seconds for every source together.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        allowed = {ch for ch, ok in zip(channels, pool.map(readable, channels), strict=True) if ok}
+    return {i for i in ids if i.split(":", 1)[0] in allowed}

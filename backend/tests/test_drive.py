@@ -1,4 +1,4 @@
-"""Drive credentials (admin and user), ping and live access check. No real API calls."""
+"""Drive connector: fetch (files and ACL) and the live access check. No real API calls."""
 
 import json
 import re
@@ -6,110 +6,87 @@ from urllib.parse import unquote
 
 import httplib2
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import HttpMockSequence
 
 from app.connectors import drive
 
 
-@pytest.fixture(scope="module")
-def sa_json():
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
-    return json.dumps({
-        "type": "service_account",
-        "client_email": "brain@test-project.iam.gserviceaccount.com",
-        "private_key": pem.decode(),
-        "token_uri": "https://oauth2.googleapis.com/token",
-    })
+def test_acl_maps_each_kind_of_sharing():
+    assert drive.acl([
+        {"type": "user", "emailAddress": "Alice@Corp.com"},
+        {"type": "group", "emailAddress": "finance@corp.com"},  # widened to its domain (live check trims)
+        {"type": "domain", "domain": "partner.com"},
+        {"type": "anyone"},
+        {"type": "user"},  # e.g. a deleted account: no email, skipped rather than failing the folder
+    ]) == ["google:domain:corp.com", "google:domain:partner.com", "google:user:alice@corp.com", "public"]
 
 
-@pytest.fixture
-def workspace(monkeypatch, sa_json):
-    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", sa_json)
+class Call:
+    def __init__(self, result):
+        self.result = result
+
+    def execute(self, num_retries=0):
+        return self.result
 
 
-@pytest.fixture
-def oauth_app(monkeypatch):
-    monkeypatch.setenv("GOOGLE_CLIENT_ID", "id")
-    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "s")
+class FakeDrive:
+    """files().list / export / get_media over a small tree: folder F1 holds a doc, a PDF, a file whose
+    sharing is hidden from the caller, and subfolder F2 with a text file."""
+
+    FILES = {
+        "F1": [{"id": "doc", "name": "Runbook", "mimeType": "application/vnd.google-apps.document",
+                "modifiedTime": "2026-10-01T05:00:00.000Z", "webViewLink": "https://docs/doc",
+                "permissions": [{"type": "anyone"}]},
+               {"id": "pdf", "name": "Scan", "mimeType": "application/pdf", "permissions": [],
+                "modifiedTime": "2026-10-01T05:00:00.000Z"},
+               {"id": "hidden", "name": "Secret", "mimeType": "text/plain"},
+               {"id": "F2", "name": "Sub", "mimeType": drive.FOLDER}],
+        "F2": [{"id": "txt", "name": "Notes", "mimeType": "text/plain", "modifiedTime": "2026-10-02T05:00:00.000Z",
+                "webViewLink": "https://docs/txt", "permissions": [{"type": "user", "emailAddress": "ben@corp.com"}]}],
+    }
+
+    def files(self):
+        return self
+
+    def list(self, q, **kwargs):
+        return Call({"files": self.FILES[re.match(r"'(\w+)' in parents", q)[1]]})
+
+    def export(self, fileId, mimeType):
+        return Call(b"Step 1: fail over")
+
+    def get_media(self, fileId, **kwargs):
+        return Call(b"Notes text")
 
 
-def test_personal_mode_by_default():
-    assert drive.mode() == "personal"
+def test_fetch_walks_subfolders_and_skips_what_it_cannot_index():
+    docs = {d["source_id"]: d for d in drive.fetch(FakeDrive(), "F1")}
+    assert set(docs) == {"doc", "txt"}  # PDF has no text extraction; hidden sharing is never guessed
+    assert docs["doc"]["acl"] == ["public"] and docs["doc"]["metadata"] == {"overshared": True}
+    assert docs["txt"] == {
+        "source": "drive", "source_id": "txt", "scope_id": "F1", "title": "Notes", "url": "https://docs/txt",
+        "updated_at": "2026-10-02T05:00:00.000Z", "acl": ["google:user:ben@corp.com"], "text": "Notes text",
+        "metadata": {"overshared": False},
+    }  # scope is the boundary folder, not the subfolder
 
 
-def test_personal_admin_requires_refresh_token():
-    with pytest.raises(KeyError, match="GOOGLE_REFRESH_TOKEN"):
-        drive.admin_credentials()
+def test_a_file_drive_cannot_export_is_skipped_not_fatal():
+    fake = FakeDrive()
+
+    def too_large(**_):
+        raise HttpError(httplib2.Response({"status": "403"}), b'{"error": {"message": "exportSizeLimitExceeded"}}')
+
+    fake.export = too_large
+    assert [d["source_id"] for d in drive.fetch(fake, "F1")] == ["txt"]  # the rest of the folder still syncs
 
 
-def test_personal_admin_is_the_admins_oauth_sign_in(oauth_app, monkeypatch):
-    monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "admin-token")
-    creds = drive.admin_credentials()
-    assert (creds.refresh_token, creds.client_id, creds.token) == ("admin-token", "id", None)
-
-
-def test_personal_admin_requires_oauth_app(monkeypatch):
-    monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "admin-token")
-    with pytest.raises(KeyError, match="GOOGLE_CLIENT_ID"):
-        drive.admin_credentials()
-
-
-def test_workspace_impersonates_admin_by_default(workspace, monkeypatch):
-    monkeypatch.setenv("GOOGLE_ADMIN_EMAIL", "admin@company.com")
-    creds = drive.admin_credentials()
-    assert drive.mode() == "workspace"
-    assert creds._subject == "admin@company.com"
-    assert creds.scopes == drive.SCOPES
-
-
-def test_workspace_explicit_subject_wins(workspace, monkeypatch):
-    monkeypatch.setenv("GOOGLE_ADMIN_EMAIL", "admin@company.com")
-    assert drive.admin_credentials("sara@company.com")._subject == "sara@company.com"
-
-
-def test_workspace_without_admin_acts_as_service_account(workspace):
-    assert drive.admin_credentials()._subject is None
-
-
-def test_workspace_rejects_malformed_json(monkeypatch):
-    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", "{not json")
-    with pytest.raises(ValueError):
-        drive.admin_credentials()
-
-
-def fake_service(monkeypatch, http):
-    monkeypatch.setattr(drive, "service", lambda credentials: build("drive", "v3", http=http, static_discovery=True))
-    monkeypatch.setattr("googleapiclient.http.time.sleep", lambda s: None)
-
-
-ABOUT = json.dumps({"user": {"emailAddress": "sara@company.com"}})
-
-
-@pytest.fixture
-def personal_admin(oauth_app, monkeypatch):
-    monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "admin-token")
-
-
-def test_ping(personal_admin, monkeypatch):
-    fake_service(monkeypatch, HttpMockSequence([({"status": "200"}, ABOUT)]))
-    assert drive.ping() == "as sara@company.com (personal mode)"
-
-
-def test_ping_retries_server_error(personal_admin, monkeypatch):
-    fake_service(monkeypatch, HttpMockSequence([({"status": "503"}, ""), ({"status": "200"}, ABOUT)]))
-    assert drive.ping() == "as sara@company.com (personal mode)"
-
-
-def test_ping_raises_on_client_error(personal_admin, monkeypatch):
-    body = json.dumps({"error": {"message": "Invalid Credentials"}})
-    fake_service(monkeypatch, HttpMockSequence([({"status": "401"}, body)]))
-    with pytest.raises(HttpError):
-        drive.ping()
+def test_unchanged_files_are_not_downloaded_again():
+    fake = FakeDrive()
+    fake.export = fake.get_media = lambda **_: pytest.fail("an unchanged file was downloaded")
+    stored = {"doc", "txt"}  # the PDF was never stored (no text), so it is never "unchanged"
+    docs = {d["source_id"]: d for d in drive.fetch(fake, "F1", lambda source_id, _: source_id not in stored)}
+    assert set(docs) == stored and all(d["text"] is None for d in docs.values())
+    assert docs["txt"]["acl"] == ["google:user:ben@corp.com"]  # sharing still refreshed
 
 
 class FakeBatchHttp:
@@ -136,33 +113,33 @@ class FakeBatchHttp:
         return httplib2.Response({"status": "200", "content-type": "multipart/mixed; boundary=B"}), content
 
 
-def test_can_read_keeps_only_files_the_user_can_open(monkeypatch):
+def service(http):
+    return build("drive", "v3", http=http, static_discovery=True)
+
+
+def test_can_read_keeps_only_files_the_user_can_open():
     http = FakeBatchHttp({"budget": 200, "runbook": 200, "secret": 404, "team-only": 403, "flaky": 500})
-    fake_service(monkeypatch, http)
     ids = ["budget", "secret", "runbook", "team-only", "flaky", "budget"]
-    assert drive.can_read(object(), ids) == {"budget", "runbook"}  # 403/404 denied, 500 denied (deny by default)
+    assert drive.can_read(service(http), ids) == {"budget", "runbook"}  # 403/404 denied, 500 denied (deny by default)
     assert http.batches == [5]  # one request for all files, duplicates removed
 
 
-def test_can_read_splits_large_requests(monkeypatch):
+def test_can_read_splits_large_requests():
     ids = [f"f{i}" for i in range(drive.BATCH_LIMIT + 1)]
     http = FakeBatchHttp(dict.fromkeys(ids, 200))
-    fake_service(monkeypatch, http)
-    assert drive.can_read(object(), ids) == set(ids)
+    assert drive.can_read(service(http), ids) == set(ids)
     assert http.batches == [drive.BATCH_LIMIT, 1]
 
 
-def test_can_read_denies_everything_when_the_request_fails(monkeypatch):
+def test_can_read_denies_everything_when_the_request_fails():
     class Down:
         def request(self, *args, **kwargs):
             raise OSError("network down")
 
-    fake_service(monkeypatch, Down())
-    assert drive.can_read(object(), ["budget"]) == set()
+    assert drive.can_read(service(Down()), ["budget"]) == set()
 
 
-def test_can_read_nothing_to_check(monkeypatch):
+def test_can_read_nothing_to_check():
     http = FakeBatchHttp({})
-    fake_service(monkeypatch, http)
-    assert drive.can_read(object(), []) == set()
+    assert drive.can_read(service(http), []) == set()
     assert http.batches == []
