@@ -59,14 +59,14 @@ channel is public and you are a full member.
 ### Auth / setup
 
 ```
-1. api.slack.com/apps → Create New App → From scratch → our workspace (keep it internal: never distribute)
+1. api.slack.com/apps → Create New App → Blank app → our workspace (keep it internal: never distribute)
 2. OAuth & Permissions → Bot scopes:
    channels:read channels:history groups:read groups:history users:read users:read.email
 3. Install to Workspace → Bot token (xoxb-) → SLACK_BOT_TOKEN
 4. /invite @ourbot in every private channel to be indexed
 ```
 
-Check with `python -m app.connectors slack` (see [GUIDE.md §1.5](GUIDE.md#15-admin-credentials-for-sync)): it fails if any scope above is missing.
+Check with `python -m app.connectors slack` (see [GUIDE.md §7.5](GUIDE.md#75-admin-credentials-for-sync)): it fails if any scope above is missing.
 
 ```python
 from slack_sdk import WebClient

@@ -69,6 +69,7 @@ After editing, restart with `docker compose up`. If a setting needed to connect 
 |---|---|
 | `BACKEND_SERVER_URL` | `http://localhost:8000` (Docker overrides it) |
 | `BACKEND_LOCAL_URL` | `http://localhost:8000`: the backend address your browser uses |
+| `APP_ENV` | `development`: Slack connects with a pasted token on `/connectors` (GUIDE §4) |
 
 ### Backend: basics (required)
 
@@ -76,7 +77,7 @@ After editing, restart with `docker compose up`. If a setting needed to connect 
 |---|---|
 | `APP_ENV`, `LOG_LEVEL` | `development`, `info`. Development-only routes and the seed need `development` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Any local values; the database is created with them |
-| `APP_URL` | `http://localhost:8000`. For Slack, use the `https://` address of a tunnel instead (`cloudflared tunnel --url http://localhost:8000`) |
+| `APP_URL` | `http://localhost:8000` |
 | `TOKEN_ENCRYPTION_KEY` | In `backend/`, run `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `FRONTEND_URL` | Optional. Default `http://localhost:3000` |
 
@@ -94,7 +95,7 @@ Step-by-step per tool, local and production: [connectors/GUIDE.md](connectors/GU
 | Variable | Where to get it |
 |---|---|
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | console.cloud.google.com → APIs & Services → Credentials → OAuth client ID (Web). Enable the Drive API and add test users on the consent screen. |
-| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | api.slack.com/apps → your app → Basic Information. Add the User Token Scopes listed in GUIDE.md §1.3. |
+| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | api.slack.com/apps → your app → Basic Information. Add the User Token Scopes listed in GUIDE.md §4. |
 | `GOOGLE_ALLOWED_ACCOUNTS` | Who may connect Google: your Workspace domain (e.g. `company.com`) and/or exact test emails, comma-separated |
 | `SLACK_TEAM_ID` | The `T…` part of `app.slack.com/client/T…/` in your browser |
 | `ATLASSIAN_CLIENT_ID`, `ATLASSIAN_CLIENT_SECRET` | developer.atlassian.com/console → OAuth 2.0 (3LO). Enable the Jira, Confluence and User identity APIs. |
@@ -110,8 +111,6 @@ Check them with `docker compose run --rm --no-deps backend python -m app.connect
 | `SLACK_BOT_TOKEN` | `xoxb-…` from your app's OAuth & Permissions page (bot scopes: `docs/connectors/SLACK.md`) |
 | `GOOGLE_REFRESH_TOKEN` | Personal Gmail: see `docs/connectors/GOOGLE_DRIVE.md` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_ADMIN_EMAIL` | Google Workspace, instead of `GOOGLE_REFRESH_TOKEN`: the service-account key JSON on one line, in single quotes, and an admin's email |
-
-`AUDIT_LOG_SIGNING_KEY` and `TENCENTCLOUD_*` are not used yet.
 
 ## 3. Unit tests
 
