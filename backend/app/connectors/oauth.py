@@ -48,7 +48,7 @@ PROVIDERS = {
         (
             "read:jira-work", "read:jira-user",
             "read:confluence-content.all", "read:confluence-space.summary", "search:confluence",
-            "read:me", "offline_access",  # identity, and a refresh token
+            "read:confluence-user", "read:me", "offline_access",  # identity, and a refresh token
         ),
         auth_params={"audience": "api.atlassian.com", "prompt": "consent"},
     ),
