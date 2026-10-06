@@ -52,6 +52,14 @@ async function disconnect(id: string) {
   redirect(res.ok ? "/connectors" : "/connectors?error=disconnect_failed");
 }
 
+// Ends the app session (not the tools' own sign-ins), so another person can connect in this browser.
+async function signOut() {
+  "use server";
+  await backend("/api/session", { method: "DELETE" });
+  (await cookies()).delete("ib_session"); // the backend's own cookie-clearing header never reaches the browser here
+  redirect("/connectors");
+}
+
 export default async function ConnectorsPage({
   searchParams,
 }: {
@@ -59,9 +67,18 @@ export default async function ConnectorsPage({
 }) {
   const { connected, error } = await searchParams; // set by the backend's OAuth callback
   const connectors: Connector[] = await (await backend("/connectors")).json();
+  const meRes = await backend("/api/me");
+  const me: { email: string } | null = meRes.ok ? await meRes.json() : null;
   return (
     <main>
       <h1>Connectors</h1>
+      {me ? (
+        <form action={signOut}>
+          Signed in as {me.email} <button>Sign out</button>
+        </form>
+      ) : (
+        <p>Not signed in. Connecting a tool signs you in.</p>
+      )}
       {PROVIDERS.includes(connected ?? "") && <p>Connected to {connected}.</p>}
       {ERRORS.includes(error ?? "") && (
         <p role="alert">Error: {error}. {HINTS[error ?? ""] ?? "See docs/connectors/GUIDE.md."}</p>
