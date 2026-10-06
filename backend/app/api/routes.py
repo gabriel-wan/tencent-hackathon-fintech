@@ -7,6 +7,7 @@ from sqlalchemy import Connection, text
 
 from app.api.deps import current_user, get_conn, get_llm
 from app.auth.session import COOKIE_NAME, SESSION_HOURS, User, create_session, delete_session, get_user
+from app.connectors import live
 from app.llm.client import LLMClient
 from app.pipeline.query import answer_question
 
@@ -54,8 +55,9 @@ def query(
     user: User = Depends(current_user),
     conn: Connection = Depends(get_conn),
     llm: LLMClient = Depends(get_llm),
+    checkers=Depends(live.for_request),
 ) -> QueryResponse:
-    result = answer_question(conn, user, body.question, llm)
+    result = answer_question(conn, user, body.question, llm, checkers_factory=checkers)
     return QueryResponse(
         answer=result.answer,
         citations=[CitationOut(**vars(c)) for c in result.citations],

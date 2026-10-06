@@ -20,6 +20,7 @@ class User:
     email: str
     name: str
     is_admin: bool
+    company_id: int | None  # their company (app/companies.py); None until a connection names one: sees nothing
 
 
 def _hash(token: str) -> str:
@@ -45,17 +46,34 @@ def delete_session(conn: Connection, token: str) -> None:
 def user_for_token(conn: Connection, token: str) -> User | None:
     row = conn.execute(
         text(
-            "SELECT u.id, u.email, u.name, u.is_admin FROM sessions s "
+            "SELECT u.id, u.email, u.name, u.is_admin, u.company_id FROM sessions s "
             "JOIN users u ON u.id = s.user_id "
             "WHERE s.token_hash = :h AND s.expires_at > now()"
         ),
         {"h": _hash(token)},
-    ).mappings().first()
-    return User(**row) if row else None
+    ).first()
+    return User(*row) if row else None  # columns selected in User's field order
 
 
 def get_user(conn: Connection, user_id: int) -> User | None:
     row = conn.execute(
-        text("SELECT id, email, name, is_admin FROM users WHERE id = :id"), {"id": user_id}
-    ).mappings().first()
-    return User(**row) if row else None
+        text("SELECT id, email, name, is_admin, company_id FROM users WHERE id = :id"), {"id": user_id}
+    ).first()
+    return User(*row) if row else None  # columns selected in User's field order
+
+
+# Connector sign-in (app/connectors/api.py): a user is one company email (ADR-002).
+
+def get_user_by_email(conn: Connection, email: str) -> User | None:
+    row = conn.execute(
+        text("SELECT id, email, name, is_admin, company_id FROM users WHERE email = :e"), {"e": email.lower()}
+    ).first()
+    return User(*row) if row else None  # columns selected in User's field order
+
+
+def create_user(conn: Connection, email: str, name: str, company_id: int | None) -> User:
+    user_id = conn.execute(
+        text("INSERT INTO users (email, name, company_id) VALUES (:e, :n, :c) RETURNING id"),
+        {"e": email.lower(), "n": name, "c": company_id},
+    ).scalar_one()
+    return User(user_id, email.lower(), name, False, company_id)

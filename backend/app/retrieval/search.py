@@ -59,7 +59,8 @@ _SEARCH_TEMPLATE = """
     SELECT f.score, c.id AS chunk_id, c.ordinal, c.text,
            d.id AS document_id, d.source, d.source_id, d.title, d.url, d.updated_at, d.acl,
            EXISTS (
-               SELECT 1 FROM boundary b WHERE b.source = d.source AND b.scope_id = d.scope_id
+               SELECT 1 FROM boundary b
+               WHERE b.company_id = d.company_id AND b.source = d.source AND b.scope_id = d.scope_id
            ) AS in_boundary
     FROM fused f
     JOIN chunks c ON c.id = f.id
@@ -67,30 +68,35 @@ _SEARCH_TEMPLATE = """
     ORDER BY f.score DESC, c.id
 """
 
-# What the user may see: not deleted, ACL overlap, inside the admin boundary.
+# What the user may see: their own company's documents only (principals such as
+# `public` and `slack:members` are held in every company), not deleted, ACL
+# overlap, inside the admin boundary.
 _PERMITTED_POOL = """
         SELECT d.id
         FROM documents d
-        WHERE d.deleted_at IS NULL
+        WHERE d.company_id = :company_id
+          AND d.deleted_at IS NULL
           AND d.acl && CAST(:principals AS text[])
           AND EXISTS (
               SELECT 1 FROM boundary b
-              WHERE b.source = d.source AND b.scope_id = d.scope_id
+              WHERE b.company_id = d.company_id AND b.source = d.source AND b.scope_id = d.scope_id
           )
 """
 
-# AUDIT ONLY: live documents the user may NOT see (the exact complement of
-# _PERMITTED_POOL). Searching only these means documents the user can see never
-# crowd restricted ones out of the results.
+# AUDIT ONLY: live documents of the user's company they may NOT see (the exact
+# complement of _PERMITTED_POOL within the company). Searching only these means
+# documents the user can see never crowd restricted ones out of the results.
+# Other companies' documents are never searched, not even for the audit.
 _RESTRICTED_POOL = """
         SELECT d.id
         FROM documents d
-        WHERE d.deleted_at IS NULL
+        WHERE d.company_id = :company_id
+          AND d.deleted_at IS NULL
           AND NOT (
               d.acl && CAST(:principals AS text[])
               AND EXISTS (
                   SELECT 1 FROM boundary b
-                  WHERE b.source = d.source AND b.scope_id = d.scope_id
+                  WHERE b.company_id = d.company_id AND b.source = d.source AND b.scope_id = d.scope_id
               )
           )
 """
@@ -133,6 +139,7 @@ def vector_literal(vec: Sequence[float]) -> str:
 def _ranked(
     conn: Connection,
     sql,
+    company_id: int,
     principals: list[str],
     question: str,
     question_embedding: Sequence[float] | None,
@@ -148,6 +155,7 @@ def _ranked(
     rows = conn.execute(
         sql,
         {
+            "company_id": company_id,
             "principals": list(principals),
             "question": question,
             "qvec": vector_literal(question_embedding) if question_embedding is not None else None,
@@ -181,6 +189,7 @@ def _ranked(
 
 def hybrid_search(
     conn: Connection,
+    company_id: int,
     principals: list[str],
     question: str,
     question_embedding: Sequence[float] | None = None,
@@ -189,12 +198,13 @@ def hybrid_search(
     chunks_per_doc: int = 3,
 ) -> list[Candidate]:
     """Documents the user may see, best first. This is what can reach the LLM."""
-    return _ranked(conn, SEARCH_SQL, principals, question, question_embedding,
+    return _ranked(conn, SEARCH_SQL, company_id, principals, question, question_embedding,
                    chunk_limit, doc_limit, chunks_per_doc)
 
 
 def restricted_matches(
     conn: Connection,
+    company_id: int,
     principals: list[str],
     question: str,
     doc_limit: int = 20,
@@ -211,7 +221,7 @@ def restricted_matches(
     """
     held = set(principals)
     matches = []
-    for c in _ranked(conn, _AUDIT_ONLY_SQL, principals, question, None,
+    for c in _ranked(conn, _AUDIT_ONLY_SQL, company_id, principals, question, None,
                      chunk_limit=50, doc_limit=doc_limit, chunks_per_doc=1):
         reasons = []
         if not held & set(c.acl):

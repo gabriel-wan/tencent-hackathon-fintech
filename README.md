@@ -31,10 +31,14 @@ statement: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 
 `docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector. The backend
 answers questions over permission-filtered, audited search
-([QUERY_PIPELINE.md](docs/architecture/QUERY_PIPELINE.md)), currently against
-fictional development seed data. Not built yet: the real connectors, connector
-sign-in, the live permission check (a stub stands in), the audit hash chain and
-the frontend beyond a health check.
+([QUERY_PIPELINE.md](docs/architecture/QUERY_PIPELINE.md)). Many companies can
+share one deployment, each seeing only its own data. Users connect their own
+Google Drive, Slack, Jira and Confluence accounts; sync copies each company's
+chosen channels, folders, projects and spaces, with their permissions, and the
+live permission check asks each tool as the user
+([connectors/GUIDE.md](docs/connectors/GUIDE.md)). Fictional seed data is
+available for development. Not built yet: the audit hash chain and the frontend
+beyond the connectors test page.
 
 ## Planned architecture
 

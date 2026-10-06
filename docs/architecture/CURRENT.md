@@ -11,23 +11,25 @@ flowchart LR
     TH["Tencent Cloud TokenHub<br/>hy3 chat + kinfra embeddings"]
 
     subgraph COMPOSE["Docker Compose (docker-compose.yml)"]
-        FE["frontend<br/>Next.js, :3000<br/>app/page.tsx"]
+        FE["frontend<br/>Next.js, :3000<br/>app/page.tsx<br/>app/connectors/page.tsx (test page)"]
         subgraph BE["backend: FastAPI, :8000"]
             API["app/api<br/>/api/query, /api/me, /api/session<br/>/api/dev/* (development only)"]
             PIPE["app/pipeline/query.py"]
-            AUTH["app/auth<br/>session, principals,<br/>live check (STUB)"]
-            SEARCH["app/retrieval/search.py<br/>ACL + boundary filter,<br/>keyword + vector"]
+            AUTH["app/auth<br/>session, principals,<br/>live check runner"]
+            SEARCH["app/retrieval/search.py<br/>company + ACL + boundary filter,<br/>keyword + vector"]
             LLMC["app/llm<br/>client, grounding"]
             AUD["app/audit/log.py"]
+            CONN["app/connectors<br/>/connectors, /oauth/*/callback, /api/admin/*<br/>sign-in, tokens, fetch, live checks"]
         end
+        SYNC["sync<br/>python -m app.sync --loop<br/>every company, every 5 min"]
         MIG["migrate<br/>alembic upgrade head<br/>runs once, then exits"]
-        DB[("db<br/>PostgreSQL 17 + pgvector<br/>users, sessions, boundary,<br/>documents, chunks, audit_events")]
+        DB[("db<br/>PostgreSQL 17 + pgvector<br/>companies, users, sessions, user_principals,<br/>boundary, documents, chunks, audit_events,<br/>connections (tokens encrypted)")]
     end
 
-    MIG -->|"migrations 0001 to 0003"| DB
+    MIG -->|"migrations 0001 to 0005"| DB
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
-    FE -->|"server-side fetch<br/>BACKEND_URL/health"| BE
+    FE -->|"server-side fetch, forwards the session cookie<br/>BACKEND_SERVER_URL/health, /connectors"| BE
     API --> PIPE
     PIPE --> AUTH
     PIPE --> SEARCH
@@ -37,7 +39,23 @@ flowchart LR
     AUTH --> DB
     AUD --> DB
     LLMC --> TH
+    CONN -->|"connections, sessions,<br/>user_principals"| DB
+
+    subgraph SRC["External sources (real, not mocked)"]
+        JI["Jira"]
+        CF["Confluence"]
+        GD["Google Drive"]
+        SL["Slack"]
+    end
+
+    USER -.->|"connect: OAuth sign-in<br/>(redirects via the browser)"| SRC
+    CONN -->|"OAuth code exchange, token refresh;<br/>live checks as the asking user"| SRC
+    AUTH -->|"can_read per source"| CONN
+    SYNC -->|"fetch boundary scopes<br/>as the company admin"| SRC
+    SYNC -->|"documents, chunks"| DB
+    SYNC -->|"embeddings"| TH
 ```
 
-Details and contracts: [QUERY_PIPELINE.md](QUERY_PIPELINE.md). Connectors are
-not built yet; documents come from the development seed (`app/seed.py`).
+Details and contracts: [QUERY_PIPELINE.md](QUERY_PIPELINE.md). Many companies share
+one deployment; every query is limited to the user's own company. Documents come
+from sync, or from the development seed (`app/seed.py`).

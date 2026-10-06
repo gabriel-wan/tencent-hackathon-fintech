@@ -1,67 +1,30 @@
-# DEVELOPMENT.md
+# Development
 
-Development guidelines. Stack: Next.js + FastAPI + PostgreSQL/pgvector,
-run with Docker Compose (DECISIONS.md, ADR-001).
+## 1. Get started locally
 
-## 1. Local setup
+Install [Git](https://git-scm.com/), [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+and [uv](https://docs.astral.sh/uv/getting-started/installation/) (uv is for tests and your editor only).
 
-1. Clone the repository.
-2. Copy `backend/.env.example` to `backend/.env` and
-   `frontend/.env.example` to `frontend/.env`, then fill in local values.
-   `.env` files are git-ignored and must never be committed.
-3. Install Docker Desktop (with Compose v2). Nothing else is needed to run
-   the app; Node and Python are only needed for editing outside containers.
-4. For backend work outside containers (tests, editor autocomplete), install
-   [uv](https://docs.astral.sh/uv/getting-started/installation/) and run
-   `uv sync` in `backend/`. It creates `backend/.venv` with Python 3.12 and
-   every dependency; select that interpreter in your editor. Add a package
-   with `uv add <pkg>` (or `uv add --dev <pkg>` for dev-only tools), which
-   updates `pyproject.toml` and `uv.lock` together; commit both.
-   No activation needed: `uv run <command>` (e.g. `uv run pytest`) uses
-   `backend/.venv` automatically. To type plain `python` or `pytest` instead,
-   activate it first: `source .venv/bin/activate` (macOS/Linux) or
-   `.venv\Scripts\activate` (Windows).
+1. Clone the repo, then enter its folder:
+   ```
+   git clone <repo-url>
+   cd tencent-hackathon-fintech
+   ```
+2. Create the `.env` files ([section 2](#2-environment-variables)).
+3. Start everything: `docker compose up --build`
+4. Open:
+   - http://localhost:3000 for the frontend (http://localhost:3000/connectors to connect your tools)
+   - http://localhost:8000/health for the backend; it returns `{"db": "ok", ...}`
+   - http://localhost:8000/docs for every API route, each with "Try it out"
 
-## 2. Environment variables
-
-All configuration and every secret come from the environment. Rules:
-
-- Each app owns its config: `backend/.env.example` and
-  `frontend/.env.example` list every variable that app reads, with a comment
-  and a placeholder value. They are the documentation of configuration.
-- Add a variable to its app's `.env.example` in the same change that
-  introduces it.
-- `docker-compose.yml` loads each app's `.env` and sets only container
-  hostnames (`POSTGRES_HOST`, `BACKEND_URL`), which differ inside Docker.
-- Never log a secret. Never put one in a prompt, fixture, screenshot or commit.
-- Scripts and tests read credentials from the environment, never from
-  arguments or hard-coded values.
-
-## 3. Running the application
-
-| Step | Command |
+| Task | Command |
 |---|---|
-| First run, or after pulling changes | `docker compose up --build` |
-| Start developing | `docker compose up` |
-| After editing code | `docker compose up --build` (or one service: `docker compose up --build backend`) |
-| Stop | Ctrl+C, or `docker compose stop` from another terminal |
+| Start | `docker compose up` |
+| After editing code | `docker compose up --build` (one service: `docker compose up --build backend`) |
+| Stop | Ctrl+C |
+| Wipe the database | `docker compose down -v` |
 
-- Code is copied into the images, so edits only take effect after `--build`.
-  Docker's layer cache keeps rebuilds fast; dependencies are reinstalled only
-  when `package.json` or `uv.lock` change.
-- Stopping keeps containers, images and the database. `docker compose down`
-  also removes containers; `docker compose down -v` also wipes the database.
-- Frontend: http://localhost:3000 (shows the backend health result)
-- Backend: http://localhost:8000/health returns `{"db": "ok", "pgvector": "<version>"}`
-- Postgres is reachable only inside the Compose network.
-- Schema changes are Alembic migrations in `backend/migrations/versions/`. The
-  `migrate` service applies them before the backend starts; deployments run the
-  same `alembic upgrade head` against TencentDB. New migration: add the next
-  numbered file there, with `down_revision` set to the previous `revision`.
-- The images are production images (non-root, health checks); local runs use
-  exactly what gets deployed.
-
-**Development seed data.** Until the connectors land, load a fictional company
+**Development seed data.** Until connector sync lands, load a fictional company
 (four users, seven documents covering each permission case) with:
 
 ```
@@ -73,11 +36,77 @@ run unless `APP_ENV=development`. In development, `GET /api/dev/users` lists the
 seeded users and `POST /api/dev/session` signs in as one of them; see
 [QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md).
 
-## 4. Running tests
+**Backend dependencies (uv).** Dependencies are declared in `backend/pyproject.toml`, and exact versions are locked in `backend/uv.lock`. Run every command below from `backend/`.
 
-Backend: pytest in `backend/tests/`. Tests need Postgres and refuse to run
-unless `POSTGRES_DB` ends in `_test`, so they never touch development data.
-They create and migrate that database themselves, and each test rolls back.
+| Task | Command |
+|---|---|
+| Set up, and again after every pull | `uv sync`. It creates `backend/.venv` with Python 3.12 (downloaded if missing) and installs dev tools such as pytest. Select `.venv` as your editor's interpreter. |
+| Run anything | `uv run <cmd>`, e.g. `uv run pytest`. No activation needed. For plain `python`, activate first: `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (macOS/Linux). |
+| Add a package | `uv add <pkg>`, or `uv add --dev <pkg>` for test-only tools |
+| Remove a package | `uv remove <pkg>` |
+| Upgrade a package | `uv lock --upgrade-package <pkg>`, then `uv sync` |
+
+- Always commit `pyproject.toml` and `uv.lock` together.
+- The Docker image installs exactly what `uv.lock` lists, without dev tools (`uv sync --locked --no-dev`). If you edit `pyproject.toml` by hand, run `uv lock` before building, or the build fails.
+- Never use `pip install`.
+
+**Database changes:**
+- Write a numbered migration in `backend/migrations/versions/`, with `down_revision` set to the previous one.
+- If two branches add the same migration number, whoever merges second renumbers theirs.
+- If your local database was migrated by a migration that was later renumbered, reset it: `docker compose down -v`.
+
+**Git:** work on a branch, then open a pull request to `main`.
+
+## 2. Environment variables
+
+Copy `backend/.env.example` to `backend/.env`, and `frontend/.env.example` to `frontend/.env`. Never commit `.env` files.
+
+After editing, restart with `docker compose up`. If a setting needed to connect a tool is missing, `/connectors/<tool>/connect` returns 503 naming it.
+
+### Frontend
+
+| Variable | Value |
+|---|---|
+| `BACKEND_SERVER_URL` | `http://localhost:8000` (Docker overrides it) |
+| `BACKEND_LOCAL_URL` | `http://localhost:8000`: the backend address your browser uses |
+| `APP_ENV` | `development`: Slack connects with a pasted token on `/connectors` (GUIDE §4) |
+
+### Backend: basics (required)
+
+| Variable | Value |
+|---|---|
+| `APP_ENV`, `LOG_LEVEL` | `development`, `info`. Development-only routes and the seed need `development` |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Any local values; the database is created with them |
+| `APP_URL` | `http://localhost:8000` |
+| `TOKEN_ENCRYPTION_KEY` | In `backend/`, run `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `FRONTEND_URL` | Optional. Default `http://localhost:3000` |
+
+### Backend: LLM and embeddings
+
+| Variable | Value |
+|---|---|
+| `LLM_BASE_URL`, `LLM_MODEL`, `EMBEDDING_MODEL` | Keep the values in `.env.example` (Tencent Cloud TokenHub) |
+| `LLM_API_KEY` | TokenHub console → API Key. It must be allowed to use both models (Access Scope). |
+
+### Backend: users connecting their accounts
+
+Step-by-step per tool, local and production: [connectors/GUIDE.md](connectors/GUIDE.md). In each tool's app settings, register the redirect URI `{APP_URL}/oauth/<google|slack|atlassian>/callback`.
+
+| Variable | Where to get it |
+|---|---|
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | console.cloud.google.com → APIs & Services → Credentials → OAuth client ID (Web). Enable the Drive API and add test users on the consent screen. |
+| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | api.slack.com/apps → your app → Basic Information. Add the User Token Scopes listed in GUIDE.md §4. |
+| `ATLASSIAN_CLIENT_ID`, `ATLASSIAN_CLIENT_SECRET` | developer.atlassian.com/console → OAuth 2.0 (3LO). Enable the Jira, Confluence and User identity APIs. |
+
+Companies are not an environment variable: the first sign-in from a new Slack workspace or
+Atlassian site creates the company and makes that person its admin
+([connectors/GUIDE.md §2](connectors/GUIDE.md#2-basics-each-developer)). Sync needs no extra
+credentials either: it reads as the company admin's own connections.
+
+## 3. Unit tests
+
+Tests need Postgres and refuse to run unless `POSTGRES_DB` ends in `_test`, so they never touch
+development data. They create and migrate that database themselves.
 
 Run them in Docker from the repo root (no local Python needed):
 
@@ -85,114 +114,8 @@ Run them in Docker from the repo root (no local Python needed):
 docker compose run --rm --build --user root -e POSTGRES_DB=brain_test -v ./backend/tests:/app/tests backend sh -c "uv sync --locked --group dev --quiet && pytest -q"
 ```
 
-Add `-m security` after `pytest` to run only the security-invariant tests.
-With a local Python and Postgres instead: from `backend/`, `uv run pytest`
-with `POSTGRES_DB=brain_test` and the other `POSTGRES_*` variables set.
-
-Expectations:
-
-- One command runs the whole suite.
-- Security-invariant tests (SECURITY.md section 2) are tagged so they can be
-  run on their own and are always part of the default run.
-- Tests never call real external APIs without an explicit opt-in flag.
-
-## 5. Linting and formatting
-
-`TBD` (still open in ADR-001). Whatever is chosen, it runs in one command and in CI, and the
-repository stays clean under it. Do not argue about style in PRs; let the tool
-decide.
-
-## 6. Git workflow
-
-- `main` is always in a demoable state. Nothing is committed directly to
-  `main` after the initial scaffold.
-- Work happens on short-lived branches merged through pull requests.
-- Rebase or merge from `main` before opening a PR; resolve conflicts locally.
-- Never force-push `main`. Never rewrite shared history.
-- Never commit generated output, local databases or secrets (see `.gitignore`).
-
-### Branch naming
-
-`<type>/<short-kebab-description>` where `type` is one of
-`feat`, `fix`, `docs`, `test`, `chore`, `spike`.
-
-Examples: `feat/audit-hash-chain`, `docs/adr-003-authz-model`,
-`spike/confluence-permissions-api`.
-
-### Commit conventions
-
-[Conventional Commits](https://www.conventionalcommits.org/) style:
-
-```
-<type>(<scope>): <imperative summary, 72 chars max>
-
-<optional body: what and why, not how>
-```
-
-Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `security`.
-Use `security` for any change to authorization, filtering, audit logging, or
-what the LLM receives, so the history is searchable.
-
-### Pull requests
-
-Every PR description states:
-
-1. What changed and why (link the ADR or scenario it serves).
-2. **Security impact:** "none" or a description. Changes to security behaviour
-   need review from a second team member and must never be merged silently.
-3. New dependencies, each with a one-line justification.
-4. Documentation updated: yes / not needed (say which files).
-5. Tests added or updated.
-6. Whether any part is mocked, and where that is labelled.
-
-Small PRs. One concern each. Reviewers check the security-impact line first.
-
-## 7. How to add an integration (source connector)
-
-1. Read the platform's native permission model and write it down in
-   [ARCHITECTURE.md](architecture/ARCHITECTURE.md) before writing code. Confluence,
-   Jira, Slack and Google Drive each differ; the handbook forbids flattening.
-2. Decide, and record in the PR, whether the connector is **real** or
-   **mocked**. A mock must be named as such in code, be visibly labelled in
-   any output, and model realistic permission structures so the negative
-   cases can be demonstrated.
-3. The connector exposes content *and* permission data. It never makes an
-   authorization decision itself; that is the authorization layer's job.
-4. Use least-privilege credentials, configured only via environment variables
-   listed in `backend/.env.example`.
-5. Add tests: content fetch, permission fetch, and at least one negative
-   permission case for this platform.
-6. Add the audit events the connector's actions produce.
-7. Update ARCHITECTURE.md (section 3.6) and, if the design changed, an ADR.
-
-## 8. How to add tests
-
-- Backend tests go under `backend/tests/`, mirroring `backend/app/`; frontend
-  tests live in `frontend/`.
-- Name tests after the behaviour, not the function:
-  `revoked_channel_membership_excludes_messages`, not `test_filter_2`.
-- Every security invariant in SECURITY.md gets at least one test that would
-  fail if the invariant were broken. Link the test from the SECURITY.md table.
-- Negative cases are first-class: for every "user X can see Y" test, write the
-  matching "user Z cannot see Y, and the response does not reveal Y exists".
-- Tests for permission changes must exercise the change *after* ingestion.
-- Prefer small deterministic fixtures with clearly fake data (obviously fake
-  names, no real company data).
-
-## 9. How to update documentation
-
-- Documentation is part of the change, not a follow-up. A PR that changes
-  architecture or important behaviour updates the relevant doc in the same PR.
-- Root documents and their purpose:
-  - `README.md` – entry point and current status
-  - `PROJECT.md` – what and why, personas, scenarios, MVP scope, open items
-  - `ARCHITECTURE.md` – shape of the system and open questions
-  - `SECURITY.md` – threat model and invariants
-  - `DECISIONS.md` – decision log; full ADRs under `docs/decisions/`
-  - `DEVELOPMENT.md` – this file
-  - `AGENTS.md` – instructions for AI coding agents
-  - `docs/hackathon/` – challenge, requirements, submission, tool-usage
-- Mark anything undecided as `TBD` and anything assumed as `ASSUMPTION:` so
-  it can be found with a search. Remove the marker when it is resolved.
-- When a TBD is resolved, update the "Open items" table in PROJECT.md.
-- Use the ADR template in `docs/decisions/adr-template.md` for decisions.
+- Add `-m security` after `pytest` to run only the security-invariant tests, or `-k <name>` for one test.
+- With a local Python and Postgres instead: from `backend/`, `uv run pytest` with `POSTGRES_DB=brain_test`
+  and the other `POSTGRES_*` variables set.
+- Tests never call real external APIs: the LLM and the tools are faked.
+- Tests go in `backend/tests/`, named after the behaviour they check.
