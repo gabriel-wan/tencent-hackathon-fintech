@@ -24,7 +24,7 @@ live in this folder.
 |---|---|
 | `/` | Signed in only. Placeholder until the chat page lands |
 | `/login` | Sign-in. Google button disabled until the connectors branch merges; development sign-in box when the backend is in development mode |
-| `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_URL`. For developers |
+| `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
 
@@ -68,17 +68,17 @@ DEVELOPMENT ONLY, and labelled as such on screen. Identity is not verified.
 ## Talking to the backend
 
 ```
-browser ──/api/*──▶ frontend proxy (app/api/[...path]/route.ts) ──▶ BACKEND_URL/api/*
-server components ──lib/api/server.ts──▶ BACKEND_URL/api/*  (forwards the request's Cookie header)
+browser ──/api/*──▶ frontend proxy (app/api/[...path]/route.ts) ──▶ BACKEND_SERVER_URL/api/*
+server components ──lib/api/server.ts──▶ BACKEND_SERVER_URL/api/*  (forwards the request's Cookie header)
 ```
 
 - **The browser only talks to the frontend's origin.** The `/api/*` route
-  handler forwards each request to `BACKEND_URL`, so the backend's httpOnly
+  handler forwards each request to `BACKEND_SERVER_URL`, so the backend's httpOnly
   `ib_session` cookie is set for this origin and no CORS setup is needed.
   It is a route handler, not a `next.config.ts` rewrite: a test build showed
-  rewrites capture `BACKEND_URL` at build time, while Docker sets it at run time.
+  rewrites capture `BACKEND_SERVER_URL` at build time, while Docker sets it at run time.
 - **The proxy decides nothing.** It forwards only `content-type`, `accept` and
-  `cookie`, cannot leave `/api`, takes its host only from `BACKEND_URL`,
+  `cookie`, cannot leave `/api`, takes its host only from `BACKEND_SERVER_URL`,
   passes every `Set-Cookie` back, and never retries. Backend unreachable:
   `502`; slower than 30 s: `504`.
 - **Never call `fetch` for the backend directly.** Client components use

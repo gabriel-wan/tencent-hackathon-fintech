@@ -9,7 +9,7 @@ type Health = { db?: string; pgvector?: string | null };
 
 async function getHealth(): Promise<{ reachable: boolean; status?: number; body?: Health }> {
   try {
-    const res = await fetch(`${process.env.BACKEND_URL}/health`, { cache: "no-store" });
+    const res = await fetch(`${process.env.BACKEND_SERVER_URL}/health`, { cache: "no-store" });
     return { reachable: true, status: res.status, body: await res.json() };
   } catch {
     return { reachable: false };

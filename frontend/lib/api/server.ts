@@ -1,5 +1,5 @@
 // Server-side API client, for server components and layouts only. It calls the
-// backend directly at BACKEND_URL and forwards the incoming request's whole
+// backend directly at BACKEND_SERVER_URL and forwards the incoming request's whole
 // Cookie header, so it works whatever the session cookie is called.
 // Never import this from a client component.
 import { headers } from "next/headers";
@@ -10,8 +10,8 @@ import type { DevUser, Me } from "./types";
 
 async function request<T>(path: string): Promise<T> {
   if (typeof window !== "undefined") throw new Error("lib/api/server.ts is server-only");
-  const base = process.env.BACKEND_URL;
-  if (!base) throw new BackendUnreachableError("BACKEND_URL is not set");
+  const base = process.env.BACKEND_SERVER_URL;
+  if (!base) throw new BackendUnreachableError("BACKEND_SERVER_URL is not set");
   const cookie = (await headers()).get("cookie");
 
   let res: Response;

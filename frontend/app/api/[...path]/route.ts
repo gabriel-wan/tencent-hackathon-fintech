@@ -3,7 +3,7 @@
  * talks to this origin and the session cookie (ib_session, httpOnly) works
  * without CORS.
  *
- * A route handler, not a next.config.ts rewrite: rewrites capture BACKEND_URL
+ * A route handler, not a next.config.ts rewrite: rewrites capture BACKEND_SERVER_URL
  * when the app is built, but Docker only provides it at run time.
  *
  * This file carries the session cookie but makes no authorization decision:
@@ -25,8 +25,8 @@ function json(status: number, detail: string): Response {
 }
 
 async function forward(request: NextRequest, { params }: Context): Promise<Response> {
-  const base = process.env.BACKEND_URL;
-  if (!base) return json(500, "BACKEND_URL is not set");
+  const base = process.env.BACKEND_SERVER_URL;
+  if (!base) return json(500, "BACKEND_SERVER_URL is not set");
 
   // Stay inside /api: refuse segments that would walk out of it.
   const { path } = await params;
