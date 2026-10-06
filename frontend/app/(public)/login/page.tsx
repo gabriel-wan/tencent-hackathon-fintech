@@ -12,18 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NotSignedInError } from "@/lib/api/errors";
 import { getMe, listDevUsers } from "@/lib/api/server";
+import { connectUrl, oauthErrorMessage } from "@/lib/connectors";
 
 export const metadata: Metadata = { title: "Sign in · Internal Brain" };
-
-// Errors the backend's OAuth callback can send (?error=..., connectors branch,
-// backend/app/connectors/api.py). Only these are shown; any other value is
-// ignored, so a crafted link cannot put its own text on this page.
-const SIGN_IN_ERRORS = new Map<string, string>([
-  ["access_denied", "Sign-in was cancelled."],
-  ["provider_error", "This account can't sign in here. Use your company account."],
-  ["invalid_state", "Sign-in expired. Please try again."],
-  ["account_mismatch", "This account is linked to someone else. Sign out and try again."],
-]);
 
 type Props = { searchParams: Promise<{ error?: string | string[] }> };
 
@@ -43,7 +34,8 @@ export default async function LoginPage({ searchParams }: Props) {
   if (session === "signedIn") redirect("/");
 
   const { error } = await searchParams;
-  const errorMessage = typeof error === "string" ? SIGN_IN_ERRORS.get(error) : undefined;
+  // Only a code the backend can send is shown (lib/connectors.ts); anything else is ignored.
+  const errorMessage = oauthErrorMessage(error);
   // null unless the backend runs with APP_ENV=development (lib/api/server.ts).
   const devUsers = session === "signedOut" ? await listDevUsers() : null;
 
@@ -68,13 +60,22 @@ export default async function LoginPage({ searchParams }: Props) {
                 <AlertDescription>{errorMessage}</AlertDescription>
               </Alert>
             ) : null}
-            {/* Phase 7 turns this into a plain link to the backend's
-                /connectors/drive/connect once the connectors branch merges. */}
-            <Button size="lg" className="w-full" disabled aria-describedby="google-sign-in-note">
-              Sign in with Google
+            {/* Plain links: the sign-in redirect has to start and end on the backend. Signing in
+                connects that tool to your account; there is no separate password. */}
+            <Button asChild size="lg" className="w-full">
+              <a href={connectUrl("drive")}>Sign in with Google</a>
             </Button>
-            <p id="google-sign-in-note" className="text-xs text-muted-foreground">
-              Google sign-in arrives with the connectors merge.
+            <div className="grid grid-cols-2 gap-3">
+              <Button asChild variant="outline" size="lg">
+                <a href={connectUrl("slack")}>Slack</a>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                <a href={connectUrl("jira")}>Atlassian</a>
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Signing in connects that tool, and only what you can already see there is used. Your company comes from
+              your Slack workspace or Atlassian site, so connect one of those too.
             </p>
           </CardContent>
         </Card>
