@@ -88,8 +88,10 @@ def test_jira_fetch_one_document_per_ticket(atlassian_api):
     def search(request):
         body = json.loads(request.content)
         assert body["jql"] == 'project = "PAY"'
-        if "nextPageToken" not in body:  # two pages
-            return {"issues": [], "nextPageToken": "p2"}
+        if "nextPageToken" not in body:  # two pages, each with a ticket
+            return {"issues": [{"id": "10012", "key": "PAY-12", "fields": {
+                "summary": "Slow refunds", "updated": "2026-09-30T09:00:00.000+0800"}}], "nextPageToken": "p2"}
+        assert body["nextPageToken"] == "p2"
         return {"issues": [{"id": "10013", "key": "PAY-13", "fields": {
             "summary": "Double charge", "description": doc("Card charged twice."), "updated": "2026-10-01T09:00:00.000+0800",
             "comment": {"comments": [{"body": doc("Refund issued.")}]}}}]}
@@ -99,11 +101,15 @@ def test_jira_fetch_one_document_per_ticket(atlassian_api):
         "GET /rest/api/3/user/permission/search": [{"accountId": "A1"}, {"accountId": "A2"}],
         "POST /rest/api/3/search/jql": search,
     }))
+    acl = ["atlassian:user:A1", "atlassian:user:A2"]
     assert list(jira.fetch(http, "PAY")) == [{
+        "source": "jira", "source_id": "10012", "scope_id": "PAY", "title": "PAY-12: Slow refunds",
+        "url": "https://corp.atlassian.net/browse/PAY-12", "updated_at": "2026-09-30T09:00:00.000+0800",
+        "acl": acl, "text": "Slow refunds",
+    }, {
         "source": "jira", "source_id": "10013", "scope_id": "PAY", "title": "PAY-13: Double charge",
         "url": "https://corp.atlassian.net/browse/PAY-13", "updated_at": "2026-10-01T09:00:00.000+0800",
-        "acl": ["atlassian:user:A1", "atlassian:user:A2"],
-        "text": "Double charge\nCard charged twice.\n\nRefund issued.",
+        "acl": acl, "text": "Double charge\nCard charged twice.\n\nRefund issued.",
     }]
 
 

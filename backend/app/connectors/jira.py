@@ -41,10 +41,10 @@ def fetch(http: httpx.Client, project: str, changed: Callable[[str, str], bool] 
         resp = request("POST", "/rest/api/3/search/jql", http=http, json=body).json()
         for issue in resp["issues"]:
             f = issue["fields"]
-            body = None
+            text = None
             if changed(issue["id"], f["updated"]):
                 comments = [adf_text(c["body"]) for c in (f.get("comment") or {}).get("comments", [])]
-                body = "\n".join([f["summary"], adf_text(f.get("description")), *comments]).strip()
+                text = "\n".join([f["summary"], adf_text(f.get("description")), *comments]).strip()
             yield {
                 "source": "jira",
                 "source_id": issue["id"],  # numeric: what the live check (bulk permissions) takes
@@ -53,7 +53,7 @@ def fetch(http: httpx.Client, project: str, changed: Callable[[str, str], bool] 
                 "url": f"{site}/browse/{issue['key']}",
                 "updated_at": f["updated"],
                 "acl": acl,
-                "text": body,
+                "text": text,
             }
         if not (token := resp.get("nextPageToken")):
             return
