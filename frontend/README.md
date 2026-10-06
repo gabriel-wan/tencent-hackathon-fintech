@@ -1,8 +1,10 @@
 # frontend/
 
-Next.js app (see DECISIONS.md, ADR-001). Status: sign-in (development persona
-switcher) and the signed-in shell work; the home page is a placeholder until
-the chat lands; admin pages are not built yet (roadmap Task 2).
+Next.js app (see DECISIONS.md, ADR-001). Status: sign-in (Google, Slack and
+Atlassian through the backend's OAuth, plus the development persona switcher),
+the Connections page and the signed-in shell work; the home page is a
+placeholder until the chat lands; admin pages are not built yet (roadmap
+Task 2).
 
 The frontend never makes authorization decisions; the backend filters by
 permission before anything reaches the LLM (SECURITY.md, INV-2). Frontend tests
@@ -23,25 +25,40 @@ live in this folder.
 | Route | What it shows |
 |---|---|
 | `/` | Signed in only. Placeholder until the chat page lands |
-| `/login` | Sign-in. Google button disabled until the connectors branch merges; development sign-in box when the backend is in development mode |
+| `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box when the backend is in development mode |
+| `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
 
 ## Sign-in
 
-There is no app login form (ADR-002): sign-in will be "Sign in with Google",
-handled by the backend's connector OAuth (connectors branch, not merged yet).
+There is no app login form and no password (ADR-002): signing in means
+connecting a tool, handled by the backend's OAuth (`backend/app/connectors`).
+The first connection creates your user and session. **Your company comes from
+a Slack workspace or Atlassian site**, never from Google: the first sign-in
+from a new workspace or site creates a company and its first member becomes
+admin, and a user with only Google has no company and sees nothing.
 
 - **Session gate.** `app/(app)/layout.tsx` calls `GET /api/me` on the server
   for every signed-in page. 401 → `/login`. Backend unreachable → "Can't reach
   the server" (not a redirect, which would look like being signed out). The
   user is passed to client components through `MeProvider` (`useMe()`), for
   display only. This gate is UX: the backend checks the session on every call.
-- **`/login`.** Signed-in visitors go to `/`. `?error=` from the OAuth callback
-  is looked up in a fixed map of four values (`access_denied`,
-  `provider_error`, `invalid_state`, `account_mismatch`); any other value shows
-  nothing, so a crafted link cannot put its own text on the page.
+- **`/login`.** Signed-in visitors go to `/`. "Sign in with Google", "Slack"
+  and "Atlassian" are plain links to
+  `${BACKEND_LOCAL_URL}/connectors/{drive,slack,jira}/connect`: a full-page
+  navigation, never a `fetch`, because the OAuth redirect has to start and end
+  on the backend. If a provider is not configured the backend answers 503 and
+  names the missing variable.
+- **Errors.** The backend's OAuth callback redirects to
+  `/connectors?connected=<provider>` or `/connectors?error=<code>` (the target
+  is fixed in the backend). Only the codes in `lib/connectors.ts`
+  (`access_denied`, `provider_error`, `invalid_state`, `account_mismatch`,
+  `no_company`, `missing_permission`) have a message; any other value shows
+  nothing, so a crafted link cannot put its own text on a page. A failed
+  sign-in has no session, so `/connectors` carries a known error on to
+  `/login?error=<code>`, where the person is trying to sign in.
 - **Pages that read the session must render per request.** Call
   `await connection()` first, and start every server-side `catch` with
   `unstable_rethrow(error)`. Next.js signals "this page is dynamic" and
@@ -49,6 +66,29 @@ handled by the backend's connector OAuth (connectors branch, not merged yet).
   bake the signed-in page as a fixed "Can't reach the server" page.
 - **Sign out.** User menu → `DELETE /api/session` → full page load to
   `/login`. If the request fails, the menu says so and the user stays signed in.
+
+### Connections (`/connectors`)
+
+`app/connectors/page.tsx`, `components/connectors/`. One card per tool: status
+and the connected account, then **Connect** (a link to the backend), or **Test**
+and **Disconnect**.
+
+- **Own session check, not the `(app)` layout.** The layout would send a
+  signed-out visitor to `/login` and lose the `?error=` code. The page shares
+  the frame (`components/signed-in-shell.tsx`) with the layout.
+- **Test and Disconnect are server actions** (`app/connectors/actions.ts`).
+  They call `GET /connectors/{id}/ping` and `DELETE /connectors/{id}`, which sit
+  outside `/api`, through `backendFetch()` in `lib/api/server.ts`, forwarding the
+  visitor's cookie. Server actions are public endpoints, so the connector id is
+  checked against the fixed list first (`isConnectorId`). Jira and Confluence
+  share one Atlassian sign-in: disconnecting either removes both.
+- **Company hint.** A user with connections but none of Slack, Jira or
+  Confluence is told to connect one to join their company. (`/api/me` does not
+  say whether you have a company; a field for it is on the wish list.)
+- **Slack token form, development only.** Slack's OAuth needs https, so while the
+  backend runs with `APP_ENV=development` a labelled form connects Slack with a
+  pasted user token (`POST /api/dev/connectors/slack`). The form appears only
+  when the backend lists `/api/dev/users`; there is no frontend `APP_ENV`.
 
 ### Development sign-in (persona switcher)
 
@@ -59,7 +99,10 @@ DEVELOPMENT ONLY, and labelled as such on screen. Identity is not verified.
   `APP_ENV=production` the routes return 404 and every development control
   disappears (checked).
 - `/login` lists the seeded users (`docker compose run --rm backend python -m app.seed`);
-  names come from the backend, none are hard-coded.
+  names come from the backend, none are hard-coded. They belong to fictional
+  companies (MerlionPay, and Dana in Kopi Labs, to show company isolation).
+  Personas have no real connection, so in development their questions use the
+  stored-permission check instead of asking Slack or Drive live.
 - Signed-in pages show an amber "Development tools" strip with the current user
   and a **Switch user** menu.
 - Signing in or switching does a **full page load**, so nothing from the
@@ -143,13 +186,15 @@ mode staying off in production.
 
 ```
 app/(app)/            signed-in pages; layout.tsx is the session gate
+app/connectors/       Connections page and its server actions
 app/(public)/         /login and /status, no session needed
 app/api/[...path]/    the /api proxy to the backend
 app/                  root layout.tsx (theme), globals.css, healthz/
 components/ui/        shadcn-generated components: edit freely, keep them generic
 components/           our own components, built from components/ui
+components/connectors/  connection cards and the development-only Slack token form
 lib/api/              backend client (client.ts, server.ts), errors, generated types, mock mode
-lib/                  answer, citation and date helpers; utils.ts is shadcn's cn()
+lib/                  answer, citation and date helpers; connectors.ts (connector ids, OAuth messages); utils.ts is shadcn's cn()
 components.json       shadcn CLI settings
 ```
 
