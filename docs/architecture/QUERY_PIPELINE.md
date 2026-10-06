@@ -11,10 +11,11 @@ plus an HNSW vector index in [0003_chunks_embedding_hnsw.py](../../backend/migra
 
 | Table | Written by | Notes |
 |---|---|---|
-| `documents` | Connector | One row per item (Slack thread, Drive file). Unique on `(source, source_id)` |
+| `companies` | First sign-in from a new Slack workspace or Atlassian site (`app/companies.py`) | Every document, boundary scope and cursor belongs to one (migration 0005). A user has one once a Slack or Atlassian connection names it; until then they see nothing |
+| `documents` | Connector | One row per item (Slack thread, Drive file). Unique on `(company_id, source, source_id)` |
 | `chunks` | Connector worker | Pieces of a document's text, at most **2,000 characters** each (TokenHub embedding limit) |
-| `sync_state` | Connector | Cursors, one row per `(source, key)` |
-| `boundary` | Admin action | Which channels and folders may be used at all |
+| `sync_state` | Connector | Cursors, one row per `(company_id, source, key)` (not used yet: sync rescans each scope) |
+| `boundary` | Admin action (`/api/admin/boundary`) | Which channels, folders, projects and spaces each company may use at all |
 | `users`, `user_principals` | Sign-in | Who a person is on each platform |
 
 Rules for connectors:
@@ -24,9 +25,12 @@ Rules for connectors:
   `google:user:a@co.com`, `google:domain:co.com`, `public`. Stored once per
   document; chunks inherit it. It may include extra people but must never leave
   out a real reader.
-- **`documents.scope_id`** is the Slack channel ID, or the Drive folder ID that
-  appears in `boundary`. Documents whose `(source, scope_id)` is not in
-  `boundary` are never used.
+- **`documents.company_id`** is the company that synced it. Search only ever
+  reads the user's own company, so `public` and `slack:members` never cross
+  companies.
+- **`documents.scope_id`** is the Slack channel ID, Drive folder ID, Jira project
+  key or Confluence space ID that appears in `boundary`. Documents whose
+  `(company_id, source, scope_id)` is not in `boundary` are never used.
 - **Replace a document's chunks in one transaction** when it changes, and set
   `deleted_at` instead of deleting documents.
 - **Embed chunks with `LLMClient.embed()`** from
@@ -34,9 +38,10 @@ Rules for connectors:
   use the same model (`kinfra-text-embedding-0.6b`, 1,024 dimensions).
 - **Live check:** each connector provides `can_read(principal, ids) -> {id: bool}`,
   where `principal` is the user's own identity on that platform and `ids` are
-  `source_id` values. Register it in `default_checkers` in
-  [app/auth/live_check.py](../../backend/app/auth/live_check.py). Anything other
-  than `True`, including an exception or taking longer than 2 seconds, denies.
+  `source_id` values: [app/connectors/live.py](../../backend/app/connectors/live.py),
+  passed to [app/auth/live_check.py](../../backend/app/auth/live_check.py) by
+  `/api/query`. Anything other than `True`, including an exception or taking
+  longer than 2 seconds, denies.
 
 ## 2. For the frontend (Task 2): the API
 
@@ -51,9 +56,10 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
 | `POST /api/dev/session` | `{"user_id": 1}` | Signs in as that user (persona switcher). **Development only** |
 
 - **Sign-in:** there is no username/password page (ADR-002). The product signs
-  in through "Connect Slack" / "Connect Google", which is not built yet. Until
-  then the persona switcher uses the development routes, which do not exist
-  unless `APP_ENV=development`.
+  in through "Connect Slack" / "Connect Google" (`/connectors`, see
+  [GUIDE.md](../connectors/GUIDE.md)), which sets the same session cookie. The
+  persona switcher uses the development routes, which do not exist unless
+  `APP_ENV=development`.
 - **Cookies:** call the API with credentials included. The session cookie is
   httpOnly and SameSite=Lax; keeping the API on the same origin as the frontend
   (for example a Next.js rewrite of `/api`) avoids cross-origin cookie issues.
@@ -68,8 +74,8 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
 1. Session cookie to user to principals (`public` is added for everyone).
 2. Embed the question. If that fails, continue with keyword search only.
 3. One SQL query ([app/retrieval/search.py](../../backend/app/retrieval/search.py)):
-   only documents that are not deleted, whose ACL shares a principal with the
-   user, and whose scope is in the boundary. Keyword and vector ranks are merged
+   only the user's own company's documents that are not deleted, whose ACL
+   shares a principal with the user, and whose scope is in the boundary. Keyword and vector ranks are merged
    with reciprocal rank fusion; top 20 documents, up to 3 chunks each. Vector
    search can use the HNSW index and runs with `hnsw.iterative_scan` on, so the
    permission filter cannot starve it. The index is approximate: it can
@@ -91,8 +97,9 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
 
 | Item | Status | Roadmap |
 |---|---|---|
-| Live check | **STUB:** answers from the stored ACL, so it does not catch revocations between syncs. The audit log records `live_check_mode` | Task 1 provides real `can_read` |
-| Connector sign-in | Not built; development routes stand in | |
+| Live check | Built: `/api/query` asks each source as the user (`app/connectors/live.py`). In development only, a persona with no connection at all (the seed) still uses the stored-ACL stub. The audit log records `live_check_mode` | Task 1 |
+| Connector sign-in | Built: creates the user in their company, the session and `user_principals` ([GUIDE.md](../connectors/GUIDE.md)) | Task 1 |
+| Sync | Built: `app/sync.py`, every 5 minutes and on `POST /api/admin/sync` | Task 1 |
 | Audit hash chain and insert-only DB role | Not built; the table already rejects UPDATE, DELETE and TRUNCATE | Task 3, 5–6 Oct |
 | Audit search API | Not built | Task 3, 5–6 Oct |
 | Semantic search | Code works; needs the embedding model enabled on the TokenHub key and chunk embeddings written | |

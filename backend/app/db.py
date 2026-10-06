@@ -1,6 +1,8 @@
 import os
+from typing import Annotated
 
-from sqlalchemy import URL, create_engine
+from fastapi import Depends
+from sqlalchemy import URL, Engine, create_engine
 
 engine = create_engine(
     URL.create(
@@ -13,3 +15,11 @@ engine = create_engine(
     pool_pre_ping=True,
     connect_args={"connect_timeout": 3},
 )
+
+
+def get_engine():
+    """FastAPI dependency (overridden in tests). Handlers open short transactions themselves."""
+    return engine
+
+
+Db = Annotated[Engine, Depends(get_engine)]  # in endpoints: def handler(engine: Db)

@@ -77,7 +77,7 @@ def answer_question(
         audit["embedding_error"] = type(exc).__name__
 
     # 2. Search only documents the user's stored ACL and the boundary allow.
-    candidates = hybrid_search(conn, principals, question, embedding)
+    candidates = hybrid_search(conn, user.company_id, principals, question, embedding)
 
     # 3. Live check with each source; anything not confirmed is dropped.
     decisions = live_check(candidates, principals, checkers_factory(candidates, principals), live_check_timeout_s)
@@ -91,7 +91,7 @@ def answer_question(
     # Runs in a savepoint so a failure here cannot lose the audit event itself.
     try:
         with conn.begin_nested():
-            audit["restricted_matches"] = restricted_matches(conn, principals, question)
+            audit["restricted_matches"] = restricted_matches(conn, user.company_id, principals, question)
     except Exception as exc:
         log.error("restricted-match audit search failed: %s", exc)
         audit["restricted_matches_error"] = type(exc).__name__

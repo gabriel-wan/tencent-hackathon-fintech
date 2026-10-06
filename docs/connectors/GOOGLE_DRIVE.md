@@ -69,25 +69,18 @@ domain is on its list, or the list has `anyone`.
 
 ### Auth / setup
 
-**Workspace (production):**
-```
-1. Google Cloud project → enable Drive API + Admin SDK API → create a service account → JSON key
-2. Workspace Admin console → Security → API controls → Domain-wide delegation → add the service account's client ID with scopes:
-   https://www.googleapis.com/auth/drive.readonly
-   https://www.googleapis.com/auth/admin.directory.group.member.readonly
-3. backend/.env: GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_ADMIN_EMAIL (the admin to impersonate for Directory calls)
-```
-
-**Personal accounts (development):** OAuth client (Desktop app) → sign in
-once with `drive.readonly` → store `GOOGLE_REFRESH_TOKEN`. Publish the OAuth
-app, because Testing mode refresh tokens expire after 7 days.
+Every call uses one person's own Google sign-in (`drive.readonly`, [GUIDE.md §3](GUIDE.md#3-google-drive)):
+the company admin's for sync, the asking user's for the live check. There is no service account.
+Sync sees only files the admin can open, and skips a file whose sharing list the admin can't see
+(viewers often can't), rather than guessing a narrower ACL.
 
 ```python
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-creds = service_account.Credentials.from_service_account_file(KEY_FILE, scopes=[DRIVE_RO])
-drive_as = lambda email: build("drive", "v3", credentials=creds.with_subject(email))  # act as a user
+from app.connectors import store
+drive = store.client(engine, user_id, "drive")   # Drive v3 service as that user
 ```
+
+Group permissions are widened to the group's domain (the live check trims them): expanding
+members needs the Directory API (4.7) with Workspace admin scopes, which this connector doesn't request.
 
 Base URL for all Drive calls: `https://www.googleapis.com/drive/v3`. For
 shared drives, add `supportsAllDrives=true&includeItemsFromAllDrives=true`.
@@ -164,10 +157,11 @@ Notes: use when the embedded `permissions` in 4.1/4.2 are missing or truncated.
 
 | | |
 |---|---|
-| Request | `GET /files/{fileId}?fields=id`, authenticated **as that user** (`creds.with_subject(email)`) |
+| Request | `GET /files/{fileId}?fields=id`, authenticated **as that user**: their own OAuth sign-in (ADR-002), or `creds.with_subject(email)` in Workspace mode |
 
 Response: `200` = the user can read it, `404` = they can't. Notes: Google's
-own answer. In personal mode, match 4.5 against the user's principals instead.
+own answer. Up to 100 checks go in one batch request (`POST /batch/drive/v3`).
+Implemented as `drive.can_read(credentials, file_ids)`.
 
 ### 4.7 Directory API: group members
 
@@ -200,7 +194,7 @@ One document per file:
 | Permission `type` | Becomes |
 |---|---|
 | `user` | `google:user:<emailAddress>` |
-| `group` | its members (4.7), as `google:user:<email>` |
+| `group` | `google:domain:<the group's domain>` (wider than the group; the live check trims). Expanding members (4.7) needs Directory API admin scopes. |
 | `domain` | `google:domain:<domain>` (held by every user whose verified email is on that domain) |
 | `anyone` | `public`, and set `metadata.overshared = true` |
 
@@ -208,24 +202,21 @@ One document per file:
 
 **Takeaways**
 
-- **Production = Workspace service account + domain-wide delegation.** It reads every user's Drive and can check access *as* a user. Personal OAuth is for development only.
+- **Each person's own Google sign-in** (ADR-002): sync reads as the company admin, the live check as the asking user.
 - **Always send a `fields` mask** (including `nextPageToken`), or responses look empty.
-- **Docs/Sheets → export** (4.3). **PDFs → download** (4.4) and extract the text.
-- **The change feed covers content, sharing and lost access**, so one cursor handles all three.
-- Inherited folder and shared-drive access is already on each file's list.
+- **Docs/Slides/Sheets → export** (4.3), `text/*` → download (4.4). PDFs and Office files are skipped for now (no text extraction).
+- Inherited folder access is already on each file's list. **Shared drives are not:** Drive leaves `permissions` empty there, so those files are skipped for now (4.5 per file would cover them).
 - `anyone` = `public` + **overshared** flag. That's our oversharing signal.
 
-**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md))
+**How this connector implements the contract** (`backend/app/connectors/drive.py`, run by `app/sync.py`)
 
-| Method | Calls | Runs |
+| Function | Calls | Runs |
 |---|---|---|
-| `sync(cursor)` | 4.2 from the cursor → 4.3 / 4.4 for changed files → ACL from embedded `permissions` (4.5 if missing, 4.7 for groups). First run: 4.1, then save 4.2's start token | every 5 min (content and sharing) |
-| `sweep()` | 4.1 with `permissions` → every file ID + ACL (group members cached per run). Safety net only: 4.2 already reports sharing changes and deletions | daily |
-| `can_read(principal, ids)` | 4.6 as that user (Workspace), or 4.5 + principal match (personal) | each question, final context only |
+| `fetch(service, folder, changed)` | 4.1 with `permissions`, recursing into subfolders → 4.3 / 4.4 only for files whose `modifiedTime` changed; sharing refreshed for every file | every 5 min, as the admin |
+| `can_read(service, ids)` | 4.6 as that user, batched | each question, final context only |
 
-In Workspace mode, run 4.2 per user (impersonated) or per shared drive
-(`driveId=`), each with its own cursor in `sync_state`. One module:
-`backend/app/connectors/drive.py`.
+ponytail: no change feed (4.2) yet: every run lists each boundary folder in full (cheap without the
+text). Switch to 4.2 with a cursor in `sync_state` when folders outgrow 5 minutes.
 
 **Day-1 checks**
 

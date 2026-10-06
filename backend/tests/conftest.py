@@ -2,6 +2,7 @@
 import os
 from collections.abc import Sequence
 
+import httpx
 import psycopg
 import pytest
 from psycopg import sql
@@ -11,11 +12,12 @@ DB_NAME = os.environ.get("POSTGRES_DB", "")
 if not DB_NAME.endswith("_test"):
     pytest.exit(
         f"Refusing to run tests against database {DB_NAME!r}: POSTGRES_DB must end with '_test'. "
-        "See docs/DEVELOPMENT.md section 4.",
+        "See docs/DEVELOPMENT.md section 3.",
         returncode=2,
     )
 
 from app.auth.session import User  # noqa: E402  (after the safety check)
+from app.connectors import atlassian, store  # noqa: E402
 from app.db import engine  # noqa: E402
 from app.retrieval.search import vector_literal  # noqa: E402
 from tests.helpers import FakeLLM  # noqa: E402
@@ -54,21 +56,37 @@ def conn():
 
 
 @pytest.fixture
-def make_user(conn):
-    def _make(email: str, principals: Sequence[str], is_admin: bool = False, name: str = "") -> User:
-        user_id = conn.execute(
-            text("INSERT INTO users (email, name, is_admin) VALUES (:e, :n, :a) RETURNING id"),
-            {"e": email, "n": name or email, "a": is_admin},
-        ).scalar_one()
-        for p in principals:
-            conn.execute(text("INSERT INTO user_principals VALUES (:u, :p)"), {"u": user_id, "p": p})
-        return User(user_id, email, name or email, is_admin)
+def make_company(conn):
+    def _make(name: str = "Acme") -> int:
+        return conn.execute(text("INSERT INTO companies (name) VALUES (:n) RETURNING id"), {"n": name}).scalar_one()
 
     return _make
 
 
 @pytest.fixture
-def add_doc(conn):
+def company(make_company):
+    """The company that make_user and add_doc use unless told otherwise."""
+    return make_company()
+
+
+@pytest.fixture
+def make_user(conn, company):
+    def _make(email: str, principals: Sequence[str], is_admin: bool = False, name: str = "",
+              company_id: int | None = None) -> User:
+        company_id = company_id or company
+        user_id = conn.execute(
+            text("INSERT INTO users (email, name, is_admin, company_id) VALUES (:e, :n, :a, :c) RETURNING id"),
+            {"e": email, "n": name or email, "a": is_admin, "c": company_id},
+        ).scalar_one()
+        for p in principals:
+            conn.execute(text("INSERT INTO user_principals VALUES (:u, :p)"), {"u": user_id, "p": p})
+        return User(user_id, email, name or email, is_admin, company_id)
+
+    return _make
+
+
+@pytest.fixture
+def add_doc(conn, company):
     def _add(
         source: str,
         source_id: str,
@@ -79,22 +97,24 @@ def add_doc(conn):
         embedding: Sequence[float] | None = None,
         deleted: bool = False,
         title: str = "",
+        company_id: int | None = None,
     ) -> int:
+        company_id = company_id or company
         if in_boundary:
             conn.execute(
                 text(
-                    "INSERT INTO boundary (source, scope_id, scope_type) VALUES (:s, :i, :t) "
+                    "INSERT INTO boundary (company_id, source, scope_id, scope_type) VALUES (:c, :s, :i, :t) "
                     "ON CONFLICT DO NOTHING"
                 ),
-                {"s": source, "i": scope_id, "t": "channel" if source == "slack" else "folder"},
+                {"c": company_id, "s": source, "i": scope_id, "t": "channel" if source == "slack" else "folder"},
             )
         doc_id = conn.execute(
             text(
-                "INSERT INTO documents (source, source_id, scope_id, title, url, updated_at, acl, deleted_at) "
-                "VALUES (:s, :sid, :scope, :t, :url, now(), CAST(:acl AS text[]), "
+                "INSERT INTO documents (company_id, source, source_id, scope_id, title, url, updated_at, acl, "
+                "deleted_at) VALUES (:c, :s, :sid, :scope, :t, :url, now(), CAST(:acl AS text[]), "
                 "CASE WHEN :deleted THEN now() END) RETURNING id"
             ),
-            {"s": source, "sid": source_id, "scope": scope_id, "t": title or source_id,
+            {"c": company_id, "s": source, "sid": source_id, "scope": scope_id, "t": title or source_id,
              "url": f"https://example.test/{source_id}", "acl": list(acl), "deleted": deleted},
         ).scalar_one()
         conn.execute(
@@ -112,3 +132,30 @@ def add_doc(conn):
 @pytest.fixture
 def fake_llm():
     return FakeLLM
+
+
+# ---- Connectors (Task 1): no test reaches a real provider API ----
+
+@pytest.fixture(autouse=True)
+def no_real_credentials(monkeypatch):
+    """Tests never reach real APIs: drop connector env vars and any cached client or key."""
+    for key in list(os.environ):
+        if key.startswith(("ATLASSIAN_", "GOOGLE_", "SLACK_", "APP_URL", "FRONTEND_URL", "TOKEN_ENCRYPTION_KEY")):
+            monkeypatch.delenv(key)
+    store.cipher.cache_clear()
+
+
+@pytest.fixture
+def atlassian_api(monkeypatch):
+    """install(handler) -> (http, sent, sleeps): a client whose calls go to handler(request) -> Response."""
+    sent, sleeps = [], []
+
+    def install(handler):
+        def record(request):
+            sent.append(request)
+            return handler(request)
+
+        monkeypatch.setattr(atlassian.time, "sleep", sleeps.append)
+        return httpx.Client(base_url="https://example.atlassian.net", transport=httpx.MockTransport(record)), sent, sleeps
+
+    return install
