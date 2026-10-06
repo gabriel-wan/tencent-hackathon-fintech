@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, CircleUser, LogOut } from "lucide-react";
+import { ChevronDown, CircleUser, LogOut, Plug } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { useMe } from "@/components/me-provider";
@@ -50,6 +51,12 @@ export function UserMenu() {
           <span className="text-xs font-normal text-muted-foreground">{me.email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/connectors">
+            <Plug aria-hidden="true" />
+            Connections
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={handleSignOut} disabled={state === "signingOut"}>
           <LogOut aria-hidden="true" />
           {state === "signingOut" ? "Signing out…" : "Sign out"}

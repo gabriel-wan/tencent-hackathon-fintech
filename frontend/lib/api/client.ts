@@ -56,3 +56,12 @@ export function listDevUsers(): Promise<DevUser[]> {
 export function devSignIn(userId: number): Promise<Me> {
   return request<Me>("/dev/session", { method: "POST", body: { user_id: userId } });
 }
+
+/**
+ * POST /api/dev/connectors/slack. DEVELOPMENT ONLY: connects Slack with a
+ * pasted user token, because Slack's OAuth needs https. The route exists only
+ * while the backend runs with APP_ENV=development.
+ */
+export function connectSlackWithToken(token: string): Promise<unknown> {
+  return request<unknown>("/dev/connectors/slack", { method: "POST", body: { token } });
+}

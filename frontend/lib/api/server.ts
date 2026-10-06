@@ -6,25 +6,36 @@ import { headers } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
 
 import { ApiError, BackendUnreachableError, readResponse } from "./errors";
+import type { Connector } from "@/lib/connectors";
 import type { DevUser, Me } from "./types";
 
-async function request<T>(path: string): Promise<T> {
+/**
+ * A request to the backend as the current visitor: the incoming Cookie header
+ * is forwarded as-is. `path` is the backend's own path, for example
+ * "/api/me" or "/connectors". Throws BackendUnreachableError when it cannot
+ * be reached or does not answer within `timeoutMs`; the caller reads the Response.
+ */
+export async function backendFetch(path: string, init: RequestInit = {}, timeoutMs = 5_000): Promise<Response> {
   if (typeof window !== "undefined") throw new Error("lib/api/server.ts is server-only");
   const base = process.env.BACKEND_SERVER_URL;
   if (!base) throw new BackendUnreachableError("BACKEND_SERVER_URL is not set");
   const cookie = (await headers()).get("cookie");
 
-  let res: Response;
   try {
-    res = await fetch(new URL(`/api${path}`, base), {
-      headers: { accept: "application/json", ...(cookie ? { cookie } : {}) },
+    return await fetch(new URL(path, base), {
+      ...init,
+      headers: { accept: "application/json", ...init.headers, ...(cookie ? { cookie } : {}) },
       cache: "no-store",
-      signal: AbortSignal.timeout(5_000),
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     throw new BackendUnreachableError();
   }
-  return readResponse<T>(res);
+}
+
+async function request<T>(path: string): Promise<T> {
+  return readResponse<T>(await backendFetch(`/api${path}`));
 }
 
 /** GET /api/me for the current request. Throws NotSignedInError when signed out. */
@@ -48,4 +59,9 @@ export async function listDevUsers(): Promise<DevUser[] | null> {
     }
     return null;
   }
+}
+
+/** GET /connectors: the four tools and whether this visitor has connected each. */
+export async function listConnectors(): Promise<Connector[]> {
+  return readResponse<Connector[]>(await backendFetch("/connectors"));
 }
