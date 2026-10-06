@@ -72,6 +72,10 @@ class NoCompany(OAuthError):
     """The sign-in is valid but its workspace or site belongs to no company this person can join."""
 
 
+class MissingPermission(OAuthError):
+    """The user unticked a permission the connector needs on the consent screen."""
+
+
 @dataclass
 class Tokens:
     access_token: str
@@ -163,6 +167,9 @@ def account(provider: str, tokens: Tokens) -> Account:
     """
     token = tokens.access_token
     if provider == "google":
+        # Google lets the user untick Drive on the consent screen; such a grant can't read anything.
+        if not any(s.endswith("drive.readonly") for s in tokens.scopes.split()):
+            raise MissingPermission("google drive access not granted")
         me = _get("https://openidconnect.googleapis.com/v1/userinfo", token)
         if not me.get("email_verified"):
             raise OAuthError("google email not verified")

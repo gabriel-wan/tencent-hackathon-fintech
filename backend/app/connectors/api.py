@@ -162,7 +162,8 @@ def callback(provider: str, request: Request, engine: Db, code: str | None = Non
         # a Google revoke ends the whole grant, which may also back this person's stored connection.
         if tokens and isinstance(e, oauth.OAuthError) and e.status < 500:
             oauth.revoke(provider, tokens.access_token, tokens.refresh_token)
-        return finish(error="no_company" if isinstance(e, oauth.NoCompany) else "provider_error")
+        codes = {oauth.NoCompany: "no_company", oauth.MissingPermission: "missing_permission"}
+        return finish(error=codes.get(type(e), "provider_error"))
 
     linked = _link(request, engine, provider, account, tokens)
     if linked is None:

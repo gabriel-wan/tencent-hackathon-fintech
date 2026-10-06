@@ -11,9 +11,12 @@ const dev = process.env.APP_ENV === "development";
 const PROVIDERS = ["google", "slack", "atlassian"];
 const ERRORS = [
   "access_denied", "provider_error", "invalid_state", "account_mismatch", "disconnect_failed", "slack_token_rejected",
-  "no_company",
+  "no_company", "missing_permission",
 ];
 const HINTS: Record<string, string> = {
+  missing_permission:
+    "Google Drive access wasn't granted. Click Connect again and tick \"See and download all your Google Drive " +
+    "files\" on Google's permission screen.",
   no_company:
     "This Slack workspace or Atlassian site belongs to a company you can't join (for example, you are a Slack " +
     "guest, or you granted several Atlassian sites: grant only your company's).",

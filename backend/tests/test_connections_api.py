@@ -287,6 +287,15 @@ def test_provider_failures_store_nothing(client, providers, route, response):
     assert statuses(client)["drive"] is False
 
 
+def test_google_sign_in_without_drive_access_is_rejected_and_revoked(client, providers):
+    providers.routes[GOOGLE_TOKEN] = {"access_token": "g-access", "refresh_token": "g-refresh", "expires_in": 3600,
+                                      "scope": "openid https://www.googleapis.com/auth/userinfo.email"}
+    resp = sign_in(client, "drive")
+    assert resp.headers["location"].endswith("error=missing_permission")
+    assert statuses(client)["drive"] is False
+    assert len(providers.sent(GOOGLE_REVOKE)) == 1  # the useless grant is dropped, so the next Connect asks again
+
+
 def test_slack_error_is_a_failure_even_with_http_200(client, providers):
     providers.routes[SLACK_TOKEN] = {"ok": False, "error": "invalid_code"}
     assert sign_in(client, "slack").headers["location"].endswith("error=provider_error")
