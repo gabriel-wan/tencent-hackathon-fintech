@@ -108,6 +108,6 @@ called. The answer is returned only after its audit row is committed.
 | Live check | Built: `/api/query` asks each source as the user (`app/connectors/live.py`). In development only, a persona with no connection at all (the seed) still uses the stored-ACL stub. The audit log records `live_check_mode` | Task 1 |
 | Connector sign-in | Built: creates the user in their company, the session and `user_principals` ([GUIDE.md](../connectors/GUIDE.md)) | Task 1 |
 | Sync | Built: `app/sync.py`, every 5 minutes and on `POST /api/admin/sync` | Task 1 |
-| Audit hash chain and insert-only DB role | Not built; the table already rejects UPDATE, DELETE and TRUNCATE | Task 3, 5–6 Oct |
-| Audit search API | Not built | Task 3, 5–6 Oct |
-| Semantic search | Code works; needs the embedding model enabled on the TokenHub key and chunk embeddings written | |
+| Audit hash chain and insert-only DB role | Built: one chain per company (`app/audit/log.py`, migration 0006); the app runs as `knowbuddy_app`, which can read and add audit records only | Task 3 |
+| Audit search API | Built: `GET /api/admin/audit` and `POST /api/admin/audit/verify` (`app/audit/api.py`), admins only, own company only, each use audited | Task 3 |
+| Semantic search | Built: sync embeds every chunk through TokenHub; keyword search still works if embedding fails | |

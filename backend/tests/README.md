@@ -23,3 +23,4 @@ Backend tests (pytest), mirroring `backend/app/`. How to run them:
 | `test_drive.py`, `test_slack.py`, `test_atlassian.py` | Fetch and ACL per source, live checks (`can_read`), retries |
 | `test_sync.py` | Chunking, upserts, soft deletes, embedding catch-up, live checks as the user |
 | `test_admin.py` | Admin-only boundary and sync API, scoped to the admin's company, audited |
+| `test_audit.py` | Per-company hash chains, tampering detected, the app role can't change the log, concurrent writes, admin search and verify |

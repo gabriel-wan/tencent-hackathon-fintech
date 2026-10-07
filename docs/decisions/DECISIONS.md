@@ -363,6 +363,31 @@ Data flow and per-source check calls are described in
   never reach the user or the LLM. Only keyword matches count, because
   semantic search always returns the nearest documents, relevant or not, and
   would wrongly record users as reaching unrelated restricted documents.
+- **One chain per company** (added 2026-10-08, Gabriel): companies (ADR-002
+  addendum, migration 0005) came after this ADR. Each record now carries its
+  user's company, and links to the previous record of the same company, so an
+  admin verifies only their own company's records and a fault in one company
+  never shows up in another. Records of people not yet in a company (e.g.
+  Drive connected first) form their own chain. The hash is computed by a
+  database function (`audit_event_hash`, migration 0006) over the record's id,
+  UTC time, company, user, event type and canonical JSON payload, so writing
+  and verifying always hash the same text. Writes to one chain are serialised
+  with an advisory lock, so two records can never share a predecessor.
+- **The app's database role** (added 2026-10-08, Gabriel): migrations run as
+  the database owner; every app connection starts as `knowbuddy_app`, which
+  can read and add audit records but not update, delete or truncate them, nor
+  switch the triggers off. `ASSUMPTION:` the login itself is still the owner
+  (the Docker image's single user), so this guards against bugs and injected
+  statements, not against someone holding that login; production should give
+  the app a separate login that is only a member of `knowbuddy_app`.
+- **Search and verify** (added 2026-10-08, Gabriel): `GET /api/admin/audit`
+  filters by user, time range, event type, document, and tool plus scope (the
+  challenge's "everything jdoe accessed in the payment-gateway space");
+  `POST /api/admin/audit/verify` reports the first broken record and the
+  chain's head. The head can be noted outside the system, because someone with
+  full database access could otherwise rewrite every later record. Results
+  show document keys only; whether to show restricted documents' titles is
+  still open (frontend question log, Q15).
 
 ### Consequences
 

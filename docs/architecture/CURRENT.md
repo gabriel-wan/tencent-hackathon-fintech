@@ -18,7 +18,7 @@ flowchart LR
             AUTH["app/auth<br/>session, principals,<br/>live check runner"]
             SEARCH["app/retrieval/search.py<br/>company + ACL + boundary filter,<br/>keyword + vector"]
             LLMC["app/llm<br/>client, grounding"]
-            AUD["app/audit/log.py"]
+            AUD["app/audit<br/>log.py: per-company hash chain<br/>api.py: /api/admin/audit (search, verify)"]
             CONN["app/connectors<br/>/connectors, /oauth/*/callback, /api/admin/*<br/>sign-in, tokens, fetch, live checks"]
         end
         SYNC["sync<br/>python -m app.sync --loop<br/>every company, every 5 min"]
@@ -26,7 +26,7 @@ flowchart LR
         DB[("db<br/>PostgreSQL 17 + pgvector<br/>companies, users, sessions, user_principals,<br/>boundary, documents, chunks, audit_events,<br/>connections (tokens encrypted)")]
     end
 
-    MIG -->|"migrations 0001 to 0005"| DB
+    MIG -->|"migrations 0001 to 0006<br/>(as the database owner)"| DB
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
     FE -->|"server-side fetch, forwards the session cookie<br/>BACKEND_SERVER_URL/health, /connectors"| BE
@@ -37,7 +37,7 @@ flowchart LR
     PIPE --> AUD
     SEARCH --> DB
     AUTH --> DB
-    AUD --> DB
+    AUD -->|"as knowbuddy_app:<br/>read and add audit records only"| DB
     LLMC --> TH
     CONN -->|"connections, sessions,<br/>user_principals"| DB
 

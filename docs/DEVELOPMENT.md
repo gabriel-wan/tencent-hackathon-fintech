@@ -54,6 +54,7 @@ seeded users and `POST /api/dev/session` signs in as one of them; see
 - Write a numbered migration in `backend/migrations/versions/`, with `down_revision` set to the previous one.
 - If two branches add the same migration number, whoever merges second renumbers theirs.
 - If your local database was migrated by a migration that was later renumbered, reset it: `docker compose down -v`.
+- Migrations run as the database owner; the app runs as `knowbuddy_app` (`app/db.py`). New tables get the app's usual rights automatically (default privileges, migration 0006). `audit_events` is read-and-add only for the app: never write code that updates or deletes audit records.
 
 **Git:** work on a branch, then open a pull request to `main`.
 
