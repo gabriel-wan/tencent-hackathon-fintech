@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.routes import dev_router, router
+from app.audit.api import router as audit_router
 from app.connectors.admin import router as admin_router
 from app.connectors.api import dev_router as connectors_dev_router
 from app.connectors.api import router as connectors_router
@@ -40,6 +41,7 @@ def create_app(app_env: str | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(connectors_router)
     app.include_router(admin_router)
+    app.include_router(audit_router)
     if app_env == "development":
         app.include_router(dev_router)
         app.include_router(connectors_dev_router)

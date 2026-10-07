@@ -118,7 +118,8 @@ def test_audit_events_cannot_be_updated_or_deleted(conn, make_user, add_doc, fak
     for statement in ("UPDATE audit_events SET payload = '{}' WHERE id = :i",
                       "DELETE FROM audit_events WHERE id = :i"):
         savepoint = conn.begin_nested()
-        with pytest.raises(DBAPIError, match="append-only"):
+        # The app's role is refused first; the triggers still stop the owner (test_audit.py).
+        with pytest.raises(DBAPIError, match="permission denied"):
             conn.execute(text(statement), {"i": audit_id})
         savepoint.rollback()
 
