@@ -41,7 +41,9 @@ flowchart TD
     ME -->|"401"| LOGIN["/login"]
     ME -->|"200"| CHAT["/ (chat)"]
     LOGIN -->|"Development: pick a seeded user"| CHAT
-    LOGIN -.->|"Google sign-in (after the connectors merge)"| CHAT
+    LOGIN -->|"Google, Slack or Atlassian (backend OAuth)"| CONN["/connectors"]
+    CONN -.->|"failed sign-in: known ?error= code"| LOGIN
+    CHAT <--> CONN
     CHAT <-->|"admins only"| AUDIT["/admin/audit"]
     CHAT <-->|"admins only"| BOUND["/admin/boundary"]
     AUDIT <--> BOUND
@@ -50,8 +52,8 @@ flowchart TD
     BOUND -.->|"not admin"| CHAT
 ```
 
-`/connectors` (connect Slack, Drive, Jira, Confluence) joins the map once the
-connectors branch merges; until then it is not linked.
+Every OAuth sign-in returns to `/connectors` (the backend fixes that target),
+so a successful sign-in lands there, with an "Ask a question" link to the chat.
 
 ## Sign-in
 
@@ -192,16 +194,19 @@ checked in mock mode with `mock:unavailable`, `mock:422`, `mock:bad-url`,
 `app/(app)/admin/`. ADR-007: one admin role, which also does compliance.
 
 - **Gate.** `app/(app)/admin/layout.tsx` sends non-admins back to the chat;
-  the header shows Chat for everyone and Audit / Boundary for admins (in the
-  user menu below 640 px). Both are UX only: every admin API route must check
-  `is_admin` itself and return 403.
-- **Not built yet.** No admin API exists on any branch (4 Oct). Each page says
-  so in a "Not built yet" panel naming the routes it waits for (proposed in
-  the UI plan, section 6.5):
-  - `/admin/audit`: `GET /api/admin/audit` (search) and
-    `POST /api/admin/audit/verify` (hash chain), Task 3, 5–6 Oct.
-  - `/admin/boundary`: `GET`/`POST`/`DELETE /api/admin/boundary` and
-    `POST /api/admin/sync`, owners to be agreed.
+  the header shows Chat and Connections for everyone and Audit / Boundary for
+  admins (in the user menu below 640 px). Both are UX only: every admin API
+  route checks `is_admin` itself and returns 403.
+- **Not built yet.** Each page says so in a "Not built yet" panel:
+  - `/admin/audit` waits for the audit API, which does not exist yet:
+    `GET /api/admin/audit` (search) and `POST /api/admin/audit/verify` (hash
+    chain), roadmap Task 3.
+  - `/admin/boundary`: the API exists since PR #4
+    (`backend/app/connectors/admin.py`): `GET /api/admin/scopes/{source}`,
+    `GET /api/admin/boundary`, `PUT` and `DELETE
+    /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync` (202,
+    nothing to poll). This page is next; until then an admin uses
+    http://localhost:8000/docs (docs/connectors/GUIDE.md, section 7.5).
 - **Design preview (development only).** "Show design preview" reveals the
   planned layout inside a dashed **MOCK DATA** frame. Filters, Verify chain
   and Sync now are disabled, and confirming a boundary removal does nothing.
@@ -375,13 +380,14 @@ Not checked by a person yet: a full pass with VoiceOver or NVDA.
 
 | Waiting on | UI work |
 |---|---|
-| Connectors branch merges | Enable "Sign in with Google" (a plain link to the backend's `/connectors/drive/connect`); rename `BACKEND_URL` to `BACKEND_SERVER_URL` and add `BACKEND_LOCAL_URL`; restyle `/connectors` inside the signed-in shell (with its owner); show which sources are connected in the chat |
+| Nothing (the API exists) | Real `/admin/boundary` on the boundary API: list scopes per tool, add and remove them, "Sync now" |
+| Nothing | Show which sources are connected in the chat |
 | Return target after the OAuth callback | Show sign-in errors on `/login` rather than `/connectors`. The target must come from a fixed allowlist, never an arbitrary URL (open redirect) |
 | `label` on each citation | Turn `[S1]` markers into chips linked to the right source (today they are stripped: an answer citing `[S1]` and `[S3]` came back with two citations, so mapping by position would be wrong) |
 | `status` on query responses | Classify answers by status instead of matching the fixed sentences |
 | Audit API | Real `/admin/audit` (search, record detail, verify chain); make "Ref #" a link for admins |
-| Boundary and sync API | Real `/admin/boundary`; "Sync now" for the freshness demo (scenario 2) |
-| Freshness field | "Synced N minutes ago" under answers |
+| Sync status (`last synced`, something to poll after `POST /api/admin/sync`) | "Synced N minutes ago" under answers and after "Sync now", for the freshness demo (scenario 2) |
+| A company field on `GET /api/me` | Tell "you have no company yet" apart from "nothing found" (today `/connectors` only infers it from the connections) |
 | Redaction and injection flags (7–8 Oct) | Redaction chip on citations; blocked-injection notice on answers |
 
 Each replaces a stub or a reserved slot; remove the matching "Not built yet"
@@ -397,16 +403,15 @@ Raised while building the UI; answers belong in DECISIONS.md or the code.
 
 | For | Question |
 |---|---|
-| Whole team | **Admin designation for real sign-in.** `create_user` always sets `is_admin = false`, so no Google user can become admin (e.g. an `ADMIN_EMAILS` list). Who builds it? |
 | Whole team | May the audit page show titles of documents the admin cannot read? (ARCHITECTURE §3.12 vs ADR-007.) Until decided, documents are shown by key |
 | Whole team | Who sets up HTTPS on the Lighthouse server? |
-| Whole team | Demo accounts: which Gmails (listed in `GOOGLE_ALLOWED_ACCOUNTS` and as OAuth test users; Testing-mode tokens expire after 7 days). Contractor Google-only, since Slack guests need a paid plan? |
+| Whole team | Demo accounts: which Google accounts are OAuth test users (Testing-mode tokens expire after 7 days)? A Google-only contractor no longer works (Google names no company), and Slack guests need a paid plan: how does the demo show the contractor? |
 | Whole team | Linter/formatter is still open (ADR-001) |
 | Query pipeline | Add `label` and `status` to the query response; should a 503 "LLM is not configured" become the fixed "unavailable" reply? |
 | Query pipeline | Without an LLM configured, `/api/query` returns 503 before the pipeline runs, so the question is not audited. Should it be? |
 | Query pipeline | Shape of the audit API (proposed: search, one record, verify) |
-| Connectors | Merge timing; return target after sign-in; who styles `/connectors`; what happens when someone disconnects their last connection; can personal Gmail users get `google:domain:gmail.com` as a principal? |
-| Connectors | Who owns the boundary and sync routes, and is there a sync worker for "Sync now"? |
+| Connectors | A fixed-allowlist return target after sign-in, so a successful sign-in can land in the chat; what happens when someone disconnects their last connection; can personal Gmail users get `google:domain:gmail.com` as a principal? |
+| Connectors | `GET /api/me` has no company field, and `POST /api/admin/sync` gives nothing to poll (the `sync_state` table is unused): can both be added? |
 
 ## Adding a shadcn component
 
