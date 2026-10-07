@@ -21,6 +21,7 @@ from app.api.deps import current_user
 from app.audit.log import record_event
 from app.auth.session import User
 from app.connectors import store
+from app.connectors.api import PROVIDER_ERRORS, provider_error
 from app.db import Db
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -56,6 +57,8 @@ def scopes(source: str, engine: Db, admin: User = Depends(require_admin)):
         raise HTTPException(404, f"connect {source} first") from e
     except store.ReconnectNeeded as e:
         raise HTTPException(401, f"{source} access expired: connect again") from e
+    except PROVIDER_ERRORS as e:  # e.g. a revoked Slack token: "connect again", not a 500
+        raise provider_error(source, e) from e
 
 
 @router.get("/boundary")

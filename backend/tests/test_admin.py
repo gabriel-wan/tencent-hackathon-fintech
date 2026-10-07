@@ -2,9 +2,11 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from slack_sdk.errors import SlackApiError
 from sqlalchemy import text
 
 from app import sync
+from app.connectors import store
 from app.db import engine
 from app.main import create_app
 
@@ -78,6 +80,16 @@ def test_unknown_source_or_odd_scope_id_is_rejected(db):
 
 def test_scopes_need_the_admins_own_connection(db):
     assert signed_in(db["admin"]).get("/api/admin/scopes/slack").status_code == 404  # not connected yet
+
+
+def test_scopes_with_a_revoked_token_ask_to_connect_again(db, monkeypatch):
+    class Slack:
+        def conversations_list(self, **_):
+            raise SlackApiError("token_revoked", {"ok": False, "error": "token_revoked"})
+
+    monkeypatch.setattr(store, "client", lambda *_: Slack())
+    resp = signed_in(db["admin"]).get("/api/admin/scopes/slack")
+    assert resp.status_code == 401 and "connect again" in resp.json()["detail"]  # not a 500
 
 
 def test_sync_now_syncs_the_admins_company(db, monkeypatch):

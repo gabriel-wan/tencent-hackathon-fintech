@@ -12,6 +12,7 @@ import pytest
 import sqlalchemy as sa
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from slack_sdk.errors import SlackApiError
 
 from app.auth.principals import principals_for
 from app.connectors import atlassian, drive, oauth, slack, store
@@ -476,6 +477,18 @@ def test_ping_slack_uses_the_users_token(client, providers, monkeypatch):
     monkeypatch.setattr(slack, "client", lambda token: tokens.append(token) or Slack())
     assert client.get("/connectors/slack/ping").json() == {"ok": True, "as": "alice"}
     assert tokens == ["xoxp-alice"]
+
+
+def test_ping_slack_with_a_revoked_token_asks_to_connect_again(client, providers, monkeypatch):
+    sign_in(client, "slack")
+
+    class Slack:  # what Slack answers after Disconnect (auth.revoke) or a reinstall
+        def auth_test(self):
+            raise SlackApiError("token_revoked", {"ok": False, "error": "token_revoked"})
+
+    monkeypatch.setattr(slack, "client", lambda token: Slack())
+    resp = client.get("/connectors/slack/ping")
+    assert resp.status_code == 401 and "connect again" in resp.json()["detail"]
 
 
 class FakeDrive:
