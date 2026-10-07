@@ -664,10 +664,17 @@ def test_dev_slack_rejects_anything_but_a_user_token(engine, providers):
     assert providers.sent(SLACK_ME) == []
 
 
-def test_development_mode_refuses_an_https_deployment(monkeypatch):
-    monkeypatch.setenv("APP_URL", "https://brain.example.com")
+@pytest.mark.parametrize("url", ["https://brain.example.com", "http://203.0.113.7:8000", "http://brain.example.com"])
+def test_development_mode_refuses_any_server_deployment(monkeypatch, url):
+    # The dev routes sign anyone in as anyone: a plain-http demo server must refuse them too.
+    monkeypatch.setenv("APP_URL", url)
     with pytest.raises(RuntimeError):
         create_app("development")
+
+
+def test_development_mode_runs_on_localhost(monkeypatch):
+    monkeypatch.setenv("APP_URL", "http://localhost:8000")
+    assert TestClient(create_app("development")).get("/api/dev/users").status_code == 200
 
 
 @pytest.mark.parametrize(("app_env", "hinted"), [("development", True), ("production", False)])
