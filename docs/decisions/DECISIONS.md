@@ -60,7 +60,7 @@ implementation:
   ARCHITECTURE.md and made ADR-001. This costs a little time now and is
   expected to save more later.
 - Documentation must be kept current; stale docs are treated as bugs
-  (DEVELOPMENT.md section 9).
+  (AGENTS.md §3).
 
 ### Assumptions
 
@@ -400,7 +400,7 @@ Data flow and per-source check calls are described in
   chain's head. The head can be noted outside the system, because someone with
   full database access could otherwise rewrite every later record. Results
   show document keys only; whether to show restricted documents' titles is
-  still open (frontend question log, Q15).
+  still open (frontend/README.md, Open questions).
 
 ### Consequences
 

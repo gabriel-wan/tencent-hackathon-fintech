@@ -3,8 +3,8 @@
 Next.js app (see DECISIONS.md, ADR-001). Status: sign-in (Google, Slack and
 Atlassian through the backend's OAuth, plus the development persona switcher),
 the chat, the Connections page and the signed-in shell work; the admin pages
-are honest stubs (the audit API does not exist yet; the boundary API does, and
-that page is next).
+are honest stubs (the audit and boundary APIs both exist; wiring the pages to
+them is next).
 
 The frontend never makes authorization decisions; the backend filters by
 permission before anything reaches the LLM (SECURITY.md, INV-2). Frontend tests
@@ -27,7 +27,7 @@ live in this folder.
 | `/` | Signed in only. The chat (see below) |
 | `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
-| `/admin/audit` | Admins only. Stub: waits for the audit API (see "Admin pages") |
+| `/admin/audit` | Admins only. Stub: the audit API now exists; this page is next (see "Admin pages") |
 | `/admin/boundary` | Admins only. Stub: the boundary API now exists; this page is next |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
@@ -142,7 +142,7 @@ full page load on sign-out or user switch (SECURITY.md T6).
 
 | State | When | What the user sees |
 |---|---|---|
-| Pending | Request in flight (~6–9 s with the real LLM) | "Searching your sources…" with a skeleton. No invented progress steps |
+| Pending | Request in flight (about 3–5 s with the real LLM since hy3's hidden reasoning was turned off) | "Searching your sources…" with a skeleton. No invented progress steps |
 | Answered | 200, not a fixed sentence | Answer as plain text (`[S1]` markers removed), Sources list, `Ref #<audit_id>` |
 | Not found | 200, the fixed "I could not find this…" sentence | Muted card. **Identical whether nothing exists or nothing is permitted** (INV-5) |
 | Unavailable | 200, the fixed "The assistant is unavailable…" sentence | Warning with Try again |
@@ -198,9 +198,11 @@ checked in mock mode with `mock:unavailable`, `mock:422`, `mock:bad-url`,
   admins (in the user menu below 640 px). Both are UX only: every admin API
   route checks `is_admin` itself and returns 403.
 - **Not built yet.** Each page says so in a "Not built yet" panel:
-  - `/admin/audit` waits for the audit API, which does not exist yet:
-    `GET /api/admin/audit` (search) and `POST /api/admin/audit/verify` (hash
-    chain), roadmap Task 3.
+  - `/admin/audit`: the API exists since PR #11 (`backend/app/audit/api.py`):
+    `GET /api/admin/audit` (search: `user`, `since`, `until`, `event_type`,
+    `document`, `source`, `scope_id`, `before_id`, `limit`; returns
+    `{records, next_before_id}`) and `POST /api/admin/audit/verify` (hash
+    chain). This page is next.
   - `/admin/boundary`: the API exists since PR #4
     (`backend/app/connectors/admin.py`): `GET /api/admin/scopes/{source}`,
     `GET /api/admin/boundary`, `PUT` and `DELETE
@@ -215,7 +217,7 @@ checked in mock mode with `mock:unavailable`, `mock:422`, `mock:bad-url`,
   (`backend/app/pipeline/query.py`), so the real wiring should be a swap.
 - Documents are shown by key (`drive:D_Q3_INCIDENT`), not title, until the
   team decides whether the admin may see titles of documents they cannot
-  read (UI plan question log, Q15).
+  read (see Open questions below).
 
 ## Talking to the backend
 
@@ -288,8 +290,9 @@ Builds the chat states without spending LLM tokens. Add
 
 From `frontend/`: `npm test` (Vitest). Tests sit next to the code
 (`*.test.ts`) and are named after behaviour. They cover the security-relevant
-helpers: fixed-reply classification, link safety, marker stripping, and mock
-mode staying off in production.
+helpers: fixed-reply classification, link safety, marker stripping, mock
+mode staying off in production, and the allowlist of sign-in error codes
+(`lib/connectors.test.ts`).
 
 ## Folders
 
@@ -385,8 +388,8 @@ Not checked by a person yet: a full pass with VoiceOver or NVDA.
 | Return target after the OAuth callback | Show sign-in errors on `/login` rather than `/connectors`. The target must come from a fixed allowlist, never an arbitrary URL (open redirect) |
 | `label` on each citation | Turn `[S1]` markers into chips linked to the right source (today they are stripped: an answer citing `[S1]` and `[S3]` came back with two citations, so mapping by position would be wrong) |
 | `status` on query responses | Classify answers by status instead of matching the fixed sentences |
-| Audit API | Real `/admin/audit` (search, record detail, verify chain); make "Ref #" a link for admins |
-| Sync status (`last synced`, something to poll after `POST /api/admin/sync`) | "Synced N minutes ago" under answers and after "Sync now", for the freshness demo (scenario 2) |
+| Nothing (the API exists) | Real `/admin/audit` (search, verify chain); make "Ref #" a link for admins |
+| Something to poll after `POST /api/admin/sync` (`synced_at` on citations and `last_synced_at` on the boundary already exist) | "Synced N minutes ago" under answers and after "Sync now", for the freshness demo (scenario 2) |
 | A company field on `GET /api/me` | Tell "you have no company yet" apart from "nothing found" (today `/connectors` only infers it from the connections) |
 | Redaction and injection flags (7–8 Oct) | Redaction chip on citations; blocked-injection notice on answers |
 
@@ -409,9 +412,8 @@ Raised while building the UI; answers belong in DECISIONS.md or the code.
 | Whole team | Linter/formatter is still open (ADR-001) |
 | Query pipeline | Add `label` and `status` to the query response; should a 503 "LLM is not configured" become the fixed "unavailable" reply? |
 | Query pipeline | Without an LLM configured, `/api/query` returns 503 before the pipeline runs, so the question is not audited. Should it be? |
-| Query pipeline | Shape of the audit API (proposed: search, one record, verify) |
 | Connectors | A fixed-allowlist return target after sign-in, so a successful sign-in can land in the chat; what happens when someone disconnects their last connection; can personal Gmail users get `google:domain:gmail.com` as a principal? |
-| Connectors | `GET /api/me` has no company field, and `POST /api/admin/sync` gives nothing to poll (the `sync_state` table is unused): can both be added? |
+| Connectors | `GET /api/me` has no company field, and `POST /api/admin/sync` gives nothing to poll (only each scope's `last_synced_at`): can both be added? |
 
 ## Adding a shadcn component
 
