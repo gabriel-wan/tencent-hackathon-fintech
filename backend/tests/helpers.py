@@ -1,7 +1,17 @@
 """Shared test helpers (no fixtures here; see conftest.py)."""
 from collections.abc import Sequence
+from contextlib import contextmanager
 
 from app.llm.client import EMBEDDING_DIM, ChatResult
+
+
+def within(conn):
+    """A `Tx` (app.db) on the test's own connection: each use is a savepoint, rolled back with the test."""
+    @contextmanager
+    def tx():
+        with conn.begin_nested():
+            yield conn
+    return tx
 
 
 def unit_vector(index: int) -> list[float]:

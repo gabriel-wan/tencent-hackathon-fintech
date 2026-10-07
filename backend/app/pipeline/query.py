@@ -3,6 +3,9 @@
 Security boundary (ARCHITECTURE.md section 1): nothing reaches the LLM unless
 it passed the stored-ACL filter, the admin boundary AND the live check. When
 nothing passes, the LLM is not called at all.
+
+No database connection is held during the slow external calls (embedding, live
+check, LLM): the database is used in two short transactions.
 """
 import logging
 from collections.abc import Callable, Mapping, Sequence
@@ -10,12 +13,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy import Connection
-
 from app.audit.log import record_event
 from app.auth.live_check import CanRead, default_checkers, live_check
 from app.auth.principals import principals_for
 from app.auth.session import User
+from app.db import Tx
 from app.llm.client import ChatResult
 from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, build_messages, ground
 from app.retrieval.search import Candidate, hybrid_search, restricted_matches
@@ -51,19 +53,17 @@ class QueryResult:
 
 
 def answer_question(
-    conn: Connection,
+    tx: Tx,
     user: User,
     question: str,
     llm: LLM,
     checkers_factory: CheckersFactory = default_checkers,
     live_check_timeout_s: float = 2.0,
 ) -> QueryResult:
-    principals = principals_for(conn, user.id)
     audit: dict = {
         "user_email": user.email,
         "role": "admin" if user.is_admin else "user",
         "question": question,
-        "principals": principals,
         "live_check_mode": getattr(checkers_factory, "mode", "connector checks"),
     }
 
@@ -77,8 +77,19 @@ def answer_question(
         audit["search_mode"] = "keyword_only"
         audit["embedding_error"] = type(exc).__name__
 
-    # 2. Search only documents the user's stored ACL and the boundary allow.
-    candidates = hybrid_search(conn, user.company_id, principals, question, embedding)
+    with tx() as conn:
+        # 2. Search only documents the user's stored ACL and the boundary allow.
+        principals = audit["principals"] = principals_for(conn, user.id)
+        candidates = hybrid_search(conn, user.company_id, principals, question, embedding)
+
+        # AUDIT ONLY (ADR-007): restricted documents this question would have reached.
+        # Runs in a savepoint so a failure here cannot lose the audit event itself.
+        try:
+            with conn.begin_nested():
+                audit["restricted_matches"] = restricted_matches(conn, user.company_id, principals, question)
+        except Exception as exc:
+            log.error("restricted-match audit search failed: %s", exc)
+            audit["restricted_matches_error"] = type(exc).__name__
 
     # 3. Live check with each source; anything not confirmed is dropped.
     decisions = live_check(candidates, principals, checkers_factory(candidates, principals), live_check_timeout_s)
@@ -87,15 +98,6 @@ def answer_question(
     ]
     allowed = [c for c, d in zip(candidates, decisions) if d.allowed][:MAX_DOCS_TO_LLM]
     audit["sent_to_llm"] = [c.key for c in allowed]
-
-    # AUDIT ONLY (ADR-007): restricted documents this question would have reached.
-    # Runs in a savepoint so a failure here cannot lose the audit event itself.
-    try:
-        with conn.begin_nested():
-            audit["restricted_matches"] = restricted_matches(conn, user.company_id, principals, question)
-    except Exception as exc:
-        log.error("restricted-match audit search failed: %s", exc)
-        audit["restricted_matches_error"] = type(exc).__name__
 
     citations: list[Citation] = []
     if not allowed:
@@ -138,5 +140,6 @@ def answer_question(
 
     audit["answer"] = answer
     audit["citations"] = [c.id for c in citations]
-    audit_id = record_event(conn, user.id, "query", audit)
+    with tx() as conn:  # committed before the answer is returned
+        audit_id = record_event(conn, user.id, "query", audit)
     return QueryResult(answer=answer, citations=citations, audit_id=audit_id)

@@ -4,13 +4,15 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_conn, get_llm
+from app.api.deps import get_conn, get_llm, get_tx
 from app.main import create_app
+from tests.helpers import within
 
 
 def make_client(conn, llm, app_env="development"):
     app = create_app(app_env)
     app.dependency_overrides[get_conn] = lambda: conn
+    app.dependency_overrides[get_tx] = lambda: within(conn)
     app.dependency_overrides[get_llm] = lambda: llm
     return TestClient(app)
 

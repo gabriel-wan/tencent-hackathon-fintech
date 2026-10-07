@@ -1,8 +1,10 @@
 import os
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import URL, Engine, create_engine
+from sqlalchemy import URL, Connection, Engine, create_engine
 
 engine = create_engine(
     URL.create(
@@ -23,3 +25,6 @@ def get_engine():
 
 
 Db = Annotated[Engine, Depends(get_engine)]  # in endpoints: def handler(engine: Db)
+
+# Opens one short transaction per use (`with tx() as conn:`), e.g. engine.begin.
+Tx = Callable[[], AbstractContextManager[Connection]]

@@ -1,5 +1,6 @@
 """End-to-end query pipeline with a fake LLM: what the model sees, what is answered, what is audited."""
 import json
+from contextlib import contextmanager
 
 import pytest
 from sqlalchemy import text
@@ -7,6 +8,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.llm.grounding import FALLBACK_ANSWER
 from app.pipeline.query import UNAVAILABLE_ANSWER, answer_question
+from tests.helpers import FakeLLM, within
 
 ALICE = ["slack:user:U001", "slack:members", "google:user:alice@co.example"]
 
@@ -26,7 +28,7 @@ def test_content_the_user_cannot_see_never_reaches_the_llm(conn, make_user, add_
     add_doc("slack", "C9:1", ["slack:user:U999"], "gateway migration CANARY-SECRET-42 breach details")
     llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
 
-    answer_question(conn, alice, "gateway migration status", llm)
+    answer_question(within(conn), alice, "gateway migration status", llm)
 
     assert len(llm.chat_calls) == 1
     assert "CANARY-SECRET-42" not in llm.all_prompt_text()
@@ -38,7 +40,7 @@ def test_nothing_allowed_means_llm_is_not_called(conn, make_user, add_doc, fake_
     add_doc("slack", "C1:1", ["slack:user:U001"], "Q3 breach report")
     llm = fake_llm()
 
-    result = answer_question(conn, ben, "show me the Q3 breach report", llm)
+    result = answer_question(within(conn), ben, "show me the Q3 breach report", llm)
 
     assert llm.chat_calls == []
     assert result.answer == FALLBACK_ANSWER and result.citations == []
@@ -52,7 +54,7 @@ def test_live_check_denial_drops_a_document_the_stored_acl_allowed(conn, make_us
     add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
     llm = fake_llm()
 
-    result = answer_question(conn, alice, "gateway migration", llm, checkers_factory=deny_all_checkers)
+    result = answer_question(within(conn), alice, "gateway migration", llm, checkers_factory=deny_all_checkers)
 
     assert llm.chat_calls == [] and result.answer == FALLBACK_ANSWER
     [candidate] = audit_payload(conn, result.audit_id)["candidates"]
@@ -64,7 +66,7 @@ def test_answer_cites_documents_and_is_audited(conn, make_user, add_doc, fake_ll
     add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked on certificate", title="#payments")
     llm = fake_llm(reply=json.dumps({"answer": "Blocked on the certificate [S1].", "citations": ["S1"]}))
 
-    result = answer_question(conn, alice, "gateway migration", llm)
+    result = answer_question(within(conn), alice, "gateway migration", llm)
 
     assert result.answer == "Blocked on the certificate [S1]."
     [citation] = result.citations
@@ -81,7 +83,7 @@ def test_invented_citation_is_removed_before_answering(conn, make_user, add_doc,
     add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
     llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1] and hacked [S4].", "citations": ["S1", "S4"]}))
 
-    result = answer_question(conn, alice, "gateway migration", llm)
+    result = answer_question(within(conn), alice, "gateway migration", llm)
 
     assert "[S4]" not in result.answer and [c.id for c in result.citations] == ["slack:C1:1"]
     assert audit_payload(conn, result.audit_id)["removed_citations"] == ["S4"]
@@ -93,7 +95,7 @@ def test_embedding_failure_falls_back_to_keyword_search(conn, make_user, add_doc
     llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}),
                    embed_error=RuntimeError("embedding model not enabled"))
 
-    result = answer_question(conn, alice, "gateway migration", llm)
+    result = answer_question(within(conn), alice, "gateway migration", llm)
 
     assert result.citations and audit_payload(conn, result.audit_id)["search_mode"] == "keyword_only"
 
@@ -103,7 +105,7 @@ def test_llm_failure_returns_unavailable_message_and_is_audited(conn, make_user,
     add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
     llm = fake_llm(chat_error=RuntimeError("HTTP 500"))
 
-    result = answer_question(conn, alice, "gateway migration", llm)
+    result = answer_question(within(conn), alice, "gateway migration", llm)
 
     assert result.answer == UNAVAILABLE_ANSWER and result.citations == []
     assert audit_payload(conn, result.audit_id)["llm_error"] == "RuntimeError"
@@ -112,7 +114,7 @@ def test_llm_failure_returns_unavailable_message_and_is_audited(conn, make_user,
 @pytest.mark.security
 def test_audit_events_cannot_be_updated_or_deleted(conn, make_user, add_doc, fake_llm):
     alice = make_user("alice@co.example", ALICE)
-    audit_id = answer_question(conn, alice, "anything", fake_llm()).audit_id
+    audit_id = answer_question(within(conn), alice, "anything", fake_llm()).audit_id
     for statement in ("UPDATE audit_events SET payload = '{}' WHERE id = :i",
                       "DELETE FROM audit_events WHERE id = :i"):
         savepoint = conn.begin_nested()
@@ -130,11 +132,11 @@ def test_restricted_matches_are_audited_without_changing_what_the_user_or_llm_se
     reply = json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]})
 
     before_llm = fake_llm(reply=reply)
-    before = answer_question(conn, alice, "gateway migration", before_llm)
+    before = answer_question(within(conn), alice, "gateway migration", before_llm)
 
     add_doc("slack", "C9:1", ["slack:user:U999"], "gateway migration SECRET-BREACH-77")
     after_llm = fake_llm(reply=reply)
-    after = answer_question(conn, alice, "gateway migration", after_llm)
+    after = answer_question(within(conn), alice, "gateway migration", after_llm)
 
     # The user and the model see exactly the same thing...
     assert after_llm.chat_calls == before_llm.chat_calls
@@ -156,8 +158,42 @@ def test_a_broken_checker_still_answers_and_audits(conn, make_user, add_doc, fak
     def broken_checkers(candidates, principals):
         return {"slack": lambda p, ids: None, "drive": lambda p, ids: None}
 
-    result = answer_question(conn, alice, "gateway migration", llm, checkers_factory=broken_checkers)
+    result = answer_question(within(conn), alice, "gateway migration", llm, checkers_factory=broken_checkers)
 
     assert result.answer == FALLBACK_ANSWER and llm.chat_calls == []
     [candidate] = audit_payload(conn, result.audit_id)["candidates"]
     assert candidate["reason"] == "slack live check gave an invalid reply"
+
+
+def test_no_database_transaction_is_held_during_external_calls(conn, make_user, add_doc):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
+    open_tx, seen = [], {}
+
+    @contextmanager
+    def tx():
+        open_tx.append(1)
+        try:
+            with within(conn)() as c:
+                yield c
+        finally:
+            open_tx.pop()
+
+    class LLM(FakeLLM):
+        def embed(self, texts):
+            seen["embed"] = bool(open_tx)
+            return super().embed(texts)
+
+        def chat(self, messages):
+            seen["chat"] = bool(open_tx)
+            return super().chat(messages)
+
+    def checkers(_candidates, _principals):
+        def slack(_principal, ids):
+            seen["live check"] = bool(open_tx)
+            return dict.fromkeys(ids, True)
+        return {"slack": slack}
+
+    llm = LLM(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
+    answer_question(tx, alice, "gateway migration", llm, checkers_factory=checkers)
+    assert seen == {"embed": False, "live check": False, "chat": False}

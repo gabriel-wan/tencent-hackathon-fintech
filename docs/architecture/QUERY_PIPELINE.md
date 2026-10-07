@@ -93,6 +93,10 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
    keyword but the user may not see, with the reason. These come from a
    separate audit-only search and never reach the user or the LLM (ADR-007).
 
+The database is used in two short transactions (step 3 with the restricted-match
+search, then step 8), so no connection is held while TokenHub or a source is
+called. The answer is returned only after its audit row is committed.
+
 ## 4. Not built yet, and stubs
 
 | Item | Status | Roadmap |
