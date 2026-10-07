@@ -1,13 +1,13 @@
 # ARCHITECTURE.md
 
-> **STATUS: INITIAL / SUBJECT TO CHANGE.**
+> **STATUS: THE ORIGINAL DESIGN, KEPT AS A RECORD.**
 > This document describes the *shape* of the system and the questions the team
-> must answer. It does not describe a decided architecture. The stack
-> (Next.js, FastAPI, PostgreSQL + pgvector) is decided in ADR-001; the LLM
-> provider, cloud services and everything else are open ADRs in
-> [DECISIONS.md](../decisions/DECISIONS.md). What is actually built is in
-> [CURRENT.md](CURRENT.md). Anything concrete below is marked
-> `ASSUMPTION` or `OPTION`.
+> had to answer before building. Those questions are now answered by ADR-001 to
+> ADR-008 in [DECISIONS.md](../decisions/DECISIONS.md) (stack, identity,
+> authorization, retrieval, indexing, LLM, audit log, deployment). What is
+> actually built is in [CURRENT.md](CURRENT.md); the query flow and contracts
+> are in [QUERY_PIPELINE.md](QUERY_PIPELINE.md). `ASSUMPTION` and `OPTION`
+> marks below are as written at the time.
 
 ## 1. The one thing that must be true
 
@@ -113,12 +113,13 @@ trust boundary. Nothing reaches the green box (the LLM) without passing through
 them. The audit log receives events from every stage, including denials.
 
 The hackathon submission requires a **trust-boundary diagram** as a
-deliverable. The diagram above is refined here once the design is agreed.
+deliverable. The built system's components are in [CURRENT.md](CURRENT.md); the
+submission diagram is still to be drawn (ROADMAP, 11–12 Oct).
 
 ## 3. Layers and the questions each one raises
 
-Each layer below lists its responsibility, what it must never do, and the open
-questions the team must resolve. Nothing here is decided.
+Each layer below lists its responsibility, what it must never do, and the
+questions the team had to resolve. The ADRs record the answers.
 
 ### 3.1 User / Client
 Responsibility: let a user ask a natural-language question and see an answer

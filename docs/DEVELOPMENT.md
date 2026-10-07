@@ -61,6 +61,7 @@ seeded users and `POST /api/dev/session` signs in as one of them; see
 - Work on a branch named by kind: `feat/…`, `fix/…`, `docs/…` or `chore/…`, then open a pull request to `main`.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat(audit): …`, `fix(frontend): …`, `docs: …`. One concern per commit.
 - A pull request's description uses the team's template, [.github/pull_request_template.md](../.github/pull_request_template.md): GitHub fills it in when you open a PR on the website; agents copy it (AGENTS.md §3). Its "Security changes" section calls out any change to authorization, filtering, audit logging or what the LLM receives.
+- A change to security behaviour needs a review from a second team member before merging (SECURITY.md §5).
 - Merge with **Create a merge commit**, not squash, so branch history is kept.
 
 ## 2. Environment variables

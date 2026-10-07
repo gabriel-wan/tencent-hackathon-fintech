@@ -7,14 +7,17 @@ Decisions behind it: ADR-002, ADR-003, ADR-005, ADR-006, ADR-007 in
 ## 1. For connectors (Task 1): what to write
 
 Schema: [0002_core_schema.py](../../backend/migrations/versions/0002_core_schema.py),
-plus an HNSW vector index in [0003_chunks_embedding_hnsw.py](../../backend/migrations/versions/0003_chunks_embedding_hnsw.py).
+an HNSW vector index in [0003](../../backend/migrations/versions/0003_chunks_embedding_hnsw.py),
+connections in [0004](../../backend/migrations/versions/0004_connections.py), companies in
+[0005](../../backend/migrations/versions/0005_companies.py) and the audit hash chain and app role in
+[0006](../../backend/migrations/versions/0006_audit_hash_chain.py).
 
 | Table | Written by | Notes |
 |---|---|---|
 | `companies` | First full member to connect Slack from a new workspace; its admin adds the Atlassian site (`app/companies.py`) | Every document, boundary scope and cursor belongs to one (migration 0005). A user has one once a Slack or Atlassian connection names it; until then they see nothing |
 | `documents` | Connector | One row per item (Slack thread, Drive file). Unique on `(company_id, source, source_id)` |
 | `chunks` | Connector worker | Pieces of a document's text, at most **2,000 characters** each (TokenHub embedding limit) |
-| `sync_state` | Connector | Cursors, one row per `(company_id, source, key)` (not used yet: sync rescans each scope) |
+| `sync_state` | Sync | Each scope's last complete sync, one row per `(company_id, source, key)`; shown as `synced_at` on citations and `last_synced_at` on the boundary. No change cursors yet: sync rescans each scope |
 | `boundary` | Admin action (`/api/admin/boundary`) | Which channels, folders, projects and spaces each company may use at all |
 | `users`, `user_principals` | Sign-in | Who a person is on each platform |
 
@@ -45,7 +48,7 @@ Rules for connectors:
 
 ## 2. For the frontend (Task 2): the API
 
-All routes are under `/api`. Identity comes only from the `ib_session` cookie.
+The app's routes are under `/api`; sign-in and connections are `/connectors/*` and `/oauth/*` ([GUIDE.md](../connectors/GUIDE.md) §7.2). Identity comes only from the `ib_session` cookie.
 
 | Method and path | Body | Returns |
 |---|---|---|
@@ -54,15 +57,20 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
 | `DELETE /api/session` | | 204, signs out |
 | `GET /api/dev/users` | | Seeded users. **Development only** |
 | `POST /api/dev/session` | `{"user_id": 1}` | Signs in as that user (persona switcher). **Development only** |
+| `GET /api/admin/boundary`, `PUT`/`DELETE /api/admin/boundary/{source}/{scope_id}`, `GET /api/admin/scopes/{source}`, `POST /api/admin/sync` | | The company's boundary and sync. **Admins only** ([GUIDE.md](../connectors/GUIDE.md) §7.2) |
+| `GET /api/admin/audit` | Query: `user`, `since`, `until`, `event_type`, `document`, `source`, `scope_id`, `before_id`, `limit` | `{"records": [{"id", "ts", "user_email", "event_type", "payload", "prev_hash", "hash"}], "next_before_id"}`, newest first, own company only. **Admins only**; each search is itself audited |
+| `POST /api/admin/audit/verify` | | `{"ok", "checked", "first_broken_id", "reason", "head": {"id", "hash"}}`: recomputes the company's hash chain. **Admins only**; audited |
 
-- **Sign-in:** there is no username/password page (ADR-002). The product signs
-  in through "Connect Slack" / "Connect Google" (`/connectors`, see
-  [GUIDE.md](../connectors/GUIDE.md)), which sets the same session cookie. The
+- **Sign-in:** there is no username/password page (ADR-002). People sign in on
+  `/login` with Google, Slack or Atlassian, which connects that tool and sets
+  the same session cookie ([GUIDE.md](../connectors/GUIDE.md)); in development
+  Slack is connected with a pasted token on `/login` or `/connectors`. The
   persona switcher uses the development routes, which do not exist unless
   `APP_ENV=development`.
 - **Cookies:** call the API with credentials included. The session cookie is
-  httpOnly and SameSite=Lax; keeping the API on the same origin as the frontend
-  (for example a Next.js rewrite of `/api`) avoids cross-origin cookie issues.
+  httpOnly and SameSite=Lax. The frontend keeps the API on its own origin with
+  a proxy route (`frontend/app/api/[...path]/route.ts`), so there are no
+  cross-origin cookie issues.
 - **Fixed replies** the UI should recognise: "I could not find this in the
   sources you have access to." and "The assistant is unavailable right now.
   Please try again shortly."
@@ -101,7 +109,7 @@ The database is used in two short transactions (step 3 with the restricted-match
 search, then step 8), so no connection is held while TokenHub or a source is
 called. The answer is returned only after its audit row is committed.
 
-## 4. Not built yet, and stubs
+## 4. Status
 
 | Item | Status | Roadmap |
 |---|---|---|
