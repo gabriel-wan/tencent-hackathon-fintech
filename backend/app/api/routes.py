@@ -101,8 +101,8 @@ class DevSessionRequest(BaseModel):
 
 @dev_router.get("/users", response_model=list[DevUser])
 def dev_users(conn: Connection = Depends(get_conn)) -> list[DevUser]:
-    rows = conn.execute(text("SELECT id, email, name, is_admin FROM users ORDER BY id")).mappings().all()
-    return [DevUser(**r) for r in rows]
+    rows = conn.execute(text("SELECT id, email, name, is_admin FROM users ORDER BY id")).all()
+    return [DevUser(**r._asdict()) for r in rows]
 
 
 @dev_router.post("/session", response_model=MeResponse)
