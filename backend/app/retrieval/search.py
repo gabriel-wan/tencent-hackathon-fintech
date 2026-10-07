@@ -61,10 +61,12 @@ _SEARCH_TEMPLATE = """
            EXISTS (
                SELECT 1 FROM boundary b
                WHERE b.company_id = d.company_id AND b.source = d.source AND b.scope_id = d.scope_id
-           ) AS in_boundary
+           ) AS in_boundary,
+           s.updated_at AS synced_at
     FROM fused f
     JOIN chunks c ON c.id = f.id
     JOIN documents d ON d.id = c.document_id
+    LEFT JOIN sync_state s ON s.company_id = d.company_id AND s.source = d.source AND s.key = d.scope_id
     ORDER BY f.score DESC, c.id
 """
 
@@ -124,6 +126,7 @@ class Candidate:
     acl: list[str]
     score: float
     in_boundary: bool = True
+    synced_at: datetime | None = None  # its scope's last complete sync
     chunks: list[ChunkHit] = field(default_factory=list)
 
     @property
@@ -181,6 +184,7 @@ def _ranked(
                 acl=list(row["acl"]),
                 score=row["score"],
                 in_boundary=row["in_boundary"],
+                synced_at=row["synced_at"],
             )
         if len(doc.chunks) < chunks_per_doc:
             doc.chunks.append(ChunkHit(row["chunk_id"], row["ordinal"], row["text"], row["score"]))

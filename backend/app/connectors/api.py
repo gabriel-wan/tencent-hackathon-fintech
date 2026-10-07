@@ -43,6 +43,20 @@ CONNECTORS = {  # connector id -> (OAuth provider, display name)
     "confluence": ("atlassian", "Confluence"),
 }
 STATE_COOKIE = "oauth_state"
+PROVIDER_ERRORS = (SlackApiError, HttpError, httpx.HTTPError, oauth.OAuthError)  # a call to a tool failed
+# Slack answers 200 with these when the token no longer works (e.g. Disconnect revoked it).
+SLACK_REFUSED = {"invalid_auth", "token_revoked", "token_expired", "account_inactive", "not_authed"}
+
+
+def provider_error(source: str, e: Exception) -> HTTPException:
+    """401 "connect again" when the tool refused the stored access (revoked, or a scope missing), else 502.
+    Never includes the tool's own error details."""
+    if (isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 401
+            or isinstance(e, HttpError) and e.status_code == 401
+            or isinstance(e, SlackApiError) and e.response.get("error") in SLACK_REFUSED):
+        return HTTPException(401, f"{source} refused the stored access: connect again")
+    log.warning("%s call failed: %s", source, type(e).__name__)
+    return HTTPException(502, f"{source} API call failed")
 
 
 def _secure() -> bool:
@@ -77,7 +91,8 @@ def _link(request: Request, engine, provider: str, account: oauth.Account, token
         if user is None:
             user = session.create_user(db, account.email, account.name, None).id
         joins = account.company_id is not None and not has_company  # the first connection naming a company
-        made_admin = joins and companies.join(db, user, account.company_id)
+        may_admin = provider == "slack" and account.extra.get("guest") is False
+        made_admin = joins and companies.join(db, user, account.company_id, may_admin)
         company = account.company_id if joins else known and known.company_id  # the user's company now
         store.save_connection(db, user, provider, account, tokens)
         new_session = None if signed_in else session.create_session(db, user)
@@ -189,11 +204,8 @@ def ping(connector: str, engine: Db, current: User = Depends(current_user)):
         raise HTTPException(404, f"{connector} is not connected") from e
     except store.ReconnectNeeded as e:
         raise HTTPException(401, f"{connector} access expired: connect again") from e
-    except (SlackApiError, HttpError, httpx.HTTPError, oauth.OAuthError) as e:
-        if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 401:  # revoked, or a scope missing
-            raise HTTPException(401, f"{connector} refused the stored access: connect again") from e
-        log.warning("%s ping failed: %s", connector, type(e).__name__)
-        raise HTTPException(502, f"{connector} API call failed") from e
+    except PROVIDER_ERRORS as e:
+        raise provider_error(connector, e) from e
 
 
 @router.delete("/connectors/{connector}", status_code=204)

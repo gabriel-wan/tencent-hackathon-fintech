@@ -39,8 +39,8 @@ const ERROR_MESSAGES = new Map<string, string>([
   ],
   [
     "no_company",
-    "That Slack workspace or Atlassian site belongs to a company you can't join. For example, you may be a Slack " +
-      "guest, or you granted several Atlassian sites: grant only your company's.",
+    "That sign-in belongs to no company you can join. A company starts when a full member (not a guest) connects " +
+      "Slack; its admin then connects Jira to add the Atlassian site. Grant only your company's site.",
   ],
   [
     "missing_permission",

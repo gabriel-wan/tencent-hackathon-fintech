@@ -40,8 +40,6 @@ def fetch(c: WebClient, channel: str, changed: Callable[[str, str], bool] = lamb
     members = [f"slack:user:{m}" for page in c.conversations_members(channel=channel, limit=1000)
                for m in page["members"]]
     # Public: every full member, plus guests who joined (they are in the member list).
-    # ponytail: a public channel stores all its members, which is heavy for a workspace-wide channel;
-    # keep only guests (users.list flags them) when that matters.
     acl = members if info["is_private"] else ["slack:members", *members]
     workspace = c.auth_test()["url"]  # https://<team>.slack.com/
     names: dict[str, str] = {}
@@ -63,7 +61,7 @@ def fetch(c: WebClient, channel: str, changed: Callable[[str, str], bool] = lamb
             if m.get("subtype"):  # joins, bot posts, ...
                 continue
             source_id = f"{channel}:{m['ts']}"
-            # Newest of: posted, last reply, first message edited. ponytail: an edited *reply* keeps its old
+            # Newest of: posted, last reply, first message edited. An edited reply keeps its old
             # text until the thread gets a new reply.
             last = max(m["ts"], m.get("latest_reply", "0"), m.get("edited", {}).get("ts", "0"), key=float)
             updated_at = datetime.fromtimestamp(float(last), UTC).isoformat()

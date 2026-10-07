@@ -8,10 +8,10 @@ titles are refreshed every run, but text is downloaded only for items whose modi
 after that scope was read completely. Chunks without an embedding are embedded at the end, so an
 LLM outage only delays semantic search.
 
-    python -m app.sync [--company ID] [--loop] [slack drive jira confluence]
+Syncs of one company never overlap, and a scope removed mid-sync is not written back. Each scope's
+last complete sync is kept in `sync_state`, shown as `synced_at` on citations.
 
-ponytail: every run still lists each scope in full (cheap: no text); use sync_state cursors when that
-outgrows 5 minutes.
+    python -m app.sync [--company ID] [--loop] [slack drive jira confluence]
 """
 
 import argparse
@@ -89,7 +89,21 @@ def embed_missing(engine: Engine, llm) -> int:
 
 
 def sync_company(engine: Engine, company_id: int, sources: list[str] | None = None, llm=None) -> None:
-    """Read every boundary scope of the company (or only `sources`) as its admin, and write it."""
+    """Read every boundary scope of the company (or only `sources`) as its admin, and write it.
+    Skipped if a sync of this company is already running."""
+    with engine.connect() as held:
+        if not held.execute(text("SELECT pg_try_advisory_lock(:c)"), {"c": company_id}).scalar():
+            log.info("company %s: a sync is already running, skipped", company_id)
+            return
+        held.commit()
+        try:
+            _sync_company(engine, company_id, sources, llm)
+        finally:
+            held.execute(text("SELECT pg_advisory_unlock(:c)"), {"c": company_id})
+            held.commit()
+
+
+def _sync_company(engine: Engine, company_id: int, sources: list[str] | None, llm) -> None:
     with engine.connect() as db:
         admin = db.execute(text("SELECT id FROM users WHERE company_id = :c AND is_admin ORDER BY id LIMIT 1"),
                            {"c": company_id}).scalar()
@@ -110,14 +124,23 @@ def sync_company(engine: Engine, company_id: int, sources: list[str] | None = No
                 return known.get(source_id) != datetime.fromisoformat(updated_at)
 
             docs = list(store.SOURCES[source].fetch(store.client(engine, admin, source), scope_id, changed))
+            key = {"c": company_id, "s": source, "scope": scope_id}
             with engine.begin() as conn:  # the whole scope at once: a failure writes nothing
+                # FOR SHARE: a concurrent removal waits for this write, so its soft-delete lands last.
+                if conn.execute(text("SELECT 1 FROM boundary WHERE company_id = :c AND source = :s "
+                                     "AND scope_id = :scope FOR SHARE"), key).first() is None:
+                    log.info("company %s: %s %s removed during sync, not written", company_id, source, scope_id)
+                    continue
                 for doc in docs:
                     upsert(conn, company_id, doc)
                 gone = conn.execute(
                     text("UPDATE documents SET deleted_at = now() WHERE company_id = :c AND source = :s "
                          "AND scope_id = :scope AND deleted_at IS NULL AND NOT (source_id = ANY(:seen))"),
-                    {"c": company_id, "s": source, "scope": scope_id, "seen": [d["source_id"] for d in docs]},
+                    {**key, "seen": [d["source_id"] for d in docs]},
                 ).rowcount
+                conn.execute(text("INSERT INTO sync_state (company_id, source, key, updated_at) "
+                                  "VALUES (:c, :s, :scope, now()) ON CONFLICT (company_id, source, key) "
+                                  "DO UPDATE SET updated_at = now()"), key)
         except Exception as e:  # one scope failing (not connected, revoked, API down) never stops the others
             log.warning("company %s: %s %s not synced: %s", company_id, source, scope_id, type(e).__name__)
             continue

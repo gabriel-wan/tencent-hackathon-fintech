@@ -4,13 +4,15 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_conn, get_llm
+from app.api.deps import get_conn, get_llm, get_tx
 from app.main import create_app
+from tests.helpers import within
 
 
 def make_client(conn, llm, app_env="development"):
     app = create_app(app_env)
     app.dependency_overrides[get_conn] = lambda: conn
+    app.dependency_overrides[get_tx] = lambda: within(conn)
     app.dependency_overrides[get_llm] = lambda: llm
     return TestClient(app)
 
@@ -57,7 +59,7 @@ def test_query_returns_answer_citations_and_audit_id(conn, fake_llm, alice, add_
 
     assert body["answer"] == "Blocked [S1]."
     assert body["citations"][0]["id"] == "slack:C1:1"
-    assert set(body["citations"][0]) == {"id", "title", "url", "source", "updated_at"}
+    assert set(body["citations"][0]) == {"id", "title", "url", "source", "updated_at", "synced_at"}
     assert isinstance(body["audit_id"], int)
 
 

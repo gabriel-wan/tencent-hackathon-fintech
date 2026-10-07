@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import Connection, text
 
-from app.api.deps import current_user, get_conn, get_llm
+from app.api.deps import current_user, get_conn, get_llm, get_tx
 from app.auth.session import COOKIE_NAME, SESSION_HOURS, User, create_session, delete_session, get_user
 from app.connectors import live
+from app.db import Tx
 from app.llm.client import LLMClient
 from app.pipeline.query import answer_question
 
@@ -35,6 +36,7 @@ class CitationOut(BaseModel):
     url: str
     source: str
     updated_at: datetime
+    synced_at: datetime | None
 
 
 class QueryResponse(BaseModel):
@@ -53,11 +55,11 @@ class MeResponse(BaseModel):
 def query(
     body: QueryRequest,
     user: User = Depends(current_user),
-    conn: Connection = Depends(get_conn),
+    tx: Tx = Depends(get_tx),
     llm: LLMClient = Depends(get_llm),
     checkers=Depends(live.for_request),
 ) -> QueryResponse:
-    result = answer_question(conn, user, body.question, llm, checkers_factory=checkers)
+    result = answer_question(tx, user, body.question, llm, checkers_factory=checkers)
     return QueryResponse(
         answer=result.answer,
         citations=[CitationOut(**vars(c)) for c in result.citations],
@@ -100,8 +102,8 @@ class DevSessionRequest(BaseModel):
 
 @dev_router.get("/users", response_model=list[DevUser])
 def dev_users(conn: Connection = Depends(get_conn)) -> list[DevUser]:
-    rows = conn.execute(text("SELECT id, email, name, is_admin FROM users ORDER BY id")).mappings().all()
-    return [DevUser(**r) for r in rows]
+    rows = conn.execute(text("SELECT id, email, name, is_admin FROM users ORDER BY id")).all()
+    return [DevUser(**r._asdict()) for r in rows]
 
 
 @dev_router.post("/session", response_model=MeResponse)

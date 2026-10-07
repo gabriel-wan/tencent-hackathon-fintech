@@ -31,7 +31,7 @@ def scopes(http: httpx.Client) -> list[dict]:
 def fetch(http: httpx.Client, project: str, changed: Callable[[str, str], bool] = lambda *_: True) -> Iterator[dict]:
     """One document per ticket (docs/connectors/JIRA.md section 5); `text` None if not `changed`."""
     site = get(http, "/rest/api/3/serverInfo")["baseUrl"]
-    # Jira expands groups and roles itself. ponytail: issue security levels are not applied, so this
+    # Jira expands groups and roles itself. Issue security levels are not applied, so this
     # may be too wide for restricted tickets; the live check trims it.
     acl = [f"atlassian:user:{u['accountId']}" for u in pages(
         http, "/rest/api/3/user/permission/search", None, permissions="BROWSE_PROJECTS", projectKey=project)]

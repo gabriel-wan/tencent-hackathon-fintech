@@ -61,7 +61,6 @@ class ReconnectNeeded(Exception):
 
 @lru_cache
 def cipher() -> Fernet:
-    # ponytail: one key; use MultiFernet when keys need rotating.
     return Fernet(os.environ["TOKEN_ENCRYPTION_KEY"])
 
 
@@ -188,7 +187,6 @@ def client(engine: sa.Engine, user_id: int, source: str) -> WebClient | httpx.Cl
         return slack.client(access_token(engine, user_id, "slack")[0])
     if source == "drive":
         return drive.service(Credentials(access_token(engine, user_id, "google")[0]))
-    # ponytail: first matching site, and the httpx client is left to the garbage collector.
     token, extra = access_token(engine, user_id, "atlassian")
     if (site := atlassian_site(extra, source)) is None:
         raise NotConnected(source)

@@ -215,9 +215,6 @@ One document per file:
 | `fetch(service, folder, changed)` | 4.1 with `permissions`, recursing into subfolders → 4.3 / 4.4 only for files whose `modifiedTime` changed; sharing refreshed for every file | every 5 min, as the admin |
 | `can_read(service, ids)` | 4.6 as that user, batched | each question, final context only |
 
-ponytail: no change feed (4.2) yet: every run lists each boundary folder in full (cheap without the
-text). Switch to 4.2 with a cursor in `sync_state` when folders outgrow 5 minutes.
-
 **Day-1 checks**
 
 1. Unsharing a file shows up in 4.2 as a change (or `removed: true`).
