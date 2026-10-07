@@ -1,10 +1,11 @@
 /**
  * MOCK DATA for the boundary page's design preview (development only).
  *
- * ASSUMPTION: there is no boundary or sync API yet (ui-plan.md 6.5 proposes
- * one). "In boundary" entries mirror the seed's boundary table
- * (backend/app/seed.py); the others stand for channels and folders a
- * connector can see but the admin has not allowed, like the seed's HR folder.
+ * The real boundary and sync API exists (backend/app/connectors/admin.py);
+ * these fixtures stay only until /admin/boundary is wired to it. "In
+ * boundary" entries mirror the seed's boundary table (backend/app/seed.py);
+ * the others stand for channels and folders a connector can see but the
+ * admin has not allowed, like the seed's HR folder.
  */
 
 export type MockScope = {

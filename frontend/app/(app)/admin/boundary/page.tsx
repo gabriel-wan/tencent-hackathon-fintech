@@ -26,11 +26,12 @@ export default async function BoundaryPage() {
       </div>
       <NotBuiltYet>
         <p>
-          This page waits for the boundary and sync API: <code>GET</code>, <code>POST</code> and{" "}
-          <code>DELETE /api/admin/boundary</code>, and <code>POST /api/admin/sync</code> (owners still to be
-          agreed).
+          The boundary and sync API now exists (<code>GET /api/admin/scopes/{"{source}"}</code>,{" "}
+          <code>GET /api/admin/boundary</code>, <code>PUT</code> and{" "}
+          <code>DELETE /api/admin/boundary/{"{source}/{scope_id}"}</code>, <code>POST /api/admin/sync</code>);
+          this page is being built on it.
         </p>
-        <p>The current boundary comes from the development seed.</p>
+        <p>Until then, an admin sets the boundary through the backend&apos;s API docs (docs/connectors/GUIDE.md, section 7.5).</p>
       </NotBuiltYet>
       {devMode ? (
         <DesignPreview>
