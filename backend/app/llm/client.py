@@ -14,6 +14,7 @@ EMBEDDING_DIM = 1024          # must match chunks.embedding vector(1024)
 EMBEDDING_MAX_CHARS = 2000    # TokenHub limit per input string
 EMBEDDING_BATCH = 128         # TokenHub recommended maximum per request
 DEFAULT_EMBEDDING_MODEL = "kinfra-text-embedding-0.6b"
+MAX_ANSWER_TOKENS = 1024
 
 _http = httpx.Client()  # shared: keeps connections to TokenHub alive between calls (thread-safe)
 
@@ -72,7 +73,8 @@ class LLMClient:
     def chat(self, messages: list[dict], temperature: float = 0.2) -> ChatResult:
         data = self._post(
             "/chat/completions",
-            {"model": self.chat_model, "messages": messages, "temperature": temperature},
+            {"model": self.chat_model, "messages": messages, "temperature": temperature,
+             "max_tokens": MAX_ANSWER_TOKENS},
         )
         try:
             content = data["choices"][0]["message"]["content"] or ""

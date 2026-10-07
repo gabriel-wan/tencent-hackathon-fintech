@@ -20,11 +20,12 @@ from app.auth.session import User
 from app.db import Tx
 from app.llm.client import ChatResult
 from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, build_messages, ground
-from app.retrieval.search import Candidate, hybrid_search, restricted_matches
+from app.retrieval.search import Candidate, ChunkHit, hybrid_search, restricted_matches
 
 log = logging.getLogger(__name__)
 
 MAX_DOCS_TO_LLM = 10
+MAX_CONTEXT_CHARS = 12_000  # ~3k tokens: prompt size drives LLM latency
 UNAVAILABLE_ANSWER = "The assistant is unavailable right now. Please try again shortly."
 
 CheckersFactory = Callable[[Sequence[Candidate], list[str]], Mapping[str, CanRead]]
@@ -50,6 +51,20 @@ class QueryResult:
     answer: str
     citations: list[Citation]
     audit_id: int
+
+
+def _fit(candidates: list[Candidate]) -> list[tuple[Candidate, list[ChunkHit]]]:
+    """Best-ranked documents, each with its best chunks, until MAX_CONTEXT_CHARS is used up."""
+    budget, picked = MAX_CONTEXT_CHARS, []
+    for c in candidates[:MAX_DOCS_TO_LLM]:
+        kept = []
+        for ch in c.chunks:  # best first
+            if len(ch.text) <= budget:
+                kept.append(ch)
+                budget -= len(ch.text)
+        if kept:
+            picked.append((c, kept))
+    return picked
 
 
 def answer_question(
@@ -96,25 +111,25 @@ def answer_question(
     audit["candidates"] = [
         {"document": c.key, "allowed": d.allowed, "reason": d.reason} for c, d in zip(candidates, decisions)
     ]
-    allowed = [c for c, d in zip(candidates, decisions) if d.allowed][:MAX_DOCS_TO_LLM]
-    audit["sent_to_llm"] = [c.key for c in allowed]
+    sources = _fit([c for c, d in zip(candidates, decisions) if d.allowed])
+    audit["sent_to_llm"] = [c.key for c, _ in sources]
 
     citations: list[Citation] = []
-    if not allowed:
+    if not sources:
         # Same reply whether nothing exists or nothing is permitted (INV-5).
         answer = FALLBACK_ANSWER
         audit["llm_called"] = False
     else:
-        by_label = {f"S{i}": c for i, c in enumerate(allowed, start=1)}
+        by_label = {f"S{i}": c for i, (c, _) in enumerate(sources, start=1)}
         blocks = [
             SourceBlock(
                 label=label,
                 platform=c.source,
                 title=c.title,
                 updated_at=c.updated_at.isoformat(),
-                text="\n...\n".join(ch.text for ch in sorted(c.chunks, key=lambda ch: ch.ordinal)),
+                text="\n...\n".join(ch.text for ch in sorted(chunks, key=lambda ch: ch.ordinal)),
             )
-            for label, c in by_label.items()
+            for label, (c, chunks) in zip(by_label, sources)
         ]
         audit["llm_called"] = True
         try:

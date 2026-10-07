@@ -84,7 +84,9 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
 4. Live check per source, in parallel, 2-second timeout. Deny by default.
 5. Nothing left: return the fixed "not found" reply without calling the LLM.
 6. Up to 10 documents go to the LLM as `<source id="S1">` blocks marked as
-   untrusted data. The model sees short labels, never raw IDs.
+   untrusted data, best-ranked chunks first, within 12,000 characters in total
+   (prompt size drives response time); replies are capped at 1,024 tokens. The
+   model sees short labels, never raw IDs.
 7. Citations outside the labels sent are removed; with no valid citation the
    reply becomes the fixed "not found" answer.
 8. One `audit_events` row: user, question, search mode, every candidate with

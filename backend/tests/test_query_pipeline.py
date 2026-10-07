@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.llm.grounding import FALLBACK_ANSWER
-from app.pipeline.query import UNAVAILABLE_ANSWER, answer_question
+from app.pipeline.query import MAX_CONTEXT_CHARS, UNAVAILABLE_ANSWER, answer_question
 from tests.helpers import FakeLLM, within
 
 ALICE = ["slack:user:U001", "slack:members", "google:user:alice@co.example"]
@@ -163,6 +163,21 @@ def test_a_broken_checker_still_answers_and_audits(conn, make_user, add_doc, fak
     assert result.answer == FALLBACK_ANSWER and llm.chat_calls == []
     [candidate] = audit_payload(conn, result.audit_id)["candidates"]
     assert candidate["reason"] == "slack live check gave an invalid reply"
+
+
+def test_the_llm_gets_the_best_sources_within_the_context_budget(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    body = "gateway migration " + "x" * 1882  # 1,900 characters: six fit in the budget, the seventh does not
+    assert 6 * len(body) <= MAX_CONTEXT_CHARS < 7 * len(body)
+    for i in range(8):
+        add_doc("slack", f"C1:{i}", ["slack:user:U001"], body)
+    llm = fake_llm(reply=json.dumps({"answer": "Done [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), alice, "gateway migration", llm)
+
+    assert len(audit_payload(conn, result.audit_id)["sent_to_llm"]) == 6  # the audit lists exactly what was sent
+    prompt = llm.all_prompt_text()
+    assert 'id="S6"' in prompt and 'id="S7"' not in prompt
 
 
 def test_no_database_transaction_is_held_during_external_calls(conn, make_user, add_doc):
