@@ -16,7 +16,7 @@ export function EmptyState({ onPick }: { onPick: (question: string) => void }) {
       <div className="grid gap-2">
         <h2 className="text-2xl font-semibold tracking-tight">What do you need to know?</h2>
         <p className="leading-relaxed text-muted-foreground">
-          Ask about your company&apos;s Slack and Drive. Answers use only what you already have access to,
+          Ask about your company&apos;s Slack, Drive, Jira and Confluence. Answers use only what you already have access to,
           and every answer shows its sources.
         </p>
       </div>

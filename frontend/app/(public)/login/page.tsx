@@ -50,7 +50,7 @@ export default async function LoginPage({ searchParams }: Props) {
               <h1 className="text-xl font-semibold tracking-tight">Sign in to Internal Brain</h1>
             </CardTitle>
             <CardDescription>
-              Answers from your company&apos;s Slack and Drive, limited to what you can already see.
+              Answers from your company&apos;s Slack, Drive, Jira and Confluence, limited to what you can already see.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">

@@ -63,7 +63,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ se
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Ask about your company's Slack and Drive…"
+          placeholder="Ask about your company's Slack, Drive, Jira and Confluence…"
           rows={1}
           aria-invalid={tooLong || undefined}
           aria-describedby="question-hint"
