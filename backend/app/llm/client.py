@@ -15,6 +15,8 @@ EMBEDDING_MAX_CHARS = 2000    # TokenHub limit per input string
 EMBEDDING_BATCH = 128         # TokenHub recommended maximum per request
 DEFAULT_EMBEDDING_MODEL = "kinfra-text-embedding-0.6b"
 
+_http = httpx.Client()  # shared: keeps connections to TokenHub alive between calls (thread-safe)
+
 
 class LLMNotConfigured(RuntimeError):
     pass
@@ -55,7 +57,7 @@ class LLMClient:
 
     def _post(self, path: str, payload: dict) -> dict:
         try:
-            resp = httpx.post(
+            resp = _http.post(
                 f"{self.base_url}{path}",
                 json=payload,
                 headers={"Authorization": f"Bearer {self.api_key}"},
