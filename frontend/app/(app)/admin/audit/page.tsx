@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 
 import { AuditPreview } from "@/components/admin/audit-preview";
 import { DesignPreview } from "@/components/admin/design-preview";
@@ -10,6 +11,7 @@ export const metadata: Metadata = { title: "Audit trail · Internal Brain" };
 
 // Scenario 5: "show me everything user X accessed ... in the last 30 days".
 export default async function AuditPage() {
+  await connection(); // per request: it asks the backend, which is unreachable during `next build`
   // The design preview exists only while the backend is in development mode.
   const devMode = (await listDevUsers()) !== null;
   return (

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 
 import { BoundaryPreview } from "@/components/admin/boundary-preview";
 import { DesignPreview } from "@/components/admin/design-preview";
@@ -11,6 +12,7 @@ export const metadata: Metadata = { title: "Boundary · Internal Brain" };
 // ADR-002: the admin chooses which channels and folders the assistant may use
 // at all. Also where "Sync now" lives for the freshness demo (scenario 2).
 export default async function BoundaryPage() {
+  await connection(); // per request: it asks the backend, which is unreachable during `next build`
   // The design preview exists only while the backend is in development mode.
   const devMode = (await listDevUsers()) !== null;
   return (
