@@ -1,7 +1,7 @@
-# PROJECT.md – Internal Brain
+# PROJECT.md – KnowBuddy
 
-Working name **Internal Brain** (taken from the challenge title). Final product
-name: **TBD**.
+Product name **KnowBuddy**, built for the challenge "The Internal Brain" (the
+name nods to Tencent's CodeBuddy and WorkBuddy).
 
 | | |
 |---|---|
@@ -113,7 +113,6 @@ Open MVP questions for the team:
 
 | Item | Where |
 |---|---|
-| Final product name | README.md, PROJECT.md |
 | Team member names and roles | PROJECT.md |
 | Personas to design around | PROJECT.md |
 | MVP scope | PROJECT.md |

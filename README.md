@@ -1,6 +1,6 @@
-# Internal Brain
+# KnowBuddy
 
-> Working name taken from the challenge title. Final product name: **TBD**.
+> Built for the Aspire challenge "The Internal Brain". Product name: **KnowBuddy**.
 
 A permission-aware enterprise knowledge system that answers natural-language
 questions across Confluence, Jira, Slack and Google Drive without ever showing
