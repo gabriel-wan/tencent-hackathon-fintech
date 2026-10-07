@@ -155,9 +155,11 @@ implementation:
   reading through company-wide admin credentials (Slack bot, Google service
   account, Atlassian API token).
 - **Now:** a `companies` table; every document, boundary scope and sync cursor
-  belongs to one company, and so does every user once a connection names it. The first sign-in from a new Slack workspace or
-  Atlassian site creates its company, and the first member becomes the admin;
-  later sign-ins from it join. Google names no company, so tools connect in any
+  belongs to one company, and so does every user once a connection names it. The first full member (not a guest) to sign in
+  from a new Slack workspace creates its company and becomes the admin; later
+  sign-ins from it join. *Amended 2026-10-07:* Atlassian sign-ins never create
+  a company and never become admin, since Atlassian can't tell a contractor
+  from an employee; the admin adds the company's site by connecting Jira. Google names no company, so tools connect in any
   order: a user with only Google has no company and sees nothing. Sync reads as the admin's own connections; live checks ask
   each source as the asking user.
 - **Why:** the product should serve any number of companies from one
@@ -259,6 +261,14 @@ Data flow and per-source check calls are described in
   plus processing time, inside the handbook's "minutes to about 1 hour".
 - Permission revocations do not wait for the sync: the live check (ADR-003)
   applies them on the next question.
+- *Amended 2026-10-07 (Task 1):* the sweep is not built yet; instead every
+  sync reads each boundary scope in full, which refreshes all ACLs and catches
+  deletions. Syncs of one company never overlap (advisory lock), and a scope
+  removed mid-sync is not written back. Stale content is labelled, not hidden:
+  each citation carries `synced_at` (the scope's last complete sync). A deleted
+  Slack message drops at the next sync, since Slack's live check is per
+  channel; Drive, Jira and Confluence deletions (Drive trash included) drop at
+  the live check.
 - 1,024-dimension vectors fit pgvector's standard index. The larger 4b model
   (2,560 dimensions) would not, without extra work.
 - The embedding model receives the text of every in-boundary document at
@@ -299,6 +309,11 @@ Data flow and per-source check calls are described in
   about 6 to 7 seconds per answer.
 - The thinking setting can be lowered later to cut latency and cost; the
   smoke test showed no quality loss with `reasoning_effort=low`.
+- *Amended 2026-10-07:* thinking is now **disabled** (`thinking: disabled`).
+  Measured: hidden reasoning was ~90% of each reply's tokens; answers took
+  ~7 s with thinking on, ~2 to 4 s off (`reasoning_effort=low` barely helped).
+  The same three-case smoke test passed 9 of 9 with thinking off. Replies are
+  capped at 1,024 tokens, safe because no reasoning tokens count against it.
 - Skipping the LLM when nothing is allowed gives the same reply whether
   nothing exists or nothing is permitted (scenario 3, INV-5).
 - TokenHub states API data is not used for training, and data stays in the

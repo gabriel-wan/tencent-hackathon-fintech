@@ -18,8 +18,8 @@ const HINTS: Record<string, string> = {
     "Google Drive access wasn't granted. Click Connect again and tick \"See and download all your Google Drive " +
     "files\" on Google's permission screen.",
   no_company:
-    "This Slack workspace or Atlassian site belongs to a company you can't join (for example, you are a Slack " +
-    "guest, or you granted several Atlassian sites: grant only your company's).",
+    "This sign-in belongs to no company you can join. A company starts when a full member (not a guest) " +
+    "connects Slack; its admin then connects Jira to add the Atlassian site. Grant only your company's site.",
 };
 
 type Connector = { id: string; name: string; connected: boolean; account: { email: string } | null };

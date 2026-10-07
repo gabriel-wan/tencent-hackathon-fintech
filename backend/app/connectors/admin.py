@@ -2,7 +2,7 @@
 ever their own company.
 
 GET    /api/admin/scopes/{source}                channels / folders / projects / spaces you can see
-GET    /api/admin/boundary                       your company's boundary
+GET    /api/admin/boundary                       your company's boundary, with each scope's last_synced_at
 PUT    /api/admin/boundary/{source}/{scope_id}   add a scope (body: {"title": "..."})
 DELETE /api/admin/boundary/{source}/{scope_id}   remove a scope; its documents are soft-deleted
 POST   /api/admin/sync                           sync your company now, in the background (202)
@@ -21,6 +21,7 @@ from app.api.deps import current_user
 from app.audit.log import record_event
 from app.auth.session import User
 from app.connectors import store
+from app.connectors.api import PROVIDER_ERRORS, provider_error
 from app.db import Db
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -56,13 +57,17 @@ def scopes(source: str, engine: Db, admin: User = Depends(require_admin)):
         raise HTTPException(404, f"connect {source} first") from e
     except store.ReconnectNeeded as e:
         raise HTTPException(401, f"{source} access expired: connect again") from e
+    except PROVIDER_ERRORS as e:  # e.g. a revoked Slack token: "connect again", not a 500
+        raise provider_error(source, e) from e
 
 
 @router.get("/boundary")
 def boundary(engine: Db, admin: User = Depends(require_admin)):
     with engine.connect() as db:
-        rows = db.execute(text("SELECT source, scope_id, scope_type, title, added_at FROM boundary "
-                               "WHERE company_id = :c ORDER BY source, title"), {"c": admin.company_id})
+        rows = db.execute(text("SELECT b.source, b.scope_id, b.scope_type, b.title, b.added_at, "
+                               "s.updated_at AS last_synced_at FROM boundary b LEFT JOIN sync_state s "
+                               "ON s.company_id = b.company_id AND s.source = b.source AND s.key = b.scope_id "
+                               "WHERE b.company_id = :c ORDER BY b.source, b.title"), {"c": admin.company_id})
         return [dict(r) for r in rows.mappings()]
 
 
@@ -83,6 +88,7 @@ def remove_scope(source: str, scope_id: str, engine: Db, admin: User = Depends(r
     key = {"c": admin.company_id, "s": _source(source), "i": scope_id}
     with engine.begin() as db:
         db.execute(text("DELETE FROM boundary WHERE company_id = :c AND source = :s AND scope_id = :i"), key)
+        db.execute(text("DELETE FROM sync_state WHERE company_id = :c AND source = :s AND key = :i"), key)
         db.execute(text("UPDATE documents SET deleted_at = now() WHERE company_id = :c AND source = :s "
                         "AND scope_id = :i AND deleted_at IS NULL"), key)
         record_event(db, admin.id, "boundary_removed", {"source": source, "scope_id": scope_id})

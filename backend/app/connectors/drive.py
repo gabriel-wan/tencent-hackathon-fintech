@@ -23,8 +23,7 @@ FILE_FIELDS = "nextPageToken, files(id, name, mimeType, modifiedTime, webViewLin
 
 
 def service(credentials):
-    # Cheap (~5 ms, bundled discovery doc), so build one per use.
-    # ponytail: not thread-safe; never share one service across threads.
+    # Cheap (~5 ms, bundled discovery doc), so build one per use. Not thread-safe: never share one.
     return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
 
@@ -52,8 +51,7 @@ def acl(permissions: list[dict]) -> list[str]:
         if p["type"] == "user" and email:
             held.add(f"google:user:{email}")
         elif p["type"] == "group" and email:
-            # ponytail: a group widens to its domain (the live check trims); expanding members needs
-            # Directory API admin scopes. Members outside that domain are missed until then.
+            # A group widens to its domain (the live check trims); members outside that domain are missed.
             held.add(f"google:domain:{email.split('@')[1]}")
         elif p["type"] == "domain":
             held.add(f"google:domain:{p['domain'].lower()}")
@@ -69,7 +67,7 @@ def _text(drive, f: dict) -> str | None:
         elif f["mimeType"].startswith("text/"):
             data = drive.files().get_media(fileId=f["id"], supportsAllDrives=True).execute(num_retries=3)
         else:
-            return None  # ponytail: PDFs and Office files are skipped; add text extraction when needed
+            return None
     except HttpError as e:  # e.g. a Doc over Drive's 10 MB export limit: skip it, never fail the whole folder
         if e.status_code >= 500 or e.status_code == 429:
             raise  # Drive trouble: retry the folder next run
@@ -87,7 +85,7 @@ def fetch(drive, folder: str, changed: Callable[[str, str], bool] = lambda *_: T
             yield from fetch(drive, f["id"], changed, scope or folder)
             continue
         # No sharing list: the admin may not share this file, or it is in a shared drive (Drive never lists
-        # permissions there). Never guess an ACL. ponytail: read shared drives' permissions.list when needed.
+        # permissions there). Never guess an ACL.
         if "permissions" not in f:
             log.info("Drive file %s skipped: its sharing is not visible", f["id"])
             continue
@@ -112,21 +110,24 @@ def can_read(drive, file_ids: Iterable[str]) -> set[str]:
     """Live check (ADR-003): which of these files the service's owner can read right now.
 
     Asks Google directly (files.get as that user), batched into one request per 100 files.
-    Deny by default: 403/404 means no access; any other error also leaves the file out.
+    Deny by default: 403/404 means no access; any other error also leaves the file out. Trashed files
+    are denied too (files.get still returns them).
     """
     ids = list(dict.fromkeys(file_ids))
     allowed: set[str] = set()
 
-    def collect(file_id, _response, error):
+    def collect(file_id, response, error):
         if error is None:
-            allowed.add(file_id)
+            if not response.get("trashed"):
+                allowed.add(file_id)
         elif not (isinstance(error, HttpError) and error.status_code in (403, 404)):
             log.warning("Drive check for %s failed, denying: %s", file_id, error)
 
     for start in range(0, len(ids), BATCH_LIMIT):
         batch = drive.new_batch_http_request(callback=collect)
         for file_id in ids[start : start + BATCH_LIMIT]:
-            batch.add(drive.files().get(fileId=file_id, fields="id", supportsAllDrives=True), request_id=file_id)
+            batch.add(drive.files().get(fileId=file_id, fields="id,trashed", supportsAllDrives=True),
+                      request_id=file_id)
         try:
             batch.execute()
         except Exception:  # deny by default: auth, network or parse failure drops the whole batch

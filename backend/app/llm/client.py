@@ -14,6 +14,9 @@ EMBEDDING_DIM = 1024          # must match chunks.embedding vector(1024)
 EMBEDDING_MAX_CHARS = 2000    # TokenHub limit per input string
 EMBEDDING_BATCH = 128         # TokenHub recommended maximum per request
 DEFAULT_EMBEDDING_MODEL = "kinfra-text-embedding-0.6b"
+MAX_ANSWER_TOKENS = 1024
+
+_http = httpx.Client()  # shared: keeps connections to TokenHub alive between calls (thread-safe)
 
 
 class LLMNotConfigured(RuntimeError):
@@ -55,7 +58,7 @@ class LLMClient:
 
     def _post(self, path: str, payload: dict) -> dict:
         try:
-            resp = httpx.post(
+            resp = _http.post(
                 f"{self.base_url}{path}",
                 json=payload,
                 headers={"Authorization": f"Bearer {self.api_key}"},
@@ -70,7 +73,9 @@ class LLMClient:
     def chat(self, messages: list[dict], temperature: float = 0.2) -> ChatResult:
         data = self._post(
             "/chat/completions",
-            {"model": self.chat_model, "messages": messages, "temperature": temperature},
+            # No hidden reasoning: measured ~2 s instead of ~7 s on hy3, answers still grounded and cited.
+            {"model": self.chat_model, "messages": messages, "temperature": temperature,
+             "max_tokens": MAX_ANSWER_TOKENS, "thinking": {"type": "disabled"}},
         )
         try:
             content = data["choices"][0]["message"]["content"] or ""

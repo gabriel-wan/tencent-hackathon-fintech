@@ -92,11 +92,9 @@ def live_check(
     return [decisions[c.document_id] for c in candidates]
 
 
-# --- STUB ---------------------------------------------------------------------
-# Until the connectors' real can_read functions exist (roadmap Task 1), this
-# answers from the STORED acl, not from the live platform. It therefore does
-# NOT catch revocations that happened after the last sync. Replace each entry
-# in default_checkers with the connector's can_read as it lands.
+# --- STUB (development only) ----------------------------------------------------
+# Answers from the STORED acl, so it misses revocations since the last sync. Used
+# only for seeded personas with no connection (app/connectors/live.py).
 
 STUB_MODE = "stub: stored ACL, not live"
 

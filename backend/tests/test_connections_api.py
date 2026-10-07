@@ -12,6 +12,7 @@ import pytest
 import sqlalchemy as sa
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from slack_sdk.errors import SlackApiError
 
 from app.auth.principals import principals_for
 from app.connectors import atlassian, drive, oauth, slack, store
@@ -353,6 +354,13 @@ def test_a_slack_guest_cannot_start_a_company(client, providers, engine):
     assert count(engine, "companies") == 1
 
 
+def test_a_slack_guest_never_becomes_admin_even_of_a_company_without_one(client, providers, engine):
+    # e.g. the company's first sign-in was refused at linking, so it has no members yet.
+    other = add_company("Other", "T2", None)
+    assert sign_in_from_new_workspace(client, providers, "guest@agency.com", guest=True).endswith("connected=slack")
+    assert users_by_company(engine)["guest@agency.com"] == (other, False)
+
+
 def test_a_person_cannot_join_a_second_company(client, providers, engine):
     sign_in(client, "drive")  # alice@corp.com, in Corp
     add_company("Other", "T2", None)
@@ -379,6 +387,15 @@ def test_atlassian_listing_one_site_once_per_product_is_one_site(client, provide
                                    {**site, "scopes": ["read:confluence-content.all"]}]
     assert sign_in(client, "jira").headers["location"].endswith("connected=atlassian")
     assert statuses(client)["jira"] is True and statuses(client)["confluence"] is True
+
+
+def test_atlassian_never_starts_a_company(client, providers, engine):
+    # Atlassian can't tell a contractor from an employee: whoever signs in first must not become admin.
+    providers.routes[ATL_ME] = {**providers.routes[ATL_ME], "account_id": "A9", "email": "contractor@agency.com"}
+    providers.routes[ATL_SITES] = [{"id": "cloud-9", "url": "https://new.atlassian.net", "name": "new",
+                                    "scopes": BOTH_PRODUCTS}]
+    assert sign_in(client, "jira").headers["location"].endswith("error=no_company")
+    assert count(engine, "companies") == 1
 
 
 def test_atlassian_sign_in_granting_several_new_sites_is_rejected(client, providers):
@@ -476,6 +493,18 @@ def test_ping_slack_uses_the_users_token(client, providers, monkeypatch):
     monkeypatch.setattr(slack, "client", lambda token: tokens.append(token) or Slack())
     assert client.get("/connectors/slack/ping").json() == {"ok": True, "as": "alice"}
     assert tokens == ["xoxp-alice"]
+
+
+def test_ping_slack_with_a_revoked_token_asks_to_connect_again(client, providers, monkeypatch):
+    sign_in(client, "slack")
+
+    class Slack:  # what Slack answers after Disconnect (auth.revoke) or a reinstall
+        def auth_test(self):
+            raise SlackApiError("token_revoked", {"ok": False, "error": "token_revoked"})
+
+    monkeypatch.setattr(slack, "client", lambda token: Slack())
+    resp = client.get("/connectors/slack/ping")
+    assert resp.status_code == 401 and "connect again" in resp.json()["detail"]
 
 
 class FakeDrive:
@@ -664,10 +693,17 @@ def test_dev_slack_rejects_anything_but_a_user_token(engine, providers):
     assert providers.sent(SLACK_ME) == []
 
 
-def test_development_mode_refuses_an_https_deployment(monkeypatch):
-    monkeypatch.setenv("APP_URL", "https://brain.example.com")
+@pytest.mark.parametrize("url", ["https://brain.example.com", "http://203.0.113.7:8000", "http://brain.example.com"])
+def test_development_mode_refuses_any_server_deployment(monkeypatch, url):
+    # The dev routes sign anyone in as anyone: a plain-http demo server must refuse them too.
+    monkeypatch.setenv("APP_URL", url)
     with pytest.raises(RuntimeError):
         create_app("development")
+
+
+def test_development_mode_runs_on_localhost(monkeypatch):
+    monkeypatch.setenv("APP_URL", "http://localhost:8000")
+    assert TestClient(create_app("development")).get("/api/dev/users").status_code == 200
 
 
 @pytest.mark.parametrize(("app_env", "hinted"), [("development", True), ("production", False)])

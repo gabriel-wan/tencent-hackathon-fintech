@@ -110,6 +110,49 @@ def test_a_failed_fetch_deletes_nothing(setup):
     assert live_docs() == {"C1:1": True, "C1:2": True}
 
 
+def synced_at():
+    with engine.connect() as c:
+        return c.execute(text("SELECT updated_at FROM sync_state WHERE key = 'C1'")).scalar()
+
+
+def test_each_scope_records_its_last_successful_sync(setup):
+    sync.sync_company(engine, setup.company, llm=FakeLLM())
+    first = synced_at()
+    assert first is not None
+    setup.source.docs = RuntimeError("slack is down")
+    sync.sync_company(engine, setup.company, llm=FakeLLM())
+    assert synced_at() == first
+
+
+@pytest.mark.security
+def test_a_scope_removed_during_a_sync_is_not_written_back(setup):
+    sync.sync_company(engine, setup.company, llm=FakeLLM())
+    read = setup.source.fetch
+
+    def fetch(client, scope_id, changed):
+        docs = list(read(client, scope_id, changed))
+        with engine.begin() as c:  # the admin removes the channel mid-sync
+            c.execute(text("DELETE FROM boundary WHERE scope_id = 'C1'"))
+            c.execute(text("UPDATE documents SET deleted_at = now() WHERE scope_id = 'C1'"))
+        return docs
+
+    setup.source.fetch = fetch
+    sync.sync_company(engine, setup.company, llm=FakeLLM())
+    assert live_docs() == {"C1:1": False, "C1:2": False}
+
+
+def test_a_second_sync_of_one_company_is_skipped(setup):
+    with engine.connect() as running:  # another sync of this company holds the lock
+        running.execute(text("SELECT pg_advisory_lock(:c)"), {"c": setup.company})
+        try:
+            sync.sync_company(engine, setup.company, llm=FakeLLM())
+            assert setup.source.seen == []
+        finally:
+            running.execute(text("SELECT pg_advisory_unlock(:c)"), {"c": setup.company})
+    sync.sync_company(engine, setup.company, llm=FakeLLM())
+    assert len(setup.source.seen) == 1
+
+
 def test_embeddings_missed_during_an_outage_are_filled_later(setup):
     sync.sync_company(engine, setup.company, llm=FakeLLM(embed_error=RuntimeError("TokenHub down")))
     with engine.connect() as c:

@@ -53,7 +53,7 @@ def fetch(http: httpx.Client, space: str, changed: Callable[[str, str], bool] = 
             chain.append(node)
             node = parent[node]
         # The deepest restriction holds every real reader; unrestricted means everyone in the company
-        # who can open the space. ponytail: space permissions, and restrictions on a parent that is not
+        # who can open the space. Space permissions, and restrictions on a parent that is not
         # a page (e.g. a folder), are not modelled (too wide is allowed; the live check trims).
         acl = next((r for r in map(restriction, chain) if r is not None), ["public"])
         updated_at = page["version"]["createdAt"]
