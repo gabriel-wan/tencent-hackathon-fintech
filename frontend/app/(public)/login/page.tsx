@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 
+import { SlackTokenForm } from "@/components/connectors/slack-token-form";
 import { DevSignInList } from "@/components/dev-sign-in-list";
 import { PageContainer } from "@/components/page-container";
 import { ServerUnavailable } from "@/components/server-unavailable";
@@ -98,6 +99,11 @@ export default async function LoginPage({ searchParams }: Props) {
             <DevSignInList users={devUsers} />
           </section>
         ) : null}
+
+        {/* Development only (devUsers is null otherwise). Slack's sign-in needs https, so locally Slack is
+            connected with a pasted token, and connecting it is also how a new person signs in and how a
+            company starts. Signed-out visitors can't reach /connectors, so the form must be here too. */}
+        {devUsers !== null ? <SlackTokenForm /> : null}
       </div>
     </PageContainer>
   );
