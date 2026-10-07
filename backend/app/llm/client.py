@@ -73,8 +73,9 @@ class LLMClient:
     def chat(self, messages: list[dict], temperature: float = 0.2) -> ChatResult:
         data = self._post(
             "/chat/completions",
+            # No hidden reasoning: measured ~2 s instead of ~7 s on hy3, answers still grounded and cited.
             {"model": self.chat_model, "messages": messages, "temperature": temperature,
-             "max_tokens": MAX_ANSWER_TOKENS},
+             "max_tokens": MAX_ANSWER_TOKENS, "thinking": {"type": "disabled"}},
         )
         try:
             content = data["choices"][0]["message"]["content"] or ""

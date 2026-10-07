@@ -309,6 +309,11 @@ Data flow and per-source check calls are described in
   about 6 to 7 seconds per answer.
 - The thinking setting can be lowered later to cut latency and cost; the
   smoke test showed no quality loss with `reasoning_effort=low`.
+- *Amended 2026-10-07:* thinking is now **disabled** (`thinking: disabled`).
+  Measured: hidden reasoning was ~90% of each reply's tokens; answers took
+  ~7 s with thinking on, ~2 to 4 s off (`reasoning_effort=low` barely helped).
+  The same three-case smoke test passed 9 of 9 with thinking off. Replies are
+  capped at 1,024 tokens, safe because no reasoning tokens count against it.
 - Skipping the LLM when nothing is allowed gives the same reply whether
   nothing exists or nothing is permitted (scenario 3, INV-5).
 - TokenHub states API data is not used for training, and data stays in the

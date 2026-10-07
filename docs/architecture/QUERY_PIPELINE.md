@@ -85,12 +85,14 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
 5. Nothing left: return the fixed "not found" reply without calling the LLM.
 6. Up to 10 documents go to the LLM as `<source id="S1">` blocks marked as
    untrusted data, best-ranked chunks first, within 12,000 characters in total
-   (prompt size drives response time); replies are capped at 1,024 tokens. The
-   model sees short labels, never raw IDs.
+   (smaller prompts answer faster); replies are capped at 1,024 tokens, with
+   `hy3`'s hidden reasoning turned off (ADR-006). The model sees short labels,
+   never raw IDs.
 7. Citations outside the labels sent are removed; with no valid citation the
    reply becomes the fixed "not found" answer.
 8. One `audit_events` row: user, question, search mode, every candidate with
-   its decision and reason, what was sent to the LLM, answer, citations, model.
+   its decision and reason, what was sent to the LLM, answer, citations, model,
+   and `timings_ms` per step (embed, search, live_check, llm, total; also logged).
    It also records **restricted matches**: documents the question matched by
    keyword but the user may not see, with the reason. These come from a
    separate audit-only search and never reach the user or the LLM (ADR-007).
