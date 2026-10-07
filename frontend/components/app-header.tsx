@@ -12,7 +12,7 @@ export function AppHeader({ nav, actions }: { nav?: ReactNode; actions?: ReactNo
           Internal Brain
         </Link>
         {nav ? (
-          <nav aria-label="Main" className="flex items-center gap-1">
+          <nav aria-label="Main" className="hidden items-center gap-1 sm:flex">
             {nav}
           </nav>
         ) : null}

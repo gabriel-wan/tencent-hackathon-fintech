@@ -2,9 +2,9 @@
 
 Next.js app (see DECISIONS.md, ADR-001). Status: sign-in (Google, Slack and
 Atlassian through the backend's OAuth, plus the development persona switcher),
-the Connections page and the signed-in shell work; the home page is a
-placeholder until the chat lands; admin pages are not built yet (roadmap
-Task 2).
+the chat, the Connections page and the signed-in shell work; the admin pages
+are honest stubs (the audit API does not exist yet; the boundary API does, and
+that page is next).
 
 The frontend never makes authorization decisions; the backend filters by
 permission before anything reaches the LLM (SECURITY.md, INV-2). Frontend tests
@@ -24,12 +24,34 @@ live in this folder.
 
 | Route | What it shows |
 |---|---|
-| `/` | Signed in only. Placeholder until the chat page lands |
+| `/` | Signed in only. The chat (see below) |
 | `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
+| `/admin/audit` | Admins only. Stub: waits for the audit API (see "Admin pages") |
+| `/admin/boundary` | Admins only. Stub: the boundary API now exists; this page is next |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
+
+### Page map
+
+```mermaid
+flowchart TD
+    START(["Open the app"]) --> ME{"GET /api/me"}
+    ME -->|"401"| LOGIN["/login"]
+    ME -->|"200"| CHAT["/ (chat)"]
+    LOGIN -->|"Development: pick a seeded user"| CHAT
+    LOGIN -.->|"Google sign-in (after the connectors merge)"| CHAT
+    CHAT <-->|"admins only"| AUDIT["/admin/audit"]
+    CHAT <-->|"admins only"| BOUND["/admin/boundary"]
+    AUDIT <--> BOUND
+    CHAT -->|"Sign out"| LOGIN
+    AUDIT -.->|"not admin"| CHAT
+    BOUND -.->|"not admin"| CHAT
+```
+
+`/connectors` (connect Slack, Drive, Jira, Confluence) joins the map once the
+connectors branch merges; until then it is not linked.
 
 ## Sign-in
 
@@ -107,6 +129,88 @@ DEVELOPMENT ONLY, and labelled as such on screen. Identity is not verified.
   and a **Switch user** menu.
 - Signing in or switching does a **full page load**, so nothing from the
   previous person (such as chat history) survives (SECURITY.md T6).
+
+## Chat (`/`)
+
+Code: `components/chat/`. Each question is answered on its own: the backend
+receives only `{question}`, never earlier questions or answers, so a follow-up
+such as "what about last week?" has no context. History exists only in the
+browser's memory for this page load (never `localStorage`) and is wiped by the
+full page load on sign-out or user switch (SECURITY.md T6).
+
+| State | When | What the user sees |
+|---|---|---|
+| Pending | Request in flight (~6–9 s with the real LLM) | "Searching your sources…" with a skeleton. No invented progress steps |
+| Answered | 200, not a fixed sentence | Answer as plain text (`[S1]` markers removed), Sources list, `Ref #<audit_id>` |
+| Not found | 200, the fixed "I could not find this…" sentence | Muted card. **Identical whether nothing exists or nothing is permitted** (INV-5) |
+| Unavailable | 200, the fixed "The assistant is unavailable…" sentence | Warning with Try again |
+| Failed | 422, 503, other 5xx, backend unreachable | Short message with Try again (re-sends the same question in place) |
+| Signed out | 401 | Full page load to `/login`; the draft is not kept |
+
+Rules:
+- **Answers are plain text**, never HTML: they come from untrusted retrieved
+  content.
+- **Only absolute `http(s)` source URLs become links**, in a new tab with
+  `noopener noreferrer`; anything else is shown as plain text.
+- **Example questions are generic.** They are shown to every user, so naming
+  a real document would reveal that it exists (INV-5).
+- One question at a time; the box stays editable while an answer is pending.
+  Enter sends, Shift+Enter adds a line, and Enter is ignored while an input
+  method (Chinese, Japanese, ...) is composing.
+- Screen readers hear only the newest result (one polite live region). Focus
+  returns to the question box after each answer. The thread follows new
+  answers unless the reader has scrolled up.
+
+### Demo script (manual test)
+
+Sign in through the persona switcher with seed data loaded. Answers depend on
+the LLM: check the state and the sources, not the exact wording. Needs
+`LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` in `backend/.env` (values in
+`backend/.env.example`), then `docker compose up -d --force-recreate backend`;
+if any is missing, every question shows "The assistant isn't available right
+now" (the backend returns 503 before searching). Checked 4 Oct with the real
+LLM: all seven rows below behaved as expected.
+
+| Persona | Question | Expected |
+|---|---|---|
+| Alice | What's blocking the payment gateway migration? | Answer citing `#payments-oncall` (Slack) |
+| Alice | What does the runbook say about failover? | Answer citing the Drive runbook and/or `#eng` |
+| Ben | What's blocking the payment gateway migration? | Less, or "not found" (not in `#payments-oncall`) |
+| Charlie | What happened in the Q3 security incident? | Fixed "not found" (scenario 3) |
+| Priya | What happened in the Q3 security incident? | Answer citing the incident report and/or `#security-incidents` |
+| anyone | What are the salary bands? | Fixed "not found" (folder outside the admin boundary) |
+| anyone | asdkjh qwe | Fixed "not found", looking identical to Charlie's |
+
+Also: stop the backend → "Couldn't reach the server"; sign out in another tab
+→ the next question goes to `/login`. States that cannot be triggered on
+demand (unavailable, 422, a `javascript:` source URL, very long answers) are
+checked in mock mode with `mock:unavailable`, `mock:422`, `mock:bad-url`,
+`mock:long`.
+
+## Admin pages (stubs)
+
+`app/(app)/admin/`. ADR-007: one admin role, which also does compliance.
+
+- **Gate.** `app/(app)/admin/layout.tsx` sends non-admins back to the chat;
+  the header shows Chat for everyone and Audit / Boundary for admins (in the
+  user menu below 640 px). Both are UX only: every admin API route must check
+  `is_admin` itself and return 403.
+- **Not built yet.** No admin API exists on any branch (4 Oct). Each page says
+  so in a "Not built yet" panel naming the routes it waits for (proposed in
+  the UI plan, section 6.5):
+  - `/admin/audit`: `GET /api/admin/audit` (search) and
+    `POST /api/admin/audit/verify` (hash chain), Task 3, 5–6 Oct.
+  - `/admin/boundary`: `GET`/`POST`/`DELETE /api/admin/boundary` and
+    `POST /api/admin/sync`, owners to be agreed.
+- **Design preview (development only).** "Show design preview" reveals the
+  planned layout inside a dashed **MOCK DATA** frame. Filters, Verify chain
+  and Sync now are disabled, and confirming a boundary removal does nothing.
+  It only appears while the backend is in development mode. Fixtures live in
+  `lib/mock/`; the audit ones copy the payload keys the backend writes today
+  (`backend/app/pipeline/query.py`), so the real wiring should be a swap.
+- Documents are shown by key (`drive:D_Q3_INCIDENT`), not title, until the
+  team decides whether the admin may see titles of documents they cannot
+  read (UI plan question log, Q15).
 
 ## Talking to the backend
 
@@ -193,6 +297,8 @@ app/                  root layout.tsx (theme), globals.css, healthz/
 components/ui/        shadcn-generated components: edit freely, keep them generic
 components/           our own components, built from components/ui
 components/connectors/  connection cards and the development-only Slack token form
+components/admin/     admin stubs: NotBuiltYet, DesignPreview, audit and boundary previews
+lib/mock/             DEVELOPMENT ONLY fixtures for the admin design previews
 lib/api/              backend client (client.ts, server.ts), errors, generated types, mock mode
 lib/                  answer, citation and date helpers; connectors.ts (connector ids, OAuth messages); utils.ts is shadcn's cn()
 components.json       shadcn CLI settings
@@ -222,6 +328,85 @@ components.json       shadcn CLI settings
 - Every text/background pair meets WCAG AA. Re-check contrast when changing a
   value.
 - Animations are switched off under `prefers-reduced-motion`.
+
+## Design principles
+
+The product's claim is trust: answers from your own tools, limited to what you
+can already see, with a record of everything. The design shows that rather
+than explaining it.
+
+1. **Provenance first.** Every answer shows where it came from (platform,
+   title, last updated). Sources are not a footnote.
+2. **Calm, not chatty.** An enterprise tool: no avatar or personality for the
+   assistant, system fonts, thin borders, motion only for the pending state.
+3. **Honest states.** "Not found" is a normal, neutral outcome: never red,
+   never "denied", identical whatever the reason.
+4. **Development aids look like development aids.** The persona switcher, mock
+   mode and design previews are amber and labelled, so they cannot be mistaken
+   for features in screenshots or the demo.
+5. **Works side by side.** Layouts hold at ~640 px, so two personas can be
+   shown next to each other in the demo, and at 375 px on a phone.
+
+## Accessibility
+
+Target: WCAG 2.2 AA. Checked on 4 Oct with axe-core (the engine behind
+Lighthouse's accessibility audit) on every page and every chat state, light
+and dark: no violations.
+
+- **Keyboard.** The first Tab stop is "Skip to content". Every control has a
+  visible focus ring. Menus open with Enter, move with the arrow keys and
+  close with Escape back to their button. Dialogs and panels return focus to
+  whatever opened them.
+- **Screen readers.** Landmarks for the banner, the main navigation and the
+  page; the conversation is a list of "You asked" plus an "Answer" article.
+  One polite live region says only the newest result ("Answer received, with
+  2 sources", or the fixed reply). Badges and states always carry text, never
+  colour alone. Links that open a new tab say so.
+- **Contrast.** Every text pair meets 4.5:1 and input borders 3:1 (see the
+  theme rules above).
+- **Touch.** On touch screens, controls are at least 44×44 px.
+- **Zoom and motion.** No page scrolls sideways at 375 px or 640 px (the width
+  of a 1280 px screen at 200 % zoom); wide tables scroll inside their own box.
+  Animations stop under `prefers-reduced-motion`.
+
+Not checked by a person yet: a full pass with VoiceOver or NVDA.
+
+## Planned next (not built)
+
+| Waiting on | UI work |
+|---|---|
+| Connectors branch merges | Enable "Sign in with Google" (a plain link to the backend's `/connectors/drive/connect`); rename `BACKEND_URL` to `BACKEND_SERVER_URL` and add `BACKEND_LOCAL_URL`; restyle `/connectors` inside the signed-in shell (with its owner); show which sources are connected in the chat |
+| Return target after the OAuth callback | Show sign-in errors on `/login` rather than `/connectors`. The target must come from a fixed allowlist, never an arbitrary URL (open redirect) |
+| `label` on each citation | Turn `[S1]` markers into chips linked to the right source (today they are stripped: an answer citing `[S1]` and `[S3]` came back with two citations, so mapping by position would be wrong) |
+| `status` on query responses | Classify answers by status instead of matching the fixed sentences |
+| Audit API | Real `/admin/audit` (search, record detail, verify chain); make "Ref #" a link for admins |
+| Boundary and sync API | Real `/admin/boundary`; "Sync now" for the freshness demo (scenario 2) |
+| Freshness field | "Synced N minutes ago" under answers |
+| Redaction and injection flags (7–8 Oct) | Redaction chip on citations; blocked-injection notice on answers |
+
+Each replaces a stub or a reserved slot; remove the matching "Not built yet"
+panel and design preview in the same PR.
+
+**Deployment (ADR-008).** Outside `APP_ENV=development` the backend marks the
+session cookie `Secure`, which browsers only send over HTTPS. The live site
+must be served over HTTPS, or sign-in silently fails.
+
+## Open questions
+
+Raised while building the UI; answers belong in DECISIONS.md or the code.
+
+| For | Question |
+|---|---|
+| Whole team | **Admin designation for real sign-in.** `create_user` always sets `is_admin = false`, so no Google user can become admin (e.g. an `ADMIN_EMAILS` list). Who builds it? |
+| Whole team | May the audit page show titles of documents the admin cannot read? (ARCHITECTURE §3.12 vs ADR-007.) Until decided, documents are shown by key |
+| Whole team | Who sets up HTTPS on the Lighthouse server? |
+| Whole team | Demo accounts: which Gmails (listed in `GOOGLE_ALLOWED_ACCOUNTS` and as OAuth test users; Testing-mode tokens expire after 7 days). Contractor Google-only, since Slack guests need a paid plan? |
+| Whole team | Linter/formatter is still open (ADR-001) |
+| Query pipeline | Add `label` and `status` to the query response; should a 503 "LLM is not configured" become the fixed "unavailable" reply? |
+| Query pipeline | Without an LLM configured, `/api/query` returns 503 before the pipeline runs, so the question is not audited. Should it be? |
+| Query pipeline | Shape of the audit API (proposed: search, one record, verify) |
+| Connectors | Merge timing; return target after sign-in; who styles `/connectors`; what happens when someone disconnects their last connection; can personal Gmail users get `google:domain:gmail.com` as a principal? |
+| Connectors | Who owns the boundary and sync routes, and is there a sync worker for "Sync now"? |
 
 ## Adding a shadcn component
 
