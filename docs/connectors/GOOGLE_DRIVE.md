@@ -4,9 +4,11 @@
 
 Google Drive stores files (Google Docs, Sheets, Slides, PDFs) in folders and
 shared drives, and each file can be shared with people, groups, a whole
-domain, or "anyone with the link". Our connector reads every changed file's
-**text** and its **full sharing list**, and follows Drive's **change feed**, so
-edits, re-shares and lost access all arrive on the next sync. Sharing is set
+domain, or "anyone with the link". Our connector reads, through one person's
+own Google sign-in, every changed file's **text** and its **full sharing list**,
+listing each boundary folder in full every 5 minutes, so edits, re-shares and
+lost access all arrive on the next sync (Drive's change feed is not used yet).
+Sharing is set
 per file and per folder, and "anyone with the link" is the clearest example of
 oversharing, so the sharing list is stored exactly and the overshared case is
 flagged.
@@ -27,8 +29,8 @@ flagged.
 | Type | Who the permission is for: `user`, `group`, `domain` or `anyone`. |
 | Anyone with the link | A permission with `type: anyone`, meaning anyone holding the URL can open the file. |
 | Inherited permission | Access a file gets from its folder or shared drive, already listed on the file. |
-| Service account | A robot Google account our worker uses in Workspace mode. |
-| Domain-wide delegation | Workspace admin setting that lets the service account read Drive **as any user** in the domain. |
+| Service account | A robot Google account. **Not used**: every call is one person's own sign-in. |
+| Domain-wide delegation | Workspace admin setting that lets a service account read Drive **as any user**. **Not used.** |
 | Directory API | The Workspace Admin SDK API that lists group members. |
 | OAuth client | The app identity created in Google Cloud Console for personal-account mode. |
 | Testing mode | Default state of a new OAuth app, in which refresh tokens **expire after 7 days**. |
@@ -60,9 +62,9 @@ domain is on its list, or the list has `anyone`.
 
 | API / tool | What it gives | Use? |
 |---|---|---|
-| **Drive REST API v3** | Files, content, permissions, change feed | **Yes** |
-| **Admin SDK Directory API** | Members of Google Groups (Workspace) | **Yes**, for `group` permissions |
-| **`google-api-python-client`** + `google-auth` | Ready-made calls, service account and OAuth auth | **Yes** |
+| **Drive REST API v3** | Files, content, permissions | **Yes** (the change feed: not yet) |
+| **Admin SDK Directory API** | Members of Google Groups (Workspace) | **No**: a group is widened to its domain, and the live check trims it |
+| **`google-api-python-client`** + `google-auth` | Ready-made calls, OAuth auth | **Yes** |
 | Push notifications (`changes.watch`) | Google calls our URL on change | No: needs a public HTTPS URL. Polling the change feed is enough |
 | Docs / Sheets APIs | Rich structure (tables, styles) | No: export gives us the text |
 | Official Drive MCP server `drivemcp.googleapis.com` | Lets an AI agent use Drive **as one signed-in user** | No: can't tell us what *other* users can see |

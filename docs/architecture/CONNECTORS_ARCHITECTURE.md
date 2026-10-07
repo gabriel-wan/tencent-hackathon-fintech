@@ -9,23 +9,23 @@ flowchart LR
     SL["Slack"]
     GD["Google Drive"]
 
-    W["worker<br/>one loop per source<br/>sync + sweep"]
+    W["sync worker<br/>python -m app.sync --loop<br/>every company, every 5 min"]
     DB[("Postgres + pgvector<br/>docs, chunks, acl,<br/>embeddings, full-text")]
     API["backend: FastAPI"]
     U["User"]
     LLM["LLM"]
 
-    CF -->|"CQL search, pages, restrictions"| W
-    JI -->|"search/jql, permissionscheme"| W
-    SL -->|"conversations.history, members"| W
-    GD -->|"changes.list, files.list"| W
+    CF -->|"space pages, read restrictions,<br/>group members"| W
+    JI -->|"search/jql,<br/>user/permission/search"| W
+    SL -->|"conversations.history, replies,<br/>members"| W
+    GD -->|"files.list, files.export"| W
     W -->|"docs + chunks + acl"| DB
 
     U -->|"question"| API
     API -->|"1. hybrid search, allowed docs only"| DB
-    API -.->|"2. permission/check"| CF
-    API -.->|"2. permissions/check"| JI
-    API -.->|"2. conversations.members"| SL
+    API -.->|"2. CQL search (id in …) as user"| CF
+    API -.->|"2. permissions/check as user"| JI
+    API -.->|"2. conversations.info as user"| SL
     API -.->|"2. files.get as user"| GD
     API -->|"3. question + allowed docs"| LLM
 ```
@@ -34,10 +34,9 @@ Solid arrows into the worker run on a timer. Dashed arrows run on every question
 
 ## How it works
 
-1. **Ingest (worker, on a timer).** Each source runs in its own loop, so a slow or failing source never delays the others.
-   - `sync` (every 5 min) fetches items changed since the last run.
-   - `sweep` lists every item to catch permission changes and deletions that "changed since" queries miss. It runs every 30 min for Confluence, Jira and Slack, and daily for Drive, whose change feed already reports sharing changes and deletions.
-   - **Built today** (`app/sync.py`): no cursors and no separate sweep yet. Every 5 minutes each boundary scope is listed in full, so every run refreshes every ACL and soft-deletes items that are gone. Text is downloaded only for items whose modified time changed.
+1. **Ingest (sync worker, on a timer).**
+   - **Built** (`app/sync.py`): one loop over every company. Every 5 minutes each boundary scope is listed in full, as the company admin, so every run refreshes every ACL and soft-deletes items that are gone. Text is downloaded only for items whose modified time changed. A failing scope is logged and skipped; the others still sync.
+   - **Planned, not built:** a loop per source (so a slow source never delays the others), a `sync` fetching only items changed since the last run, and a slower `sweep` listing everything to catch permission changes and deletions.
    - **Races:** syncs of one company run one at a time (a Postgres advisory lock), so an older read never overwrites a newer one. A scope the admin removes during a sync is not written back.
    - **Staleness is visible:** each scope's last complete sync is stored (`sync_state`) and returned as `synced_at` on citations and `last_synced_at` in the admin boundary list. A scope that keeps failing keeps its old time, so stale content is labelled, never shown as current.
 
@@ -48,7 +47,7 @@ Solid arrows into the worker run on a timer. Dashed arrows run on every question
 
 The stored `acl` is the fast filter and the live check is the final say, so the
 `acl` may include extra people but must never leave out a real reader.
-Per-source API details: [docs/connectors/](../connectors/TABLE.md).
+Per-source API details: [docs/connectors/](../connectors/GUIDE.md) (setup and API in GUIDE.md, one page per tool).
 
 ## Comparison
 
