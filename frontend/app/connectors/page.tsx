@@ -17,7 +17,7 @@ import { getMe, listConnectors, listDevUsers } from "@/lib/api/server";
 import type { Me } from "@/lib/api/types";
 import { connectedLabel, connectUrl, oauthErrorMessage, type Connector } from "@/lib/connectors";
 
-export const metadata: Metadata = { title: "Connections · Internal Brain" };
+export const metadata: Metadata = { title: "Connections · KnowBuddy" };
 
 type Props = { searchParams: Promise<{ connected?: string | string[]; error?: string | string[] }> };
 

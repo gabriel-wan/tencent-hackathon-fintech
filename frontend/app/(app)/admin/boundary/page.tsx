@@ -7,7 +7,7 @@ import { NotBuiltYet } from "@/components/admin/not-built-yet";
 import { PageContainer } from "@/components/page-container";
 import { listDevUsers } from "@/lib/api/server";
 
-export const metadata: Metadata = { title: "Boundary · Internal Brain" };
+export const metadata: Metadata = { title: "Boundary · KnowBuddy" };
 
 // ADR-002: the admin chooses which channels and folders the assistant may use
 // at all. Also where "Sync now" lives for the freshness demo (scenario 2).

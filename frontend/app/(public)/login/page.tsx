@@ -14,7 +14,7 @@ import { NotSignedInError } from "@/lib/api/errors";
 import { getMe, listDevUsers } from "@/lib/api/server";
 import { connectUrl, oauthErrorMessage } from "@/lib/connectors";
 
-export const metadata: Metadata = { title: "Sign in · Internal Brain" };
+export const metadata: Metadata = { title: "Sign in · KnowBuddy" };
 
 type Props = { searchParams: Promise<{ error?: string | string[] }> };
 
@@ -47,7 +47,7 @@ export default async function LoginPage({ searchParams }: Props) {
         <Card>
           <CardHeader>
             <CardTitle>
-              <h1 className="text-xl font-semibold tracking-tight">Sign in to Internal Brain</h1>
+              <h1 className="text-xl font-semibold tracking-tight">Sign in to KnowBuddy</h1>
             </CardTitle>
             <CardDescription>
               Answers from your company&apos;s Slack, Drive, Jira and Confluence, limited to what you can already see.
