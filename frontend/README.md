@@ -25,7 +25,7 @@ live in this folder.
 | Route | What it shows |
 |---|---|
 | `/` | Signed in only. The chat (see below) |
-| `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box when the backend is in development mode |
+| `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box and Slack token form when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
 | `/admin/audit` | Admins only. Stub: the audit API now exists; this page is next (see "Admin pages") |
 | `/admin/boundary` | Admins only. Stub: the boundary API now exists; this page is next |
