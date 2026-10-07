@@ -8,9 +8,9 @@ name nods to Tencent's CodeBuddy and WorkBuddy).
 | **Hackathon** | Tencent Cloud AI CAN DO IT Hackathon Singapore 2026 (co-hosted with AI Singapore) |
 | **Track** | FinTech – Aspire |
 | **Challenge** | The Internal Brain – Building a Context-Aware Enterprise Knowledge System with RBAC, Security Logging & Audit Trail |
-| **Team** | 3 students (names TBD in this file) |
+| **Team** | Gabriel Wan, Vincent Ong, Liew Ze Wei |
 | **Deadline** | Submission 16 Oct 2026; finalists 23 Oct; Demo Day 3 Nov (TBC) |
-| **Status** | Architecture decided (ADR-000 to ADR-008); running skeleton with health check only; no product features |
+| **Status** | Architecture decided (ADR-000 to ADR-008). Working end to end locally: sign-in, four real connectors, sync, permission-filtered chat with citations, tamper-evident audit log. Built state: [CURRENT.md](architecture/CURRENT.md) |
 
 Authoritative challenge text: [docs/hackathon/challenge.md](hackathon/challenge.md).
 Requirements and judging: [docs/hackathon/requirements.md](hackathon/requirements.md).
@@ -30,8 +30,10 @@ was answered.
 
 ## Target users
 
-Candidate personas, **not yet locked in**. The team will pick a small number to
-design and demo around.
+Candidate personas considered. The demo uses four (seeded as MerlionPay, and
+planned as real demo accounts): **Priya** (admin and compliance: ADR-007 merges
+the two), **Alice** (payments engineer), **Ben** (backend engineer) and
+**Charlie** (external contractor, the negative persona).
 
 | Persona | Why they matter for this challenge |
 |---|---|
@@ -72,49 +74,48 @@ access controls and maintaining an auditable record of what happened.
 Each scenario needs a worked example in the submission and should map to a
 demo step and to tests.
 
-## Proposed MVP – To Be Finalized
+## MVP scope and status
 
-**This section is a proposal for team discussion, not a decision.** The
-challenge requirements below are what we must prioritise; how much of each
-lands in the MVP is the team's call and will be recorded in DECISIONS.md.
+The challenge requirements, and where each stands (ticked = built and covered
+by tests; see [SECURITY.md](SECURITY.md) for the invariants behind them):
 
-Requirements we must prioritise (from the challenge):
-
-- [ ] Unified natural-language query with citations across at least two platforms
-- [ ] Permission-aware retrieval: identity known at query time; filtering
+- [x] Unified natural-language query with citations across platforms (all four)
+- [x] Permission-aware retrieval: identity known at query time; filtering
       **before** the LLM; per-platform permission semantics preserved
-- [ ] Negative permission case with no existence leak
-- [ ] Live permission change handling (revocation reflected on next query)
-- [ ] Data freshness within a bounded, stated window
-- [ ] Audit log: complete (who / query / retrieved IDs / decisions / answer /
-      timestamp), tamper-evident, queryable
-- [ ] Audit inquiry interface for a compliance persona
-- [ ] LLM leakage / hallucination mitigation (grounding, citations, refusal
-      when context is empty)
-- [ ] Trust-boundary diagram and architecture diagram (required deliverable)
-- [ ] Demo walkthrough covering all five scenarios
+- [x] Negative permission case with no existence leak (same reply whether
+      nothing exists or nothing is permitted)
+- [x] Live permission change handling (each answer's sources are re-checked
+      with each tool as the asker)
+- [x] Data freshness within a bounded, stated window (about 5 minutes, plus
+      "sync now"; each citation shows when it was last synced)
+- [x] Audit log: complete (who / query / retrieved IDs / decisions / answer /
+      timestamp), tamper-evident (per-company hash chain), queryable (search API)
+- [ ] Audit inquiry interface for a compliance persona: the API is built; the
+      admin Audit page still shows mock data
+- [x] LLM leakage / hallucination mitigation (untrusted source blocks,
+      citation checking, fixed reply when nothing is permitted)
+- [ ] Trust-boundary diagram and architecture diagram for the submission
+- [ ] Demo walkthrough covering all five scenarios, with real demo accounts
 
-Open MVP questions for the team:
+Questions the team answered:
 
-- Which platforms are integrated for real and which are mocked with realistic
-  permission models? (Mocks must be labelled as mocks.)
-- Which two or three personas do we demo?
-- What freshness window do we commit to, and how is it achieved?
-- What is the minimum admin/audit UI: a page, a CLI, or an API?
+- Real or mocked platforms: all four are real (ADR-004), against the team's own
+  test workspaces filled with fictional data.
+- Personas: Priya, Alice, Ben and Charlie (above).
+- Freshness: sync every 5 minutes plus "sync now" (ADR-005); revocations apply
+  on the next question through the live check (ADR-003).
+- Admin and audit interface: an API plus admin pages (ADR-007).
 
 ## Out of scope for the hackathon (proposed)
 
 - Production-grade identity federation with real enterprise IdPs
 - Full coverage of every permission edge case in all four platforms
-- Horizontal scalability, multi-tenancy, high availability
+- Horizontal scalability and high availability (several companies per deployment is built, ADR-002)
 - Anything that requires infrastructure the team cannot run locally or demo reliably
 
 ## Open items (everything marked TBD)
 
 | Item | Where |
 |---|---|
-| Team member names and roles | PROJECT.md |
-| Personas to design around | PROJECT.md |
-| MVP scope | PROJECT.md |
 | Linter / formatter | DECISIONS.md ADR-001 |
 | Track-specific judging criteria (if received) | docs/hackathon/requirements.md |

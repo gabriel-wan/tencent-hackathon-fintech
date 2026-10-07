@@ -12,10 +12,13 @@ agent session.
 - **Challenge:** The Internal Brain – a context-aware enterprise knowledge
   system with RBAC, security logging and an audit trail. Full statement in
   [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
-- **Team:** 3 students. Submission deadline **16 Oct 2026**.
+- **Product:** KnowBuddy.
+- **Team:** Gabriel Wan, Vincent Ong, Liew Ze Wei. Submission deadline **16 Oct 2026**.
 - **Current stage:** architecture decided ([DECISIONS.md](docs/decisions/DECISIONS.md),
-  ADR-000 to ADR-008); a running skeleton exists (`docker compose up`,
-  `/health` only). Work follows [ROADMAP.md](docs/ROADMAP.md). **Read the
+  ADR-000 to ADR-008); the query pipeline, the four connectors, sync, the
+  tamper-evident audit log and the UI are built (what exists right now:
+  [CURRENT.md](docs/architecture/CURRENT.md)). Work follows
+  [ROADMAP.md](docs/ROADMAP.md). **Read the
   ADRs before building authorization, retrieval, LLM or audit code, and do not
   deviate from them without a new ADR.**
 
@@ -105,8 +108,8 @@ section that doesn't apply rather than deleting it, and state test commands and
 results as actually run. GitHub fills the template in only for PRs opened in its
 web UI, so agents must copy the sections themselves.
 
-Conventions (see [DEVELOPMENT.md](docs/DEVELOPMENT.md)): branch naming, commit
-messages, PR expectations and how to add integrations and tests.
+Conventions (see [DEVELOPMENT.md](docs/DEVELOPMENT.md), section 1): branch
+naming, commit messages, pull requests, migrations and tests.
 
 ## 4. Tencent tools and proof of usage
 

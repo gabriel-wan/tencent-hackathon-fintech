@@ -24,8 +24,9 @@ and [uv](https://docs.astral.sh/uv/getting-started/installation/) (uv is for tes
 | Stop | Ctrl+C |
 | Wipe the database | `docker compose down -v` |
 
-**Development seed data.** Until connector sync lands, load a fictional company
-(four users, seven documents covering each permission case) with:
+**Development seed data.** To try things without connecting real tools, load two
+fictional companies (MerlionPay: four users and seven documents covering each
+permission case; Kopi Labs: one user and one document, to show company isolation) with:
 
 ```
 docker compose run --rm backend python -m app.seed
@@ -56,7 +57,11 @@ seeded users and `POST /api/dev/session` signs in as one of them; see
 - If your local database was migrated by a migration that was later renumbered, reset it: `docker compose down -v`.
 - Migrations run as the database owner; the app logs in as `knowbuddy_app` (`app/db.py`, password `APP_DB_PASSWORD`). New tables get the app's usual rights automatically (default privileges, migrations 0006 and 0007), but not TRUNCATE: tests that empty tables use `owner_engine()`. `audit_events` is read-and-add only for the app: never write code that updates or deletes audit records, and make `record_event` the last statement of a short transaction (it holds the company's chain lock until commit).
 
-**Git:** work on a branch, then open a pull request to `main`. Its description uses the team's template, [.github/pull_request_template.md](../.github/pull_request_template.md) (GitHub fills it in when you open a PR on the website; agents copy it, see AGENTS.md §3).
+**Git:**
+- Work on a branch named by kind: `feat/…`, `fix/…`, `docs/…` or `chore/…`, then open a pull request to `main`.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat(audit): …`, `fix(frontend): …`, `docs: …`. One concern per commit.
+- A pull request's description uses the team's template, [.github/pull_request_template.md](../.github/pull_request_template.md): GitHub fills it in when you open a PR on the website; agents copy it (AGENTS.md §3). Its "Security changes" section calls out any change to authorization, filtering, audit logging or what the LLM receives.
+- Merge with **Create a merge commit**, not squash, so branch history is kept.
 
 ## 2. Environment variables
 
@@ -69,7 +74,7 @@ After editing, restart with `docker compose up`. If a setting needed to connect 
 | Variable | Value |
 |---|---|
 | `BACKEND_SERVER_URL` | `http://localhost:8000` (Docker overrides it). Where the frontend's server reaches the backend: the `/api` proxy, server components, `/status` |
-| `BACKEND_LOCAL_URL` | `http://localhost:8000`: the backend address your browser uses (the Connect / Test links) |
+| `BACKEND_LOCAL_URL` | `http://localhost:8000`: the backend address your browser uses (the sign-in and Connect links) |
 | `NEXT_PUBLIC_API_MOCK` | Optional, development only: `1` fakes the answers of `POST /api/query` (labelled MOCK DATA). See `frontend/README.md` |
 
 The frontend has no development flag of its own: it asks the backend. The development sign-in and the Slack token form appear only while the backend runs with `APP_ENV=development`.
