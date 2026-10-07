@@ -72,6 +72,17 @@ def test_boundary_changes_touch_only_the_admins_company_and_are_audited(db):
         == ["boundary_added", "boundary_removed"]
 
 
+def test_boundary_shows_when_each_scope_last_synced(db):
+    admin = signed_in(db["admin"])
+    assert admin.get("/api/admin/boundary").json()[0]["last_synced_at"] is None  # never synced
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO sync_state (company_id, source, key) VALUES (:c, 'slack', 'C1')"),
+                  {"c": db["acme"]})
+    assert admin.get("/api/admin/boundary").json()[0]["last_synced_at"] is not None
+    assert admin.delete("/api/admin/boundary/slack/C1").status_code == 204
+    assert rows("SELECT company_id FROM sync_state") == []  # re-adding the scope starts as never synced
+
+
 def test_unknown_source_or_odd_scope_id_is_rejected(db):
     admin = signed_in(db["admin"])
     assert admin.put("/api/admin/boundary/teams/X", json={}).status_code == 404

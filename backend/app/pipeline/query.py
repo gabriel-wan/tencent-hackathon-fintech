@@ -40,6 +40,7 @@ class Citation:
     url: str
     source: str
     updated_at: datetime
+    synced_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -124,7 +125,7 @@ def answer_question(
             grounded = ground(result.content, set(by_label))
             answer = grounded.answer
             citations = [
-                Citation(c.key, c.title, c.url, c.source, c.updated_at)
+                Citation(c.key, c.title, c.url, c.source, c.updated_at, c.synced_at)
                 for c in (by_label[label] for label in grounded.labels)
             ]
             audit.update(

@@ -35,6 +35,7 @@ class CitationOut(BaseModel):
     url: str
     source: str
     updated_at: datetime
+    synced_at: datetime | None
 
 
 class QueryResponse(BaseModel):

@@ -49,7 +49,7 @@ All routes are under `/api`. Identity comes only from the `ib_session` cookie.
 
 | Method and path | Body | Returns |
 |---|---|---|
-| `POST /api/query` | `{"question": "..."}` (1 to 2,000 characters, no other fields) | `{"answer", "citations": [{"id", "title", "url", "source", "updated_at"}], "audit_id"}` |
+| `POST /api/query` | `{"question": "..."}` (1 to 2,000 characters, no other fields) | `{"answer", "citations": [{"id", "title", "url", "source", "updated_at", "synced_at"}], "audit_id"}`. `updated_at`: last edit at the source. `synced_at`: when our copy was last confirmed against the source (null = never, e.g. seeded); show it as "as of" so stale content never looks current |
 | `GET /api/me` | | `{"email", "name", "is_admin"}`, or 401 if not signed in |
 | `DELETE /api/session` | | 204, signs out |
 | `GET /api/dev/users` | | Seeded users. **Development only** |

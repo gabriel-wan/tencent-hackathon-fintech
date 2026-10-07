@@ -55,6 +55,16 @@ def test_same_source_id_in_two_companies(conn, add_doc, company, make_company):
     assert keys(hybrid_search(conn, company, ALICE, "gateway migration")) == ["jira:10001"]
 
 
+def test_results_carry_when_their_scope_last_synced(conn, add_doc, company):
+    from sqlalchemy import text
+
+    add_doc("slack", "C1:1", ["public"], "gateway migration synced", scope_id="C1")
+    add_doc("slack", "C2:1", ["public"], "gateway migration seeded", scope_id="C2")
+    conn.execute(text("INSERT INTO sync_state (company_id, source, key) VALUES (:c, 'slack', 'C1')"), {"c": company})
+    synced = {c.key: c.synced_at for c in hybrid_search(conn, company, ALICE, "gateway migration")}
+    assert synced["slack:C1:1"] is not None and synced["slack:C2:1"] is None  # C2 never synced
+
+
 def test_document_with_empty_acl_is_never_returned(conn, add_doc, company):
     add_doc("drive", "F1", [], "gateway migration plan")
     assert hybrid_search(conn, company,ALICE, "gateway migration") == []
