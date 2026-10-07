@@ -98,8 +98,8 @@ Step-by-step per tool, local and production: [connectors/GUIDE.md](connectors/GU
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | api.slack.com/apps → your app → Basic Information. Add the User Token Scopes listed in GUIDE.md §4. |
 | `ATLASSIAN_CLIENT_ID`, `ATLASSIAN_CLIENT_SECRET` | developer.atlassian.com/console → OAuth 2.0 (3LO). Enable the Jira, Confluence and User identity APIs. |
 
-Companies are not an environment variable: the first sign-in from a new Slack workspace or
-Atlassian site creates the company and makes that person its admin
+Companies are not an environment variable: the first full member to connect Slack from a new
+workspace creates the company and becomes its admin
 ([connectors/GUIDE.md §2](connectors/GUIDE.md#2-basics-each-developer)). Sync needs no extra
 credentials either: it reads as the company admin's own connections.
 

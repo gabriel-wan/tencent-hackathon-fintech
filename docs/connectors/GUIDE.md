@@ -36,9 +36,9 @@ The team shares one workspace per tool, so everyone sees the same data. Each dev
 5. From the repo root, run `docker compose up --build`. When it's running, open http://localhost:3000/connectors.
    - ✅ The 4 tools are listed. **Connect** on a tool you haven't set up returns 503, naming the missing variable.
 6. Nothing to register: the company is created by the first sign-in.
-   - The first person to connect **Slack or Jira/Confluence** from a new Slack workspace or Atlassian site creates the company and becomes its admin. Everyone after them from that workspace or site joins it.
+   - The first full member (not a guest) to connect **Slack** from a new workspace creates the company and becomes its admin. Everyone after them from that workspace joins it. Atlassian never creates a company (it can't tell a contractor from an employee): the admin adds the company's Atlassian site by connecting Jira, then everyone from that site joins.
    - Connect the tools in any order, with the same email. Google Drive names no company: until you connect Slack or Jira/Confluence, you are in no company and the app shows you nothing.
-   - The admin can add the other tool later (for example the Atlassian site of a company started from Slack) by connecting it. Anyone else from an unknown workspace or site, Slack guests starting a company, and Atlassian sign-ins granting several unknown sites are refused with `?error=no_company`, and the page says what to do.
+   - Slack guests and Atlassian sign-ins never become admin. Anyone from an unknown workspace or site, and Atlassian sign-ins granting several unknown sites, are refused with `?error=no_company`, and the page says what to do.
 
 Each tool row has **Connect**, **Test** and **Disconnect**. **Test** opens `{"ok": true, "as": "<your name or email>"}` when the connection works, or says `connect again` when it doesn't.
 
@@ -135,7 +135,7 @@ Production uses its own apps and secrets, never the ones from your laptop. `<APP
    - **Manage Distribution:** activate public distribution, so other companies' workspaces can install it.
    - Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`.
 7. **Jira and Confluence: blocked.** Every user signing in to one company app needs **Distribution → Sharing**. Sharing asks whether the app stores personal data: it does (Atlassian account IDs), so Atlassian requires the [Personal Data Reporting API](https://developer.atlassian.com/cloud/jira/platform/user-privacy-developer-guide/) (report stored account IDs every 7 days, erase data for closed accounts). Build it first, and never tick its confirmation box before then.
-8. **Companies** sign themselves up: the first person to connect from a new Slack workspace or Atlassian site creates the company and becomes its admin (section 2, step 6).
+8. **Companies** sign themselves up: the first full member to connect Slack from a new workspace creates the company and becomes its admin (section 2, step 6).
 9. Deploy. The `sync` service (`docker-compose.yml`) syncs every company every 5 minutes. Open `<public frontend address>/connectors`, and click **Connect** on each tool.
    - ✅ **Test** shows your account on each.
 

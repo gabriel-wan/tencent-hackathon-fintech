@@ -1,13 +1,13 @@
 """Companies: many companies share one deployment, and each sees only its own data.
 
-A company is created by the first sign-in from a new Slack workspace or Atlassian site, and the
-first person to join it becomes its admin. Later sign-ins from that workspace or site join it.
-Google names no company: a person who connected only Drive has none (and sees nothing) until they
-connect Slack or Atlassian, in any order. An admin connecting an Atlassian site (or Slack
-workspace) their company has none of yet adds it.
+A company is created by the first full member (not a guest) to sign in from a new Slack workspace,
+and the first person to join it becomes its admin. Later sign-ins from that workspace join it, and
+so do sign-ins from the company's Atlassian site, which its admin adds by connecting Jira. Atlassian
+never creates a company: it can't tell an outside contractor from an employee. Google names no
+company. A person with none (e.g. Drive only) sees nothing until a connection names one, in any order.
 
-ponytail: anyone who controls a Slack workspace or Atlassian site can start a company from it;
-add an approval step or domain verification when strangers sign up.
+ponytail: anyone who controls a Slack workspace can start a company from it; add an approval step or
+domain verification when strangers sign up.
 """
 
 from sqlalchemy import Connection, text
@@ -49,13 +49,17 @@ def for_atlassian(sites: list[dict], email: str) -> tuple[int, str] | None:
     if len(candidates) != 1:
         return None
     site = next(s for s in sites if s["id"] in candidates)
-    company = _resolve("atlassian_cloud_id", site["id"], site["name"], email)
+    # Never creates a company: Atlassian doesn't say whether someone is an outside guest (e.g. a contractor),
+    # who must never become a company's admin. Join one, or an admin adds the company's site.
+    company = _resolve("atlassian_cloud_id", site["id"], site["name"], email, create=False)
     return company and (company, site["id"])
 
 
-def join(db: Connection, user_id: int, company_id: int) -> bool:
-    """Put a user who has no company yet into this one, as its admin if it has none (its first member).
+def join(db: Connection, user_id: int, company_id: int, may_admin: bool) -> bool:
+    """Put a user who has no company yet into this one, as its admin if it has none and `may_admin`
+    (a full Slack member: never a Slack guest or an Atlassian sign-in, who may be an outside contractor).
     Returns True if they were made admin. ponytail: two first sign-ins at once can both become admin."""
-    return db.execute(text("UPDATE users SET company_id = :c, is_admin = NOT EXISTS "
+    return db.execute(text("UPDATE users SET company_id = :c, is_admin = :a AND NOT EXISTS "
                            "(SELECT 1 FROM users WHERE company_id = :c AND is_admin) "
-                           "WHERE id = :u RETURNING is_admin"), {"u": user_id, "c": company_id}).scalar_one()
+                           "WHERE id = :u RETURNING is_admin"),
+                      {"u": user_id, "c": company_id, "a": may_admin}).scalar_one()

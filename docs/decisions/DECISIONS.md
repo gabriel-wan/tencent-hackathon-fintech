@@ -155,9 +155,11 @@ implementation:
   reading through company-wide admin credentials (Slack bot, Google service
   account, Atlassian API token).
 - **Now:** a `companies` table; every document, boundary scope and sync cursor
-  belongs to one company, and so does every user once a connection names it. The first sign-in from a new Slack workspace or
-  Atlassian site creates its company, and the first member becomes the admin;
-  later sign-ins from it join. Google names no company, so tools connect in any
+  belongs to one company, and so does every user once a connection names it. The first full member (not a guest) to sign in
+  from a new Slack workspace creates its company and becomes the admin; later
+  sign-ins from it join. *Amended 2026-10-07:* Atlassian sign-ins never create
+  a company and never become admin, since Atlassian can't tell a contractor
+  from an employee; the admin adds the company's site by connecting Jira. Google names no company, so tools connect in any
   order: a user with only Google has no company and sees nothing. Sync reads as the admin's own connections; live checks ask
   each source as the asking user.
 - **Why:** the product should serve any number of companies from one

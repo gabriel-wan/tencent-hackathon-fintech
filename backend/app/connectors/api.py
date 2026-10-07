@@ -91,7 +91,8 @@ def _link(request: Request, engine, provider: str, account: oauth.Account, token
         if user is None:
             user = session.create_user(db, account.email, account.name, None).id
         joins = account.company_id is not None and not has_company  # the first connection naming a company
-        made_admin = joins and companies.join(db, user, account.company_id)
+        may_admin = provider == "slack" and account.extra.get("guest") is False
+        made_admin = joins and companies.join(db, user, account.company_id, may_admin)
         company = account.company_id if joins else known and known.company_id  # the user's company now
         store.save_connection(db, user, provider, account, tokens)
         new_session = None if signed_in else session.create_session(db, user)

@@ -11,7 +11,7 @@ plus an HNSW vector index in [0003_chunks_embedding_hnsw.py](../../backend/migra
 
 | Table | Written by | Notes |
 |---|---|---|
-| `companies` | First sign-in from a new Slack workspace or Atlassian site (`app/companies.py`) | Every document, boundary scope and cursor belongs to one (migration 0005). A user has one once a Slack or Atlassian connection names it; until then they see nothing |
+| `companies` | First full member to connect Slack from a new workspace; its admin adds the Atlassian site (`app/companies.py`) | Every document, boundary scope and cursor belongs to one (migration 0005). A user has one once a Slack or Atlassian connection names it; until then they see nothing |
 | `documents` | Connector | One row per item (Slack thread, Drive file). Unique on `(company_id, source, source_id)` |
 | `chunks` | Connector worker | Pieces of a document's text, at most **2,000 characters** each (TokenHub embedding limit) |
 | `sync_state` | Connector | Cursors, one row per `(company_id, source, key)` (not used yet: sync rescans each scope) |

@@ -354,6 +354,13 @@ def test_a_slack_guest_cannot_start_a_company(client, providers, engine):
     assert count(engine, "companies") == 1
 
 
+def test_a_slack_guest_never_becomes_admin_even_of_a_company_without_one(client, providers, engine):
+    # e.g. the company's first sign-in was refused at linking, so it has no members yet.
+    other = add_company("Other", "T2", None)
+    assert sign_in_from_new_workspace(client, providers, "guest@agency.com", guest=True).endswith("connected=slack")
+    assert users_by_company(engine)["guest@agency.com"] == (other, False)
+
+
 def test_a_person_cannot_join_a_second_company(client, providers, engine):
     sign_in(client, "drive")  # alice@corp.com, in Corp
     add_company("Other", "T2", None)
@@ -380,6 +387,15 @@ def test_atlassian_listing_one_site_once_per_product_is_one_site(client, provide
                                    {**site, "scopes": ["read:confluence-content.all"]}]
     assert sign_in(client, "jira").headers["location"].endswith("connected=atlassian")
     assert statuses(client)["jira"] is True and statuses(client)["confluence"] is True
+
+
+def test_atlassian_never_starts_a_company(client, providers, engine):
+    # Atlassian can't tell a contractor from an employee: whoever signs in first must not become admin.
+    providers.routes[ATL_ME] = {**providers.routes[ATL_ME], "account_id": "A9", "email": "contractor@agency.com"}
+    providers.routes[ATL_SITES] = [{"id": "cloud-9", "url": "https://new.atlassian.net", "name": "new",
+                                    "scopes": BOTH_PRODUCTS}]
+    assert sign_in(client, "jira").headers["location"].endswith("error=no_company")
+    assert count(engine, "companies") == 1
 
 
 def test_atlassian_sign_in_granting_several_new_sites_is_rejected(client, providers):
