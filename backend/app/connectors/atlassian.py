@@ -14,6 +14,9 @@ RETRY_STATUSES = {429, 502, 503, 504}
 MAX_ATTEMPTS = 3
 MAX_WAIT_S = 30
 
+# One connection pool for every user's client: no new TLS handshake per question. Auth stays per client.
+_transport = httpx.HTTPTransport()
+
 
 def user_client(access_token: str, product: str, cloud_id: str) -> httpx.Client:
     """`product` is "jira" or "confluence"; paths are the site's REST paths."""
@@ -21,6 +24,7 @@ def user_client(access_token: str, product: str, cloud_id: str) -> httpx.Client:
         base_url=f"https://api.atlassian.com/ex/{product}/{cloud_id}",
         headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
         timeout=30,
+        transport=_transport,
     )
 
 
