@@ -212,3 +212,15 @@ def test_no_database_transaction_is_held_during_external_calls(conn, make_user, 
     llm = LLM(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
     answer_question(tx, alice, "gateway migration", llm, checkers_factory=checkers)
     assert seen == {"embed": False, "live check": False, "chat": False}
+
+
+def test_each_step_is_timed_in_the_audit(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
+    llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), alice, "gateway migration", llm)
+
+    timings = audit_payload(conn, result.audit_id)["timings_ms"]
+    assert set(timings) == {"embed", "search", "live_check", "llm", "total"}
+    assert timings["total"] >= max(v for k, v in timings.items() if k != "total")

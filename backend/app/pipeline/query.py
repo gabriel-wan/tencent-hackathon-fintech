@@ -8,6 +8,7 @@ No database connection is held during the slow external calls (embedding, live
 check, LLM): the database is used in two short transactions.
 """
 import logging
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -81,6 +82,13 @@ def answer_question(
         "question": question,
         "live_check_mode": getattr(checkers_factory, "mode", "connector checks"),
     }
+    started = last = time.perf_counter()
+    timings = audit["timings_ms"] = {}
+
+    def lap(step: str) -> None:
+        nonlocal last
+        now = time.perf_counter()
+        timings[step], last = round((now - last) * 1000), now
 
     # 1. Embed the question; fall back to keyword-only search if that fails.
     embedding = None
@@ -91,6 +99,7 @@ def answer_question(
         log.warning("question embedding failed, using keyword search only: %s", exc)
         audit["search_mode"] = "keyword_only"
         audit["embedding_error"] = type(exc).__name__
+    lap("embed")
 
     with tx() as conn:
         # 2. Search only documents the user's stored ACL and the boundary allow.
@@ -105,9 +114,11 @@ def answer_question(
         except Exception as exc:
             log.error("restricted-match audit search failed: %s", exc)
             audit["restricted_matches_error"] = type(exc).__name__
+    lap("search")
 
     # 3. Live check with each source; anything not confirmed is dropped.
     decisions = live_check(candidates, principals, checkers_factory(candidates, principals), live_check_timeout_s)
+    lap("live_check")
     audit["candidates"] = [
         {"document": c.key, "allowed": d.allowed, "reason": d.reason} for c, d in zip(candidates, decisions)
     ]
@@ -152,9 +163,13 @@ def answer_question(
                 removed_citations=grounded.removed_labels,  # labels the model invented
                 grounding_note=grounded.note,
             )
+        finally:
+            lap("llm")
 
     audit["answer"] = answer
     audit["citations"] = [c.id for c in citations]
+    timings["total"] = round((time.perf_counter() - started) * 1000)
+    log.info("query answered in %s ms: %s", timings["total"], timings)
     with tx() as conn:  # committed before the answer is returned
         audit_id = record_event(conn, user.id, "query", audit)
     return QueryResult(answer=answer, citations=citations, audit_id=audit_id)
