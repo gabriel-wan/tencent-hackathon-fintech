@@ -12,9 +12,6 @@ Syncs of one company never overlap, and a scope removed mid-sync is not written 
 last complete sync is kept in `sync_state`, shown as `synced_at` on citations.
 
     python -m app.sync [--company ID] [--loop] [slack drive jira confluence]
-
-ponytail: every run still lists each scope in full (cheap: no text); use sync_state cursors when that
-outgrows 5 minutes.
 """
 
 import argparse
@@ -94,7 +91,6 @@ def embed_missing(engine: Engine, llm) -> int:
 def sync_company(engine: Engine, company_id: int, sources: list[str] | None = None, llm=None) -> None:
     """Read every boundary scope of the company (or only `sources`) as its admin, and write it.
     Skipped if a sync of this company is already running."""
-    # ponytail: keyed by company ID alone; add a namespace if another advisory lock appears.
     with engine.connect() as held:
         if not held.execute(text("SELECT pg_try_advisory_lock(:c)"), {"c": company_id}).scalar():
             log.info("company %s: a sync is already running, skipped", company_id)

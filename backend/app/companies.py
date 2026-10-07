@@ -5,9 +5,6 @@ and the first person to join it becomes its admin. Later sign-ins from that work
 so do sign-ins from the company's Atlassian site, which its admin adds by connecting Jira. Atlassian
 never creates a company: it can't tell an outside contractor from an employee. Google names no
 company. A person with none (e.g. Drive only) sees nothing until a connection names one, in any order.
-
-ponytail: anyone who controls a Slack workspace can start a company from it; add an approval step or
-domain verification when strangers sign up.
 """
 
 from sqlalchemy import Connection, text
@@ -58,7 +55,7 @@ def for_atlassian(sites: list[dict], email: str) -> tuple[int, str] | None:
 def join(db: Connection, user_id: int, company_id: int, may_admin: bool) -> bool:
     """Put a user who has no company yet into this one, as its admin if it has none and `may_admin`
     (a full Slack member: never a Slack guest or an Atlassian sign-in, who may be an outside contractor).
-    Returns True if they were made admin. ponytail: two first sign-ins at once can both become admin."""
+    Returns True if they were made admin."""
     return db.execute(text("UPDATE users SET company_id = :c, is_admin = :a AND NOT EXISTS "
                            "(SELECT 1 FROM users WHERE company_id = :c AND is_admin) "
                            "WHERE id = :u RETURNING is_admin"),
