@@ -261,6 +261,14 @@ Data flow and per-source check calls are described in
   plus processing time, inside the handbook's "minutes to about 1 hour".
 - Permission revocations do not wait for the sync: the live check (ADR-003)
   applies them on the next question.
+- *Amended 2026-10-07 (Task 1):* the sweep is not built yet; instead every
+  sync reads each boundary scope in full, which refreshes all ACLs and catches
+  deletions. Syncs of one company never overlap (advisory lock), and a scope
+  removed mid-sync is not written back. Stale content is labelled, not hidden:
+  each citation carries `synced_at` (the scope's last complete sync). A deleted
+  Slack message drops at the next sync, since Slack's live check is per
+  channel; Drive, Jira and Confluence deletions (Drive trash included) drop at
+  the live check.
 - 1,024-dimension vectors fit pgvector's standard index. The larger 4b model
   (2,560 dimensions) would not, without extra work.
 - The embedding model receives the text of every in-boundary document at
