@@ -112,21 +112,24 @@ def can_read(drive, file_ids: Iterable[str]) -> set[str]:
     """Live check (ADR-003): which of these files the service's owner can read right now.
 
     Asks Google directly (files.get as that user), batched into one request per 100 files.
-    Deny by default: 403/404 means no access; any other error also leaves the file out.
+    Deny by default: 403/404 means no access; any other error also leaves the file out. Trashed files
+    are denied too (files.get still returns them).
     """
     ids = list(dict.fromkeys(file_ids))
     allowed: set[str] = set()
 
-    def collect(file_id, _response, error):
+    def collect(file_id, response, error):
         if error is None:
-            allowed.add(file_id)
+            if not response.get("trashed"):
+                allowed.add(file_id)
         elif not (isinstance(error, HttpError) and error.status_code in (403, 404)):
             log.warning("Drive check for %s failed, denying: %s", file_id, error)
 
     for start in range(0, len(ids), BATCH_LIMIT):
         batch = drive.new_batch_http_request(callback=collect)
         for file_id in ids[start : start + BATCH_LIMIT]:
-            batch.add(drive.files().get(fileId=file_id, fields="id", supportsAllDrives=True), request_id=file_id)
+            batch.add(drive.files().get(fileId=file_id, fields="id,trashed", supportsAllDrives=True),
+                      request_id=file_id)
         try:
             batch.execute()
         except Exception:  # deny by default: auth, network or parse failure drops the whole batch

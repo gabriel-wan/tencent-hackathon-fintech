@@ -104,7 +104,9 @@ class FakeBatchHttp:
         for content_id in content_ids:
             file_id = unquote(content_id.rsplit("+", 1)[1].strip())
             status = self.statuses.get(file_id, 404)
-            payload = json.dumps({"id": file_id} if status == 200 else {"error": {"code": status}})
+            trashed = status == "trashed"  # files.get still answers 200 for a file in the trash
+            status = 200 if trashed else status
+            payload = json.dumps({"id": file_id, "trashed": trashed} if status == 200 else {"error": {"code": status}})
             parts.append(
                 f"--B\r\nContent-Type: application/http\r\nContent-ID: <response-{content_id}>\r\n\r\n"
                 f"HTTP/1.1 {status} X\r\nContent-Type: application/json\r\n\r\n{payload}\r\n"
@@ -122,6 +124,12 @@ def test_can_read_keeps_only_files_the_user_can_open():
     ids = ["budget", "secret", "runbook", "team-only", "flaky", "budget"]
     assert drive.can_read(service(http), ids) == {"budget", "runbook"}  # 403/404 denied, 500 denied (deny by default)
     assert http.batches == [5]  # one request for all files, duplicates removed
+
+
+@pytest.mark.security
+def test_can_read_denies_a_trashed_file_before_the_next_sync():
+    http = FakeBatchHttp({"runbook": 200, "old-runbook": "trashed"})
+    assert drive.can_read(service(http), ["runbook", "old-runbook"]) == {"runbook"}
 
 
 def test_can_read_splits_large_requests():
