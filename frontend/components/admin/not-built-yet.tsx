@@ -9,7 +9,8 @@ export function NotBuiltYet({ children }: { children: ReactNode }) {
     <Alert variant="warning">
       <Construction aria-hidden="true" />
       <AlertTitle>Not built yet</AlertTitle>
-      <AlertDescription className="grid gap-1">{children}</AlertDescription>
+      {/* wrap-anywhere: long API routes would otherwise widen the page on phones. */}
+      <AlertDescription className="grid gap-1 wrap-anywhere">{children}</AlertDescription>
     </Alert>
   );
 }
