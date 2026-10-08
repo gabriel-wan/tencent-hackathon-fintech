@@ -28,24 +28,21 @@ are ADR-009 in [DECISIONS.md](../decisions/DECISIONS.md).
 ### Page map
 
 ```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
 flowchart TD
-    START(["Open the app"]) --> ME{"GET /api/me"}
-    ME -->|"401"| LOGIN["/login"]
-    ME -->|"200"| CHAT["/ (chat)"]
-    LOGIN -->|"Development: pick a seeded user"| CHAT
-    LOGIN -->|"Google, Slack or Atlassian (backend OAuth)"| CONN["/connectors"]
-    CONN -.->|"failed sign-in: known ?error= code"| LOGIN
-    CHAT <--> CONN
-    CHAT <-->|"admins only"| AUDIT["/admin/audit"]
-    CHAT <-->|"admins only"| BOUND["/admin/boundary"]
-    AUDIT <--> BOUND
-    CHAT -->|"Sign out"| LOGIN
-    AUDIT -.->|"not admin"| CHAT
-    BOUND -.->|"not admin"| CHAT
+    START(["Open the app"]) --> ME{"Signed in?<br/>GET /api/me"}
+    ME -->|"no"| LOGIN["/login"]
+    ME -->|"yes"| CHAT["/ (chat)"]
+    LOGIN -->|"development: pick a seeded user"| CHAT
+    LOGIN -->|"sign in with a tool"| CONN["/connectors"]
+    CONN -.->|"failed"| LOGIN
+    CONN -->|"Ask a question"| CHAT
+    CHAT -->|"admins only"| ADMIN["/admin/audit<br/>/admin/boundary"]
 ```
 
 Every OAuth sign-in returns to `/connectors` (the backend fixes that target),
-so a successful sign-in lands there, with an "Ask a question" link to the chat.
+so a successful sign-in lands there, with an "Ask a question" link to the chat. Non-admins who open an admin page are sent back to the chat, and **Sign out** (in the account menu)
+returns to `/login`.
 
 ## Sign-in
 
