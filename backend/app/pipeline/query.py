@@ -2,7 +2,8 @@
 
 Security boundary (docs/ARCHITECTURE.md section 2): nothing reaches the LLM unless
 it passed the stored-ACL filter, the admin boundary AND the live check. When
-nothing passes, the LLM is not called at all.
+nothing passes, the LLM is not called at all. What does pass is untrusted data:
+lines in it that speak to the assistant are removed first (ADR-011).
 
 No database connection is held during the slow external calls (embedding, live
 check, LLM): the database is used in two short transactions.
@@ -21,6 +22,8 @@ from app.auth.session import User
 from app.db import Tx
 from app.llm.client import ChatResult
 from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, build_messages, ground
+from app.llm.injection import find as find_injection
+from app.llm.injection import strip_blocks
 from app.retrieval.search import Candidate, ChunkHit, hybrid_search, restricted_matches
 
 log = logging.getLogger(__name__)
@@ -52,6 +55,7 @@ class QueryResult:
     answer: str
     citations: list[Citation]
     audit_id: int
+    instructions_removed: int = 0  # lines speaking to the assistant, removed from the sources sent (ADR-011)
 
 
 def _fit(candidates: list[Candidate]) -> list[tuple[Candidate, list[ChunkHit]]]:
@@ -81,6 +85,9 @@ def answer_question(
         "role": "admin" if user.is_admin else "user",
         "question": question,
         "live_check_mode": getattr(checkers_factory, "mode", "connector checks"),
+        # Prompt injection (ADR-011): rule names only, never text. Injection typed into the question
+        # cannot widen what is retrieved; it is recorded for the compliance officer.
+        "injection": {"question": find_injection(question), "sources": []},
     }
     started = last = time.perf_counter()
     timings = audit["timings_ms"] = {}
@@ -126,6 +133,7 @@ def answer_question(
     audit["sent_to_llm"] = [c.key for c, _ in sources]
 
     citations: list[Citation] = []
+    instructions_removed = 0
     if not sources:
         # Same reply whether nothing exists or nothing is permitted (INV-5).
         answer = FALLBACK_ANSWER
@@ -142,6 +150,12 @@ def answer_question(
             )
             for label, (c, chunks) in zip(by_label, sources)
         ]
+        # 4. Remove lines that speak to the assistant rather than to the reader (ADR-011).
+        blocks, found = strip_blocks(blocks)
+        audit["injection"]["sources"] = [
+            {"document": by_label[label].key, "rules": f.rules, "removed": f.removed} for label, f in found.items()
+        ]
+        instructions_removed = sum(f.removed for f in found.values())
         messages = build_messages(question, blocks)
         audit["llm_called"] = True
         try:
@@ -174,4 +188,5 @@ def answer_question(
     log.info("query answered in %s ms: %s", timings["total"], timings)
     with tx() as conn:  # committed before the answer is returned
         audit_id = record_event(conn, user.id, "query", audit)
-    return QueryResult(answer=answer, citations=citations, audit_id=audit_id)
+    return QueryResult(answer=answer, citations=citations, audit_id=audit_id,
+                       instructions_removed=instructions_removed)

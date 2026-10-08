@@ -380,6 +380,8 @@ export interface components {
             citations: components["schemas"]["CitationOut"][];
             /** Audit Id */
             audit_id: number;
+            /** Instructions Removed */
+            instructions_removed: number;
         };
         /** Scope */
         Scope: {

@@ -43,6 +43,7 @@ class QueryResponse(BaseModel):
     answer: str
     citations: list[CitationOut]
     audit_id: int
+    instructions_removed: int  # lines in the sources that spoke to the assistant, removed (ADR-011)
 
 
 class MeResponse(BaseModel):
@@ -64,6 +65,7 @@ def query(
         answer=result.answer,
         citations=[CitationOut(**vars(c)) for c in result.citations],
         audit_id=result.audit_id,
+        instructions_removed=result.instructions_removed,
     )
 
 
