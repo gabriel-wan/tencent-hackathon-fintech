@@ -1,5 +1,8 @@
 # Jira Connector
 
+> **API research and reference** for this tool. What KnowBuddy's code does with it:
+> [architecture/CONNECTORS.md](../../architecture/CONNECTORS.md). Setting up its sign-in: [SETUP.md](../SETUP.md).
+
 ## 1. Introduction
 
 Jira holds tickets (bugs, incidents, customer support cases); since 2025
@@ -226,7 +229,7 @@ One document per ticket:
 - Always send `fields`. Descriptions and comments are ADF JSON, so flatten them by joining every `"text"`.
 - People are `accountId`s. Emails are usually `null`.
 
-**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md)). Built today (`app/sync.py`, `jira.py`): every 5 minutes, 4.1 over each boundary project in full, with the project's ACL from the users who can browse it (issue security levels not applied: too wide, trimmed by the live check), and `can_read` (4.9) as the user. The table is the cursor-based design for when projects outgrow that.
+**How this connector implements the contract** ([architecture](../../architecture/CONNECTORS.md)). Built today (`app/sync.py`, `jira.py`): every 5 minutes, 4.1 over each boundary project in full, with the project's ACL from the users who can browse it (issue security levels not applied: too wide, trimmed by the live check), and `can_read` (4.9) as the user. The table is the cursor-based design for when projects outgrow that.
 
 | Method | Calls | Runs |
 |---|---|---|
