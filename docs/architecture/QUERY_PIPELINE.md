@@ -58,7 +58,7 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 
 | Method and path | Body | Returns |
 |---|---|---|
-| `POST /api/query` | `{"question": "..."}` (1 to 2,000 characters, no other fields) | `{"answer", "citations": [{"id", "title", "url", "source", "updated_at", "synced_at"}], "audit_id"}`. `updated_at`: last edit at the source. `synced_at`: when our copy was last confirmed against the source (null = never, e.g. seeded); show it as "as of" so stale content never looks current |
+| `POST /api/query` | `{"question": "..."}` (1 to 2,000 characters, no other fields) | `{"answer", "citations": [{"id", "title", "url", "source", "updated_at", "synced_at"}], "audit_id", "instructions_removed"}`. `instructions_removed`: lines in the sources sent that spoke to the assistant and were removed (ADR-011); when above 0, tell the user a source tried to instruct the assistant and was ignored. `updated_at`: last edit at the source. `synced_at`: when our copy was last confirmed against the source (null = never, e.g. seeded); show it as "as of" so stale content never looks current |
 | `GET /api/me` | | `{"email", "name", "is_admin"}`, or 401 if not signed in |
 | `DELETE /api/session` | | 204, signs out |
 | `GET /api/dev/users` | | Seeded users. **Development only** |
@@ -101,12 +101,17 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
    untrusted data, best-ranked chunks first, within 12,000 characters in total
    (smaller prompts answer faster); replies are capped at 1,024 tokens, with
    `hy3`'s hidden reasoning turned off (ADR-006). The model sees short labels,
-   never raw IDs.
+   never raw IDs. Prompt injection (ADR-011): each line addressed to the AI
+   becomes `[instruction removed]` first ([app/llm/injection.py](../../backend/app/llm/injection.py)),
+   untrusted text is normalised so it can't fake our tags, and the question
+   comes first with the rules restated after the sources.
 7. Citations outside the labels sent are removed; with no valid citation the
-   reply becomes the fixed "not found" answer.
+   reply becomes the fixed "not found" answer, which a reply only is when it is
+   that sentence alone. Links the model was not shown become `[link removed]`.
 8. One `audit_events` row: user, question, search mode, every candidate with
    its decision and reason, what was sent to the LLM, answer, citations, model,
-   and `timings_ms` per step (embed, search, live_check, llm, total; also logged).
+   `injection` (per source and for the question: the rules that matched and the
+   lines removed, never the text), `removed_links`, and `timings_ms` per step (embed, search, live_check, llm, total; also logged).
    It also records **restricted matches**: documents the question matched by
    keyword but the user may not see, with the reason. These come from a
    separate audit-only search and never reach the user or the LLM (ADR-007).

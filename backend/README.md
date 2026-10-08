@@ -18,7 +18,7 @@ FastAPI, Python 3.12, dependencies managed with uv (ADR-001). The `backend` and 
 | `app/companies.py` | Which company a sign-in belongs to; only a full Slack member can start one |
 | `app/sync.py` | Copies each company's boundary scopes into `documents` and `chunks` every 5 minutes, as its admin |
 | `app/retrieval/search.py` | Hybrid search, filtered by company, ACL and admin boundary before ranking |
-| `app/llm/` | TokenHub client (chat and the shared `embed()`), grounding rules |
+| `app/llm/` | TokenHub client (chat and the shared `embed()`), grounding rules, the prompt-injection scanner and its live check (`injection_eval.py`) |
 | `app/pipeline/query.py` | Question to answer, end to end, with one audit event |
 | `app/audit/` | Tamper-evident audit log: per-company hash chain, verify and search (`log.py`), admin API (`api.py`) |
 | `app/db.py` | Database engines: the app logs in as `knowbuddy_app` (`APP_DB_PASSWORD`); `owner_engine()` is for migrations and tests only |

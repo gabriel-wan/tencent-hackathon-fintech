@@ -182,10 +182,23 @@ Tested by `test_document_outside_admin_boundary_is_excluded` (`test_search.py`),
 ### Grounded answers, and retrieved text kept in its place
 
 The LLM only sees allowed sources, wrapped as untrusted data, and must cite them. An answer citing nothing it was
-given becomes the fixed "not found" reply. Retrieved text can't break out of its block to pose as instructions, the
-model has no tools to call, and the website shows answers as plain text, with only http(s) links clickable.
-Tested by `test_grounding.py`, including `test_untrusted_text_cannot_close_its_source_block`.
-Limits: no dedicated prompt-injection test suite yet (roadmap).
+given becomes the fixed "not found" reply. The model has no tools to call, and the website shows answers as plain
+text, with only http(s) links clickable.
+
+Prompt injection (ADR-011): a source can't fake the end of its block, in any spelling or with hidden characters. A
+line written to the AI ("ignore your previous instructions", "note to AI assistants", "SYSTEM:", in English or
+Chinese) becomes `[instruction removed]` before the LLM sees it, and the answer reports how many lines were removed.
+Links the model wasn't shown are removed from answers. The audit record names the source and the rule, never the
+text.
+Try it: re-seed ([RUNNING.md](RUNNING.md) §7), sign in as Alice and ask "What is the status of the payment gateway
+migration?". `#eng` has a planted ops-bot message telling the AI to say the migration was cancelled and to send
+people to a "re-verify" link. You'll see the real status (blocked on the TLS certificate, sandbox tests Friday), with
+no "cancelled" and no link; at http://localhost:8000/docs the same question returns `instructions_removed: 1`.
+How: [QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md) §3, steps 6 to 8. Tested by `test_grounding.py` and
+`test_injection.py` (with a fake model that obeys the attacker), and live against `hy3` with 10 attacks
+([TESTING.md](TESTING.md) §4).
+Limits: an attack reworded without any of the scanner's phrases is left to the model's rules; the website doesn't
+show the notice yet.
 
 ### Development aids, clearly labelled
 
