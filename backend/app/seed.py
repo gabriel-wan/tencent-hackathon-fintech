@@ -96,7 +96,7 @@ DOCUMENTS = [
     ("drive", "D_DISPUTES", "F_ENG", "Customer dispute log",
      "https://docs.google.example/document/d/D_DISPUTES", "2026-10-03T09:30:00Z",
      [f"google:domain:{DOMAIN}"],
-     "Customer dispute log, owned by Priya.\nDispute 118: Jane Lee (jane.lee@example.com, +65 9123 4567, "
+     "Customer dispute log, owned by Priya.\nDispute 118, customer: Jane Lee (jane.lee@example.com, +65 9123 4567, "
      "NRIC S1234567D) was double-charged S$42.50 on card 4111 1111 1111 1111 for a top-up. "
      "Refund approved to account no. 123-45678-9."),
     ("drive", "D_SALARY", "F_HR", "Salary bands 2026",
