@@ -1,5 +1,8 @@
 # Confluence Connector
 
+> **API research and reference** for this tool. What KnowBuddy's code does with it:
+> [architecture/CONNECTORS.md](../../architecture/CONNECTORS.md). Setting up its sign-in: [SETUP.md](../SETUP.md).
+
 ## 1. Introduction
 
 Confluence is Atlassian's wiki: pages (runbooks, design docs, incident
@@ -66,7 +69,7 @@ layers as the ACL (Section 5), and Confluence itself (4.9) has the final say.
 
 A plan with permissions is needed to restrict pages: Standard, or the developer site
 go.atlassian.com/cloud-dev (Free won't work). Every call uses one person's own Atlassian
-sign-in ([GUIDE.md §5](GUIDE.md#5-jira-and-confluence)), shared with Jira: the company admin's
+sign-in ([SETUP.md §5](../SETUP.md#5-jira-and-confluence)), shared with Jira: the company admin's
 for sync, the asking user's for the live check. There is no API token. Sync sees what the admin
 sees, so the admin must be able to open every space added to the boundary.
 
@@ -215,7 +218,7 @@ so search never misses them, and 4.9 removes anyone extra.
 - Page bodies are HTML. Strip the tags.
 - People are `accountId`s. Identity linking uses the signed-in person's own verified email (`api.atlassian.com/me`).
 
-**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md)). Built today (`app/sync.py`, `confluence.py`): every 5 minutes, the space's pages (v2, with bodies and parents) in full, the deepest read restriction per page (groups expanded, cached per run; space permissions not applied: too wide, trimmed by the live check), and `can_read` as one CQL search `id in (...)` as the user. The table is the cursor-based design for when spaces outgrow that.
+**How this connector implements the contract** ([architecture](../../architecture/CONNECTORS.md)). Built today (`app/sync.py`, `confluence.py`): every 5 minutes, the space's pages (v2, with bodies and parents) in full, the deepest read restriction per page (groups expanded, cached per run; space permissions not applied: too wide, trimmed by the live check), and `can_read` as one CQL search `id in (...)` as the user. The table is the cursor-based design for when spaces outgrow that.
 
 | Method | Calls | Runs |
 |---|---|---|

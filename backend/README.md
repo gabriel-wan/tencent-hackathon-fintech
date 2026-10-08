@@ -29,5 +29,6 @@ connections (`store.py`) and the HTTP routes (`api.py`). Connecting a tool signs
 the user in (`app/auth/session.py`) and writes their principals to `user_principals`.
 Connectors depend on `app/auth/`, never the other way round.
 
-Setup (local and production), the HTTP and Python APIs, and the document schema:
-[docs/connectors/GUIDE.md](../docs/connectors/GUIDE.md). Per-source API details: `docs/connectors/`.
+Setting up each tool: [docs/connectors/SETUP.md](../docs/connectors/SETUP.md). The HTTP and Python APIs and the
+document schema: [docs/architecture/CONNECTORS.md](../docs/architecture/CONNECTORS.md). Each tool's API:
+[docs/connectors/reference/](../docs/connectors/reference/).

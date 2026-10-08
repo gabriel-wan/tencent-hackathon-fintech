@@ -1,5 +1,8 @@
 # Slack Connector
 
+> **API research and reference** for this tool. What KnowBuddy's code does with it:
+> [architecture/CONNECTORS.md](../../architecture/CONNECTORS.md). Setting up its sign-in: [SETUP.md](../SETUP.md).
+
 ## 1. Introduction
 
 Slack holds team chat: messages and threads inside public channels, private
@@ -60,7 +63,7 @@ channel is public and you are a full member.
 
 Every call uses one person's own **user token** (`xoxp-`) with the User Token Scopes
 `channels:read channels:history groups:read groups:history users:read users:read.email`
-([GUIDE.md §4](GUIDE.md#4-slack)): the company admin's for sync, the asking user's for the
+([SETUP.md §4](../SETUP.md#4-slack)): the company admin's for sync, the asking user's for the
 live check. There is no bot. Sync sees only channels the admin can see, so the admin must be
 in every private channel added to the boundary.
 
@@ -168,7 +171,7 @@ public one. Live check: `conversations.info` as the user; Slack answers
 - Replace `<@U024>` / `<#C456|eng>` with names before storing text.
 - Free plan keeps only **90 days** of messages.
 
-**How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md)). Built today (`app/sync.py`, `slack.py`): every 5 minutes, 4.2 and 4.4 over each boundary channel in full, 4.3 only for threads with a new reply or edit since the last sync, and `can_read` as the user. The table is the cursor-based design for when channels outgrow that.
+**How this connector implements the contract** ([architecture](../../architecture/CONNECTORS.md)). Built today (`app/sync.py`, `slack.py`): every 5 minutes, 4.2 and 4.4 over each boundary channel in full, 4.3 only for threads with a new reply or edit since the last sync, and `can_read` as the user. The table is the cursor-based design for when channels outgrow that.
 
 | Method | Calls | Runs |
 |---|---|---|

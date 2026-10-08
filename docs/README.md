@@ -11,7 +11,7 @@
 | test a change, or check everything before submitting | [TESTING.md](TESTING.md) |
 | see how it's built: the trust boundary, the parts, and how a question and a sign-in flow | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | know the security rules and what guards them | [SECURITY.md](SECURITY.md) |
-| connect Google Drive, Slack, Jira or Confluence, or deploy them for real | [connectors/GUIDE.md](connectors/GUIDE.md) |
+| set up Google Drive, Slack, Jira or Confluence sign-in, or deploy them for real | [connectors/SETUP.md](connectors/SETUP.md) |
 | know the project's goals, scope and progress | [PROJECT.md](PROJECT.md) |
 | know why something was decided | [decisions/DECISIONS.md](decisions/DECISIONS.md) |
 | change code, open a pull request, or propose a decision | [CONTRIBUTING.md](../CONTRIBUTING.md) |
@@ -31,7 +31,7 @@ docs/
 ├── SECURITY.md      threat model and security invariants
 ├── PROJECT.md       goals, users, scenarios, scope, roadmap and status
 ├── architecture/    how it's built: overview, what's built now, query pipeline, connectors
-├── connectors/      per-tool setup (GUIDE.md) and API research for each tool
+├── connectors/      setting up each tool (SETUP.md) and each tool's API (reference/)
 ├── decisions/       the decision log (DECISIONS.md) and the ADR template
 └── hackathon/       the challenge, requirements, submission checklist, tool-usage evidence
 backend/             FastAPI app: app/ (code), tests/, migrations/

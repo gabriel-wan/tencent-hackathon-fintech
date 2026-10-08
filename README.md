@@ -31,7 +31,7 @@ statement: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 
 `docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector. People sign
 in by connecting their own Slack, Google Drive, Jira or Confluence account
-([connectors/GUIDE.md](docs/connectors/GUIDE.md)). Many companies can share one
+([setting up the tools](docs/connectors/SETUP.md)). Many companies can share one
 deployment, each seeing only its own data. Sync copies each company's chosen
 channels, folders, projects and spaces, with their permissions, every 5
 minutes. A question is answered only from documents the asker may see,
@@ -79,7 +79,7 @@ embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
 │   ├── TESTING.md           backend, frontend, manual and accessibility checks
 │   ├── ARCHITECTURE.md      how it's built: trust boundary, parts, flows, data model, trade-offs
 │   ├── architecture/        deep dives: query pipeline, connectors, frontend
-│   ├── connectors/          GUIDE.md (setup and API) and one page per tool
+│   ├── connectors/          SETUP.md (set up each tool) and reference/ (each tool's API)
 │   ├── decisions/
 │   │   ├── DECISIONS.md     decision log (ADR-000 to ADR-009 accepted)
 │   │   └── adr-template.md
