@@ -83,10 +83,12 @@ def answer_question(
 ) -> QueryResult:
     # Credentials never reach TokenHub or the audit log; the user's own PII stays searchable.
     question = mask_secrets(question)
+    # The audit is append-only (no PDPA erasure) and admin-readable, so it keeps no PII at all.
+    for_audit = Shield()
     audit: dict = {
         "user_email": user.email,
         "role": "admin" if user.is_admin else "user",
-        "question": question,
+        "question": for_audit.redact(question, cleared=False)[0],
         "live_check_mode": getattr(checkers_factory, "mode", "connector checks"),
     }
     started = last = time.perf_counter()
@@ -186,7 +188,7 @@ def answer_question(
         finally:
             lap("llm")
 
-    audit["answer"] = answer
+    audit["answer"] = for_audit.redact(answer, cleared=False)[0]
     audit["citations"] = [c.id for c in citations]
     timings["total"] = round((time.perf_counter() - started) * 1000)
     log.info("query answered in %s ms: %s", timings["total"], timings)

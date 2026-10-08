@@ -119,7 +119,8 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
    its decision and reason, what was sent to the LLM, answer, citations, model,
    and `timings_ms` per step (embed, search, live_check, llm, total; also logged).
    `redactions` and `answer_masked` hold, per source, need-to-know and the count
-   masked per kind: counts, never values.
+   masked per kind: counts, never values. The question and answer are stored
+   fully masked, even when the user saw them unmasked (ADR-010).
    It also records **restricted matches**: documents the question matched by
    keyword but the user may not see, with the reason. These come from a
    separate audit-only search and never reach the user or the LLM (ADR-007).

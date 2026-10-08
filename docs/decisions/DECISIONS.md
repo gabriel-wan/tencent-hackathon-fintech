@@ -572,6 +572,8 @@ of answers people copy and share.
   - `need_to_know` is up to one sync (5 minutes) stale after a reassignment,
     the same window as ACLs (T7);
   - embeddings written before this change came from raw text (they are never
-    returned, so they were not recomputed);
-  - the audit log keeps answers (ADR-007), so an answer shown unmasked to a
-    need-to-know user is stored unmasked; only the administrator reads it.
+    returned, so they were not recomputed).
+- The audit log (ADR-007) stores the question and answer fully masked, even
+  for a need-to-know user: it is append-only, so PII in it could never be
+  erased (PDPA), and the administrator must not read there what the Shield
+  hides from them in chat.

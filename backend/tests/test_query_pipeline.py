@@ -277,6 +277,21 @@ def test_a_handler_named_by_the_source_sees_pii_but_never_secrets(conn, make_use
 
 
 @pytest.mark.security
+def test_the_audit_keeps_no_pii_even_what_the_handler_saw(conn, make_user, add_doc, fake_llm):
+    # The audit is append-only (no PDPA erasure) and admin-readable: the Shield's view, not the handler's.
+    priya = make_user("priya@co.example", PRIYA)
+    add_dispute(add_doc, ["google:user:priya@co.example"])
+    llm = fake_llm(reply=json.dumps({"answer": f"Card {CARD} [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), priya, "dispute for NRIC S1234567D", llm)
+
+    assert result.answer == f"Card {CARD} [S1]."
+    payload = audit_payload(conn, result.audit_id)
+    assert payload["question"] == "dispute for NRIC [NRIC *****567D]"
+    assert payload["answer"] == "Card [card ending 1111] [S1]."
+
+
+@pytest.mark.security
 def test_answer_guard_masks_pii_the_model_was_never_given(conn, make_user, add_doc, fake_llm):
     alice = make_user("alice@co.example", ALICE)
     add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
