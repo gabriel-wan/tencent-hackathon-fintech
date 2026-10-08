@@ -141,7 +141,7 @@ sequenceDiagram
     else Some sources allowed
         API->>LLM: Allowed sources, identifiers masked, as untrusted blocks (≤ 12,000 characters)
         LLM-->>API: Answer citing [S1], [S2]…
-        API-->>API: Drop citations to anything not sent; mask identifiers the model was not shown
+        API-->>API: Drop citations to anything not sent and mask identifiers the model was not shown
     end
     API->>DB: Add one hash-chained audit record (committed before replying)
     API-->>FE: Answer, sources (with synced_at, redacted), audit id
