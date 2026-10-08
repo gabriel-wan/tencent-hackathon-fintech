@@ -19,6 +19,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | [007](#adr-007-audit-log-design) | Audit-log design | Accepted |
 | [008](#adr-008-deployment-architecture) | Deployment architecture | Accepted |
 | [009](#adr-009-frontend-architecture) | Frontend architecture | Accepted |
+| [011](#adr-011-prompt-injection-defences) | Prompt-injection defences | Proposed |
 
 ---
 
@@ -484,3 +485,77 @@ the existing Docker Compose setup, with the database on the same server.
 - Retrieved text can't inject HTML or scripts into the page (T12).
 - Details: [docs/architecture/FRONTEND.md](../architecture/FRONTEND.md).
 
+---
+
+## ADR-011: Prompt-injection defences
+
+- **Status:** Proposed (built; for the team to discuss and accept)
+- **Date:** 2026-10-08
+- **Proposed by:** gabriel-wan
+- **Scope:** what the LLM receives from retrieved content, and what our code does with its answer,
+  when a source contains text aimed at the model. Relates to INV-9, T1, T2, T8.
+
+### Context
+
+Anyone who can write in a source a user can read (a public Slack channel, a shared document, a
+Jira comment) can put text in front of the model. The design already limits the damage: only
+sources the asker may read reach the model (ADR-003), the model has no tools, and every citation
+is checked (ADR-006). What was left, found in a review with CodeBuddy on 8 Oct and confirmed in
+the code:
+
+- the source fence only caught `</source>` written plainly; `< /source>`, a zero-width character
+  or full-width brackets got through;
+- a source could make the model append the "not found" sentence, and our check then threw away a
+  good, cited answer;
+- nothing stopped the model repeating a link a source told it to give, or building one with data
+  in it;
+- resisting "ignore your instructions" was left to the model alone, and nobody would know it had
+  been tried.
+
+### Decision
+
+Deterministic layers, in the order a question meets them:
+
+1. **Fence** (`app/llm/grounding.py`): untrusted text (the sources and the question) is
+   normalised (NFKC; invisible format characters and variation selectors dropped), then any `<`
+   or look-alike in front of `source` or `question` is escaped. The question comes first, then
+   the sources, then the rules restated.
+2. **Scanner** (`app/llm/injection.py`): fixed English and Chinese patterns for text addressed
+   to an AI: overriding instructions, changing its role, "note to AI assistants", fake chat
+   turns (`SYSTEM:`, `<|im_start|>`), asking for the prompt. Each matching **line** (a message,
+   paragraph or table row) becomes `[instruction removed]`; the rest of the source is kept. The
+   question is scanned too but never changed.
+3. **Answer checks** (`ground()`): citations as before; a reply is the "not found" answer only
+   when it is that sentence alone; links that do not appear exactly in what the model was shown
+   become `[link removed]`.
+4. **Audit and API:** the audit record keeps, per source and for the question, the names of the
+   rules that matched and the number of lines removed, plus the links removed; never the text.
+   `POST /api/query` returns `instructions_removed`, so the UI can say a source tried to
+   instruct the assistant.
+
+### Rejected
+
+- **Holding back a whole source that matches:** stricter against a long payload, but a document
+  that discusses prompt injection, or a channel with one bad message, would drop out of answers.
+- **An LLM classifier:** a second model call per question (latency and cost), and it can be
+  injected too. Fixed patterns are explainable and testable.
+- **Escaping every `<`:** code and configuration in documents would reach the model mangled;
+  only our own tag names need protecting.
+
+### Consequences
+
+- Evidence, 8 Oct, `hy3` (`python -m app.llm.injection_eval --runs 3`, [TESTING.md](../TESTING.md)
+  §4): 10 attacks (override, phishing link, data in a link, fake end of source, invisible text,
+  answer suppression, Chinese override, password request, system-prompt request, reworded with
+  no trigger words), each run 3 times. With our prompt and fence but none of the other checks,
+  the model resisted 30 of 30; with every layer, 30 of 30, the scanner acting on 7 attacks.
+  `test_injection.py` uses a fake model that obeys the attacker, to show the code's layers hold
+  when a model does not.
+- `ASSUMPTION:` limits accepted for the prototype:
+  - a reworded attack using none of the scanner's phrases is left to the model's rules (they
+    held in the evaluation);
+  - a false positive removes a legitimate line (for example "ignore all previous instructions
+    about the offsite"); the audit record shows which source and which rule;
+  - links written without `http(s)://` or `www.` are not checked;
+  - a source that simply states something false is misinformation, not injection: the answer
+    cites it, and the user can open the source.
