@@ -265,6 +265,16 @@ def test_invented_links_are_removed_from_the_answer_and_counted(conn, make_user,
     assert audit_payload(conn, result.audit_id)["removed_links"] == 1
 
 
+def test_a_fixed_reply_reports_no_removed_instructions_but_the_audit_does(conn, make_user, add_doc, fake_llm):
+    """Review of #17 (Ze Wei): "not found" must look the same whatever was sent (INV-5)."""
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:members"], f"gateway migration\n{POISON}")
+    result = answer_question(within(conn), alice, "gateway migration", fake_llm(reply=reply(FALLBACK_ANSWER, [])))
+
+    assert result.answer == FALLBACK_ANSWER and result.instructions_removed == 0
+    assert audit_payload(conn, result.audit_id)["injection"]["sources"][0]["removed"] == 1
+
+
 def test_the_api_reports_removed_instructions(conn, alice_client, add_doc, fake_llm):
     client, llm = alice_client
     add_doc("slack", "C1:1", ["slack:members"], f"gateway migration blocked\n{POISON}")

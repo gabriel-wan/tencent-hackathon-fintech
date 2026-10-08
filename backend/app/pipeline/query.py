@@ -188,5 +188,6 @@ def answer_question(
     log.info("query answered in %s ms: %s", timings["total"], timings)
     with tx() as conn:  # committed before the answer is returned
         audit_id = record_event(conn, user.id, "query", audit)
+    # Reported only with a real answer: a fixed reply must look the same whatever was sent (INV-5).
     return QueryResult(answer=answer, citations=citations, audit_id=audit_id,
-                       instructions_removed=instructions_removed)
+                       instructions_removed=instructions_removed if citations else 0)
