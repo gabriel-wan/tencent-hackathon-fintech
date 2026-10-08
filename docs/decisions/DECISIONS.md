@@ -19,6 +19,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | [007](#adr-007-audit-log-design) | Audit-log design | Accepted |
 | [008](#adr-008-deployment-architecture) | Deployment architecture | Accepted |
 | [009](#adr-009-frontend-architecture) | Frontend architecture | Accepted |
+| [010](#adr-010-pii-redaction-need-to-know-shield) | PII redaction (Need-to-Know Shield) | Proposed |
 
 ---
 
@@ -274,7 +275,8 @@ Data flow and per-source check calls are described in
   (2,560 dimensions) would not, without extra work.
 - The embedding model receives the text of every in-boundary document at
   ingestion. TokenHub states data is not used for training and stays in the
-  Singapore region.
+  Singapore region. *Amended 2026-10-08 (ADR-010):* that text is masked first,
+  so sensitive identifiers never reach the embedding model.
 - Webhooks would need a public HTTPS endpoint and signature checks. They are
   not used.
 
@@ -484,3 +486,82 @@ the existing Docker Compose setup, with the database on the same server.
 - Retrieved text can't inject HTML or scripts into the page (T12).
 - Details: [docs/architecture/FRONTEND.md](../architecture/FRONTEND.md).
 
+---
+
+## ADR-010: PII redaction (Need-to-Know Shield)
+
+- **Status:** Proposed (built; for the team to discuss and accept)
+- **Date:** 2026-10-08
+- **Proposed by:** v1-nce
+- **Scope:** which sensitive identifiers are masked, where, and who sees them
+  unmasked. Relates to INV-1, INV-11, T5, T11.
+
+### Context
+
+Authorization (ADR-003) decides *which* documents a user may read. Inside a
+readable support ticket or dispute log there are still card numbers, NRICs and
+phone numbers that most readers do not need. Without masking, the assistant
+hands them to the third-party LLM and can collect them across hundreds of
+documents in one answer. The asker can still open the source item itself, so
+the Shield is **data minimisation**, not access control: it stops aggregation
+through the assistant, keeps identifiers away from TokenHub, and keeps them out
+of answers people copy and share.
+
+### Decision
+
+- **Deterministic detectors, no ML** (`backend/app/redaction.py`): regular
+  expressions with checksums where the format has one, tuned for recall over
+  precision. Secrets (private keys, cloud and Slack tokens, JWTs, bearer
+  tokens, credential names in config and env files such as `password: ...`,
+  `DB_PASSWORD=...` or `"api_key": "..."`, and `user:pass@` in URLs), IBAN (mod-97), payment card (Luhn, or a card word
+  just before it), bank account, NRIC/FIN, passport and date of birth (after a
+  keyword), email, phone (`+` international and Singapore numbers).
+- **Mask where text leaves our system**, never in storage: the LLM prompt and
+  the citation title (per source), the answer (any value the model was not
+  shown unmasked and the user did not type), the question (secrets only), and
+  embeddings (everything). Stored chunks stay raw, so keyword search and
+  need-to-know readers keep full fidelity.
+- **Need-to-know comes from the source**, not from a new role: Jira assignee and
+  reporter, Drive owners and editors (named users only), Confluence page owner
+  and author, written by each connector as `metadata.need_to_know`. A user
+  holding one of those identities sees that document unmasked. Slack names no
+  handler, so Slack is masked for everyone. Admins get no exemption.
+  Only identity principals count: `public`, `slack:members` or a domain never
+  clear anyone, whatever a connector writes.
+- **Secrets are masked for everyone, always.**
+- **Emails** of users registered in the asker's company stay visible; all
+  others are masked.
+- **Tags keep documents usable:** `[card ending 4242]` and `[account ending
+  6789]` (PCI DSS allows the last 4), `[NRIC *****567D]` (PDPC's partial-NRIC
+  guidance), otherwise `[phone 1]`, `[email 2]` numbered per question so the
+  model can tell people apart, `[date of birth]`, `[secret]`.
+- **Audit:** each query records, per source sent, whether the user had
+  need-to-know and how many identifiers of each kind were masked, plus what the
+  answer guard masked. Counts only, never values. Each citation returns the
+  same counts as `redacted` for the UI.
+
+### Rejected
+
+- **Microsoft Presidio / NER models:** a model-dependent result is not
+  deterministic, a spaCy model adds hundreds of MB, and per-question latency
+  rises. Names are the main thing NER adds, and names are needed for useful
+  answers.
+- **Masking at ingestion:** one masked copy for everyone would deny the people
+  the source says handle the item; masking at the exit is per reader.
+- **An admin-granted clearance role:** a new permission our app invents, which
+  AGENTS.md 2.3 warns against when the source already says who handles what.
+
+### Consequences
+
+- Performance: precompiled patterns, linear in text length (hostile inputs of
+  200,000 characters are tested); well under the LLM's latency.
+- `ASSUMPTION:` limits accepted for the prototype:
+  - names and postal addresses are not detected;
+  - a value split across a 2,000-character chunk cut (only lines longer than
+    that are cut) can escape detection;
+  - `need_to_know` is up to one sync (5 minutes) stale after a reassignment,
+    the same window as ACLs (T7);
+  - embeddings written before this change came from raw text (they are never
+    returned, so they were not recomputed);
+  - the audit log keeps answers (ADR-007), so an answer shown unmasked to a
+    need-to-know user is stored unmasked; only the administrator reads it.
