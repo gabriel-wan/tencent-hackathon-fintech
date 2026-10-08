@@ -292,6 +292,33 @@ def test_the_audit_keeps_no_pii_even_what_the_handler_saw(conn, make_user, add_d
 
 
 @pytest.mark.security
+def test_the_audit_masks_a_name_the_handler_saw_even_where_the_answer_has_no_label(conn, make_user, add_doc,
+                                                                                  fake_llm):
+    priya = make_user("priya@co.example", PRIYA)
+    add_doc("drive", "D1", ["slack:members"], "Customer: Jane Lee disputes a charge", title="Dispute",
+            metadata={"need_to_know": ["google:user:priya@co.example"]})
+    llm = fake_llm(reply=json.dumps({"answer": "customer Jane Lee disputes it [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), priya, "customer dispute", llm)
+
+    assert result.answer == "customer Jane Lee disputes it [S1]."  # she is a handler
+    assert audit_payload(conn, result.audit_id)["answer"] == "customer [name 1] disputes it [S1]."
+
+
+@pytest.mark.security
+def test_a_name_labelled_in_one_source_is_masked_in_the_others(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("drive", "D1", ["slack:members"], "Customer: Jane Lee opened a dispute", title="Dispute log")
+    add_doc("drive", "D2", ["slack:members"], "Jane called back about the dispute", title="Call notes")
+    llm = fake_llm(reply=json.dumps({"answer": "Jane called back [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), alice, "dispute", llm)
+
+    assert "Jane" not in llm.all_prompt_text() and "Lee" not in llm.all_prompt_text()
+    assert result.answer == "[name 1] called back [S1]."
+
+
+@pytest.mark.security
 def test_answer_guard_masks_pii_the_model_was_never_given(conn, make_user, add_doc, fake_llm):
     alice = make_user("alice@co.example", ALICE)
     add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")

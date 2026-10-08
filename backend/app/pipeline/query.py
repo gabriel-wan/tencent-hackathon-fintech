@@ -24,7 +24,7 @@ from app.auth.session import User
 from app.db import Tx
 from app.llm.client import EMBEDDING_MAX_CHARS, ChatResult
 from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, build_messages, ground
-from app.redaction import Shield, has_need_to_know, mask_secrets
+from app.redaction import Shield, has_need_to_know, mask_secrets, names_in
 from app.retrieval.search import Candidate, ChunkHit, hybrid_search, restricted_matches
 
 log = logging.getLogger(__name__)
@@ -83,12 +83,9 @@ def answer_question(
 ) -> QueryResult:
     # Credentials never reach TokenHub or the audit log; the user's own PII stays searchable.
     question = mask_secrets(question)
-    # The audit is append-only (no PDPA erasure) and admin-readable, so it keeps no PII at all.
-    for_audit = Shield()
     audit: dict = {
         "user_email": user.email,
         "role": "admin" if user.is_admin else "user",
-        "question": for_audit.redact(question, cleared=False)[0],
         "live_check_mode": getattr(checkers_factory, "mode", "connector checks"),
     }
     started = last = time.perf_counter()
@@ -126,6 +123,7 @@ def answer_question(
             log.error("restricted-match audit search failed: %s", exc)
             audit["restricted_matches_error"] = type(exc).__name__
     lap("search")
+    shield = Shield([u.email for u in colleagues], [u.name for u in colleagues])
 
     # 3. Live check with each source; anything not confirmed is dropped.
     decisions = live_check(candidates, principals, checkers_factory(candidates, principals), live_check_timeout_s)
@@ -144,7 +142,9 @@ def answer_question(
     else:
         by_label = {f"S{i}": c for i, (c, _) in enumerate(sources, start=1)}
         # 4. Need-to-Know Shield (ADR-010): mask identifiers unless the user is a handler of the source.
-        shield = Shield([u.email for u in colleagues], [u.name for u in colleagues])
+        # Names found anywhere (a label in one source) are masked everywhere (unlabelled in another).
+        shield.know(names_in([question, *(t for c, chunks in sources
+                                          for t in (c.title, c.url, *(ch.text for ch in chunks)))]))
         blocks, titles, urls = [], {}, {}
         redactions = audit["redactions"] = {}
         for label, (c, chunks) in zip(by_label, sources):
@@ -188,7 +188,8 @@ def answer_question(
         finally:
             lap("llm")
 
-    audit["answer"] = for_audit.redact(answer, cleared=False)[0]
+    audit["question"] = shield.mask_all(question)
+    audit["answer"] = shield.mask_all(answer)
     audit["citations"] = [c.id for c in citations]
     timings["total"] = round((time.perf_counter() - started) * 1000)
     log.info("query answered in %s ms: %s", timings["total"], timings)
