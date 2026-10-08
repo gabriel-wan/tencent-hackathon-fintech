@@ -25,7 +25,7 @@ and it never decides access. Every question and every admin action is written to
 | Sync worker | Python, same code as the API | Copies each company's chosen content and its permissions every 5 minutes, so search is fast |
 | Database | PostgreSQL with pgvector | Documents, permissions, search indexes and the audit log in one place, kept consistent by transactions |
 | LLM and embeddings | Tencent Cloud TokenHub (`hy3`, `kinfra-text-embedding-0.6b`) | Writes the answer from the allowed sources; turns text into vectors for search by meaning |
-| Hosting | Docker Compose, one Tencent Cloud Lighthouse server | The same five containers locally and live (ADR-008) |
+| Hosting | Docker Compose, one Tencent Cloud Lighthouse server | The same five containers locally and live (ADR-008, [DEPLOYMENT.md](DEPLOYMENT.md)) |
 
 ## 2. The trust boundary
 
