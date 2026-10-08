@@ -1,7 +1,7 @@
 # Setting up the tools
 
 **For:** the teammate setting up a tool's sign-in, and each developer connecting their own accounts.
-**You'll:** create the Google, Slack and Atlassian sign-in apps, connect them locally, and set them up for production.
+**You'll:** create the Google, Slack and Atlassian sign-in apps and connect them locally (production: [DEPLOYMENT.md](../DEPLOYMENT.md)).
 **Not here:** running KnowBuddy → [RUNNING.md](../RUNNING.md) · how connectors work in code →
 [architecture/CONNECTORS.md](../architecture/CONNECTORS.md) · each tool's API → [reference/](reference/).
 
@@ -108,30 +108,8 @@ One Atlassian sign-in connects both. The team shares one Atlassian site. Each de
 
 ## 6. Production
 
-Production uses its own apps and secrets, never the ones from your laptop. `<APP_URL>` below is the public `https://` address of the backend.
-
-1. **Host.** Serve the frontend and backend on one `https://` domain (e.g. behind a reverse proxy), so the session cookie reaches both.
-2. **Secrets.** Generate a new `TOKEN_ENCRYPTION_KEY` ([RUNNING.md](../RUNNING.md) section 2). Keep it and every client secret below in the host's secret store.
-3. **Backend variables:**
-   ```
-   APP_ENV=production
-   APP_URL=<APP_URL>
-   FRONTEND_URL=<public frontend address>
-   ```
-4. **Frontend variables:** `BACKEND_LOCAL_URL=<APP_URL>`. The Slack token box disappears by itself, because the backend's development routes don't exist with `APP_ENV=production`.
-5. **Google.** Repeat section 3's set-up in a new project, with these changes:
-   - **Audience:** **Internal** if the company uses Google Workspace (no review needed). Otherwise **External**, then publish the app, which requires Google's verification for Drive access.
-   - **Authorized redirect URI:** `<APP_URL>/oauth/google/callback`
-   - Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Serving many companies needs **External**, published and verified: Drive is a restricted scope, so Google's verification includes a security assessment and takes weeks.
-6. **Slack.** Create one app for the product, following section 4 steps 1 and 2. Then:
-   - **OAuth & Permissions → Redirect URLs:** add `<APP_URL>/oauth/slack/callback`, and save.
-   - **Basic Information → App Credentials:** copy the **Client ID** and **Client Secret**.
-   - **Manage Distribution:** activate public distribution, so other companies' workspaces can install it.
-   - Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`.
-7. **Jira and Confluence: blocked.** Every user signing in to one company app needs **Distribution → Sharing**. Sharing asks whether the app stores personal data: it does (Atlassian account IDs), so Atlassian requires the [Personal Data Reporting API](https://developer.atlassian.com/cloud/jira/platform/user-privacy-developer-guide/) (report stored account IDs every 7 days, erase data for closed accounts). Build it first, and never tick its confirmation box before then.
-8. **Companies** sign themselves up: the first full member to connect Slack from a new workspace creates the company and becomes its admin ([RUNNING.md](../RUNNING.md) section 5).
-9. Deploy. The `sync` service (`docker-compose.yml`) syncs every company every 5 minutes. Open `<public frontend address>/connectors`, and click **Connect** on each tool.
-   - ✅ **Test** shows your account on each.
+Production sign-in apps (Google, Slack, Atlassian), the one HTTPS address and the server settings:
+[DEPLOYMENT.md](../DEPLOYMENT.md).
 
 ## 7. Development
 

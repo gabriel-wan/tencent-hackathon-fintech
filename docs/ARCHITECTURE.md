@@ -25,44 +25,42 @@ and it never decides access. Every question and every admin action is written to
 | Sync worker | Python, same code as the API | Copies each company's chosen content and its permissions every 5 minutes, so search is fast |
 | Database | PostgreSQL with pgvector | Documents, permissions, search indexes and the audit log in one place, kept consistent by transactions |
 | LLM and embeddings | Tencent Cloud TokenHub (`hy3`, `kinfra-text-embedding-0.6b`) | Writes the answer from the allowed sources; turns text into vectors for search by meaning |
-| Hosting | Docker Compose, one Tencent Cloud Lighthouse server | The same five containers locally and live (ADR-008) |
+| Hosting | Docker Compose, one Tencent Cloud Lighthouse server | The same five containers locally and live (ADR-008, [DEPLOYMENT.md](DEPLOYMENT.md)) |
 
 ## 2. The trust boundary
 
-This is the diagram the challenge asks for. Everything inside the orange boxes is deterministic code that knows who
-is asking. The LLM (green) sits after both gates and only receives what passed them.
+This is the diagram the challenge asks for. The two orange steps are the gates: deterministic code that knows who
+is asking. The green steps are the LLM's side, which only receives what passed both gates. The audit record is
+written before the reply is sent.
 
 ```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
 flowchart TB
-    U["Person asking<br/>(browser)"]
-    subgraph ID["Who is asking"]
-        S["Session cookie → user<br/>app/auth/session.py"]
-        P["User → principals<br/>e.g. slack:user:U024, google:domain:co.com<br/>app/auth/principals.py"]
-    end
-    subgraph G1["Gate 1: stored permissions"]
-        Q["One SQL query: own company only,<br/>ACL shares a principal, scope in the admin's boundary,<br/>then rank by keyword + meaning<br/>app/retrieval/search.py"]
-    end
-    subgraph G2["Gate 2: ask the tool, as this person"]
-        L["Live check per source, in parallel, 2 s timeout.<br/>No, error or timeout → dropped<br/>app/auth/live_check.py"]
-    end
-    subgraph LLMB["The LLM sees only what passed both gates"]
-        C["Allowed sources as untrusted data blocks<br/>app/llm/grounding.py"]
-        M["hy3 on TokenHub"]
-        V["Citations checked against what was sent<br/>else the fixed 'not found' reply"]
-    end
-    A[("Audit log: one hash-chained record per question,<br/>with every candidate's decision and reason<br/>app/audit/log.py")]
+    U["A person asks a question"]
+    ID["Who is asking?<br/>session → user → principals<br/>app/auth/"]
+    G1["Gate 1: stored permissions<br/>one SQL query: own company,<br/>ACL shares a principal,<br/>scope is in the boundary,<br/>then rank the matches<br/>app/retrieval/search.py"]
+    G2["Gate 2: ask each tool<br/>as this person, in parallel<br/>no, error or 2 s timeout: dropped<br/>app/auth/live_check.py"]
+    N["Fixed 'not found' reply<br/>LLM not called"]
+    C["Allowed sources only,<br/>wrapped as untrusted data<br/>app/llm/grounding.py"]
+    M["LLM: hy3 on TokenHub"]
+    V["Citations checked<br/>against what was sent"]
+    A[("Audit record written<br/>every decision and reason,<br/>hash-chained<br/>app/audit/log.py")]
+    R["The person sees the answer<br/>and its sources"]
 
-    U --> S --> P --> Q --> L
-    L -->|"nothing allowed:<br/>fixed reply, LLM not called"| R["Answer + sources"]
-    L -->|"allowed only"| C --> M --> V --> R --> U
-    Q -.-> A
-    L -.-> A
-    V -.-> A
+    U --> ID --> G1 --> G2
+    G2 -->|"nothing allowed"| N
+    G2 -->|"allowed only"| C
+    C --> M --> V
+    N --> A
+    V --> A
+    A --> R
 
     classDef gate fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#000
     classDef llm fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000
+    classDef plain fill:#f5f5f5,stroke:#9e9e9e,color:#000
     class G1,G2 gate
-    class LLMB llm
+    class C,M,V llm
+    class U,ID,N,A,R plain
 ```
 
 | Layer | Does | Must never |
@@ -77,55 +75,49 @@ flowchart TB
 
 ## 3. The parts
 
-The five containers, what each runs, and what talks to what.
+The five containers (blue), the outside services (grey), and what talks to what.
 
 ```mermaid
-flowchart LR
-    USER["Browser"]
-    TH["Tencent Cloud TokenHub<br/>hy3 chat + kinfra embeddings"]
+%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
+flowchart TB
+    B["Browser"]
+    FE["frontend<br/>Next.js website, :3000"]
+    BE["backend<br/>FastAPI API, :8000"]
+    SY["sync<br/>every 5 minutes"]
+    MI["migrate<br/>sets up the tables"]
+    DB[("db<br/>PostgreSQL + pgvector")]
+    TH["Tencent Cloud TokenHub<br/>LLM: answers<br/>embeddings: search"]
+    TO["Slack, Google Drive,<br/>Jira, Confluence"]
 
-    subgraph COMPOSE["Docker Compose (docker-compose.yml)"]
-        FE["frontend<br/>Next.js, :3000<br/>pages, session gate, /api proxy"]
-        subgraph BE["backend: FastAPI, :8000"]
-            API["app/api<br/>/api/query, /api/me, /api/session,<br/>/api/dev/* (development only)"]
-            PIPE["app/pipeline/query.py"]
-            AUTH["app/auth<br/>session, principals, live check"]
-            SEARCH["app/retrieval/search.py<br/>company + ACL + boundary filter,<br/>keyword + vector"]
-            LLMC["app/llm<br/>client, grounding"]
-            AUD["app/audit<br/>hash-chained log, /api/admin/audit"]
-            CONN["app/connectors<br/>sign-in, tokens, fetch, live checks,<br/>/api/admin/* boundary and sync"]
-        end
-        SYNC["sync<br/>every company, every 5 min"]
-        MIG["migrate<br/>creates and updates tables, then exits"]
-        DB[("db<br/>PostgreSQL 17 + pgvector")]
-    end
+    B -->|"pages and /api/*"| FE
+    B -.->|"sign-in redirects"| BE
+    FE -->|"/api/* proxy"| BE
+    BE -->|"as the asking user"| TO
+    SY -->|"as the admin"| TO
+    BE --> TH
+    SY --> TH
+    BE --> DB
+    SY --> DB
+    MI --> DB
 
-    subgraph SRC["Real tools (not mocked)"]
-        SL["Slack"]
-        GD["Google Drive"]
-        JI["Jira"]
-        CF["Confluence"]
-    end
-
-    USER -->|":3000"| FE
-    USER -.->|"sign-in redirects, :8000"| CONN
-    FE -->|"/api/* proxy, cookie forwarded"| API
-    API --> PIPE
-    PIPE --> AUTH
-    PIPE --> SEARCH
-    PIPE -->|"allowed sources only"| LLMC
-    PIPE --> AUD
-    AUTH -->|"can this user read it?"| CONN
-    CONN -->|"as the asking user"| SRC
-    SYNC -->|"as the company admin"| SRC
-    SEARCH --> DB
-    AUD --> DB
-    CONN --> DB
-    SYNC --> DB
-    MIG --> DB
-    LLMC --> TH
-    SYNC -->|"embeddings"| TH
+    classDef ours fill:#e3f2fd,stroke:#1565c0,color:#000
+    classDef outside fill:#f5f5f5,stroke:#9e9e9e,color:#000
+    class FE,BE,SY,MI,DB ours
+    class B,TH,TO outside
 ```
+
+Inside the backend (`backend/app/`):
+
+| Module | Job |
+|---|---|
+| `api/` | HTTP routes: `/api/query`, `/api/me`, `/api/session`, and `/api/dev/*` in development only |
+| `pipeline/query.py` | One question, end to end (section 4) |
+| `auth/` | Sessions, principals, and the live check |
+| `retrieval/search.py` | The permission-filtered hybrid search (gate 1) |
+| `llm/` | The TokenHub client and the grounding rules |
+| `audit/` | The hash-chained audit log and `/api/admin/audit` |
+| `connectors/` | Sign-in with each tool, stored tokens, fetching, live checks, and `/api/admin/*` boundary and sync |
+| `sync.py` | The sync worker (section 6); runs in the `sync` container |
 
 - **The browser only talks to the frontend**, except during sign-in: the tools' sign-in pages must redirect to the
   backend (`/connectors/{id}/connect` and `/oauth/{provider}/callback`), which then returns the browser to the frontend.
@@ -207,7 +199,8 @@ sequenceDiagram
 ## 6. Sync
 
 ```mermaid
-flowchart LR
+%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
+flowchart TB
     T["Every 5 minutes,<br/>or 'sync now'"] --> L["Lock the company<br/>(syncs never overlap)"]
     L --> B["For each scope in the boundary"]
     B --> F["Read it in full, as the<br/>company admin's own connection"]

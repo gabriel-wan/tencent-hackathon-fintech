@@ -9,9 +9,11 @@
 |---|---|
 | run KnowBuddy on my computer and try it | [RUNNING.md](RUNNING.md) |
 | test a change, or check everything before submitting | [TESTING.md](TESTING.md) |
+| see what it does: the five challenge scenarios, worked, and the demo order | [FEATURES.md](FEATURES.md) |
 | see how it's built: the trust boundary, the parts, and how a question and a sign-in flow | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | know the security rules and what guards them | [SECURITY.md](SECURITY.md) |
-| set up Google Drive, Slack, Jira or Confluence sign-in, or deploy them for real | [connectors/SETUP.md](connectors/SETUP.md) |
+| set up Google Drive, Slack, Jira or Confluence sign-in | [connectors/SETUP.md](connectors/SETUP.md) |
+| put KnowBuddy on a server | [DEPLOYMENT.md](DEPLOYMENT.md) |
 | know the project's goals, scope and progress | [PROJECT.md](PROJECT.md) |
 | know why something was decided | [decisions/DECISIONS.md](decisions/DECISIONS.md) |
 | change code, open a pull request, or propose a decision | [CONTRIBUTING.md](../CONTRIBUTING.md) |
@@ -28,6 +30,8 @@ docs/
 ├── README.md        this map
 ├── RUNNING.md       run and use it
 ├── TESTING.md       test it
+├── FEATURES.md      what it does: the five scenarios, worked, and the demo
+├── DEPLOYMENT.md    putting it on a server
 ├── SECURITY.md      threat model and security invariants
 ├── PROJECT.md       goals, users, scenarios, scope, roadmap and status
 ├── architecture/    how it's built: overview, what's built now, query pipeline, connectors
