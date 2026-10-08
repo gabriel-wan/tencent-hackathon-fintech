@@ -161,6 +161,16 @@ def test_embeddings_missed_during_an_outage_are_filled_later(setup):
     assert sync.embed_missing(engine, FakeLLM()) == 0
 
 
+@pytest.mark.security
+def test_the_embedding_model_only_receives_masked_text(setup):
+    # A chunk at the limit whose tags are longer than the emails they replace: still sent within the limit.
+    setup.source.docs = [doc(body="card 4111 1111 1111 1111 " + "a@b.co " * 280)]
+    llm = FakeLLM()
+    sync.sync_company(engine, setup.company, llm=llm)
+    [[sent]] = llm.embed_calls
+    assert "4111" not in sent and "@" not in sent and len(sent) <= EMBEDDING_MAX_CHARS
+
+
 # ---- Live checks: as the asking user's own connection ----
 
 def test_live_check_asks_the_source_as_the_asking_user(setup):

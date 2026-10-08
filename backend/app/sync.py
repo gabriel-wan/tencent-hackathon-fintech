@@ -28,6 +28,7 @@ from sqlalchemy import Engine, text
 from app.connectors import store
 from app.db import engine as default_engine
 from app.llm.client import EMBEDDING_MAX_CHARS, LLMClient
+from app.redaction import for_embedding
 from app.retrieval.search import vector_literal
 
 log = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ def embed_missing(engine: Engine, llm) -> int:
         rows = conn.execute(text("SELECT id, text FROM chunks WHERE embedding IS NULL ORDER BY id LIMIT :n"),
                             {"n": EMBED_BATCH}).all()
         if rows:
-            for row, vec in zip(rows, llm.embed([r.text for r in rows]), strict=True):
+            for row, vec in zip(rows, llm.embed([for_embedding(r.text) for r in rows]), strict=True):
                 conn.execute(text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
                              {"v": vector_literal(vec), "id": row.id})
     return len(rows)
