@@ -56,7 +56,7 @@ seeded users and `POST /api/dev/session` signs in as one of them; see
 - If your local database was migrated by a migration that was later renumbered, reset it: `docker compose down -v`.
 - Migrations run as the database owner; the app logs in as `knowbuddy_app` (`app/db.py`, password `APP_DB_PASSWORD`). New tables get the app's usual rights automatically (default privileges, migrations 0006 and 0007), but not TRUNCATE: tests that empty tables use `owner_engine()`. `audit_events` is read-and-add only for the app: never write code that updates or deletes audit records, and make `record_event` the last statement of a short transaction (it holds the company's chain lock until commit).
 
-**Git:** work on a branch, then open a pull request to `main`.
+**Git:** work on a branch, then open a pull request to `main`. Its description uses the team's template, [.github/pull_request_template.md](../.github/pull_request_template.md) (GitHub fills it in when you open a PR on the website; agents copy it, see AGENTS.md §3).
 
 ## 2. Environment variables
 

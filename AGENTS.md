@@ -96,6 +96,15 @@ While working:
 - Do not choose a database, vector store, framework, LLM provider or cloud
   service on the team's behalf. Those are ADRs (see DECISIONS.md).
 
+Pull requests (agreed by the team, 8 Oct): every PR description, including one
+an agent writes or pre-fills (`gh pr create`, an API call, a `?body=` link), uses
+the template in [.github/pull_request_template.md](.github/pull_request_template.md)
+with all six sections, in order: Summary, New Features, Setup changes for
+teammates, Security changes, How it was tested, Checklist. Write "None" in a
+section that doesn't apply rather than deleting it, and state test commands and
+results as actually run. GitHub fills the template in only for PRs opened in its
+web UI, so agents must copy the sections themselves.
+
 Conventions (see [DEVELOPMENT.md](docs/DEVELOPMENT.md)): branch naming, commit
 messages, PR expectations and how to add integrations and tests.
 
