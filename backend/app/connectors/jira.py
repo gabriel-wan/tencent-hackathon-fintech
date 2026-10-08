@@ -1,4 +1,4 @@
-"""Jira connector. API details: docs/connectors/JIRA.md.
+"""Jira connector. API details: docs/connectors/reference/JIRA.md.
 
 Every call uses one person's own Atlassian sign-in (store.client): the company admin's for sync and
 the scope list, the asking user's for the live check.
@@ -29,7 +29,7 @@ def scopes(http: httpx.Client) -> list[dict]:
 
 
 def fetch(http: httpx.Client, project: str, changed: Callable[[str, str], bool] = lambda *_: True) -> Iterator[dict]:
-    """One document per ticket (docs/connectors/JIRA.md section 5); `text` None if not `changed`."""
+    """One document per ticket (docs/connectors/reference/JIRA.md section 5); `text` None if not `changed`."""
     site = get(http, "/rest/api/3/serverInfo")["baseUrl"]
     # Jira expands groups and roles itself. Issue security levels are not applied, so this
     # may be too wide for restricted tickets; the live check trims it.

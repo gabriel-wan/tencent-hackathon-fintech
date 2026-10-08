@@ -180,7 +180,7 @@ The persona-by-persona checks with expected answers, and the states that can onl
     `GET /api/admin/boundary`, `PUT` and `DELETE
     /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync` (202,
     nothing to poll). This page is next; until then an admin uses
-    http://localhost:8000/docs (docs/connectors/GUIDE.md, section 7.5).
+    http://localhost:8000/docs ([RUNNING.md](../RUNNING.md) §5).
 - **Design preview (development only).** "Show design preview" reveals the
   planned layout inside a dashed **MOCK DATA** frame. Filters, Verify chain
   and Sync now are disabled, and confirming a boundary removal does nothing.

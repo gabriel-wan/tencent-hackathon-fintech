@@ -1,4 +1,4 @@
-"""Slack connector. API details: docs/connectors/SLACK.md.
+"""Slack connector. API details: docs/connectors/reference/SLACK.md.
 
 Every call uses one person's own user token (store.client): the company admin's for sync and the
 scope list, the asking user's for the live check.
@@ -34,7 +34,7 @@ def scopes(c: WebClient) -> list[dict]:
 
 
 def fetch(c: WebClient, channel: str, changed: Callable[[str, str], bool] = lambda *_: True) -> Iterator[dict]:
-    """One document per thread (docs/connectors/SLACK.md section 5). Replies are downloaded only for
+    """One document per thread (docs/connectors/reference/SLACK.md section 5). Replies are downloaded only for
     threads that `changed(source_id, updated_at)`; the others get `text` None."""
     info = c.conversations_info(channel=channel)["channel"]
     members = [f"slack:user:{m}" for page in c.conversations_members(channel=channel, limit=1000)

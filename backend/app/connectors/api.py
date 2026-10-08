@@ -138,7 +138,7 @@ def connect(connector: str, request: Request):
         hint = ""
         if provider == "slack" and request.app.state.app_env == "development":  # no https locally
             hint = (". Locally, paste your Slack token on the sign-in page (or /connectors) instead"
-                    " (docs/connectors/GUIDE.md, section 4)")
+                    " (docs/connectors/SETUP.md, section 4)")
         raise HTTPException(503, f"{provider} sign-in is not configured: set {e.args[0]}{hint}") from e
     except ValueError as e:  # malformed TOKEN_ENCRYPTION_KEY
         raise HTTPException(503, f"{provider} sign-in is not configured: {e}") from e

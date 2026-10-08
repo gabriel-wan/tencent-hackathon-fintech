@@ -153,7 +153,7 @@ Run these from `backend/`.
 **A new connector.** Read the tool's own permission model first and preserve it (never flatten it). The connector
 fetches content and permissions but never decides who may see what: that's the authorization layer's job. Add
 tests for fetching, for permissions, and at least one negative permission case, and add the audit events its
-actions produce. How connectors plug in: [docs/connectors/GUIDE.md](docs/connectors/GUIDE.md) §7.
+actions produce. How connectors plug in: [docs/architecture/CONNECTORS.md](docs/architecture/CONNECTORS.md).
 
 **Scripts** (`scripts/`). Read credentials only from the environment, never from arguments or code. Anything
 that seeds or resets data must say so in its name and refuse to run against anything but a local database.

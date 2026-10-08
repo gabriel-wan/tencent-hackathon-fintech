@@ -62,7 +62,7 @@ export function SlackTokenForm() {
       </div>
       <p className="text-xs text-muted-foreground">
         Slack sign-in needs https, which local development doesn&apos;t have. Paste a Slack user token (starts with{" "}
-        <code>xoxp-</code>) from your own test workspace. See docs/connectors/GUIDE.md.
+        <code>xoxp-</code>) from your own test workspace. See docs/connectors/SETUP.md, section 4.
       </p>
       <label htmlFor="slack-token" className="sr-only">
         Slack user token

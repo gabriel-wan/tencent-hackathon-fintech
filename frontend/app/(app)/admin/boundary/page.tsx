@@ -31,7 +31,7 @@ export default async function BoundaryPage() {
           <code>DELETE /api/admin/boundary/{"{source}/{scope_id}"}</code>, <code>POST /api/admin/sync</code>);
           this page is being built on it.
         </p>
-        <p>Until then, an admin sets the boundary through the backend&apos;s API docs (docs/connectors/GUIDE.md, section 7.5).</p>
+        <p>Until then, an admin sets the boundary through the backend&apos;s API docs (docs/RUNNING.md, section 5).</p>
       </NotBuiltYet>
       {devMode ? (
         <DesignPreview>

@@ -2,7 +2,7 @@
 
 **For:** anyone running KnowBuddy on their own computer.
 **You'll:** start it, sign in, ask questions, and connect your own tools (about 15 minutes for the first part).
-**Not here:** testing → [TESTING.md](TESTING.md) · putting it on a server → [connectors/GUIDE.md](connectors/GUIDE.md) §6 · changing the code → [CONTRIBUTING.md](../CONTRIBUTING.md).
+**Not here:** testing → [TESTING.md](TESTING.md) · putting it on a server → [connectors/SETUP.md](connectors/SETUP.md) §6 · changing the code → [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 **Contents:** 1. What you need · 2. Settings · 3. Start · 4. Try it with demo personas · 5. Use your own tools ·
 6. Using KnowBuddy · 7. Stop, reset, re-seed · 8. When something goes wrong · Appendix: every setting
@@ -107,10 +107,10 @@ Slack; that person becomes its admin. Google never names a company, and an Atlas
 whose admin has already connected Jira for that site. So connect **Slack first**.
 
 1. **Slack.** Slack's sign-in needs an https address, so locally you paste a token instead: create your own Slack app
-   and copy its User OAuth Token (`xoxp-…`) as in [connectors/GUIDE.md](connectors/GUIDE.md) §4. Paste it in
+   and copy its User OAuth Token (`xoxp-…`) as in [connectors/SETUP.md](connectors/SETUP.md) §4. Paste it in
    **Connect Slack with a token** on http://localhost:3000/login (or on the Connections page once signed in).
 2. **Google Drive** and **Jira / Confluence** (optional): each needs a one-time app set-up and two settings in
-   `backend/.env`, described in [connectors/GUIDE.md](connectors/GUIDE.md) §3 and §5. Then click **Connect** on
+   `backend/.env`, described in [connectors/SETUP.md](connectors/SETUP.md) §3 and §5. Then click **Connect** on
    http://localhost:3000/connectors. Use the same email address as your Slack account.
 3. **Choose what KnowBuddy may read (admin).** Nothing is copied until the admin picks channels, folders, projects
    or spaces: this is the "boundary". The admin pages for it aren't built yet, so use http://localhost:8000/docs
@@ -156,7 +156,7 @@ it as a source.
 | The backend exits with "APP_DB_PASSWORD is not set" | Add `APP_DB_PASSWORD` to `backend/.env` (section 2), then `docker compose up -d` |
 | Every question says "The assistant isn't available right now" | `LLM_API_KEY` is empty, or the key can't use the models. Fix it, then `docker compose up -d --force-recreate backend sync` |
 | Your own tools are connected, but every question says "I could not find this…" | No boundary or no sync yet (section 5, step 3). `docker compose logs sync` shows what was synced |
-| **Connect** shows `503 … sign-in is not configured: set GOOGLE_CLIENT_ID` | That tool's app isn't set up: [connectors/GUIDE.md](connectors/GUIDE.md) §3–5 |
+| **Connect** shows `503 … sign-in is not configured: set GOOGLE_CLIENT_ID` | That tool's app isn't set up: [connectors/SETUP.md](connectors/SETUP.md) §3–5 |
 | Sign-in returns with "The sign-in expired or was started in another browser" (`invalid_state`) | You opened `127.0.0.1` instead of `localhost`, or took more than 10 minutes. Start again from http://localhost:3000 |
 | "That account is already linked to someone else…" (`account_mismatch`) | You're signed in as someone else (e.g. a persona). Sign out, then connect again |
 | "That sign-in belongs to no company you can join" (`no_company`) | You're a Slack guest, the Atlassian site hasn't been added by your company's admin, or you granted several Atlassian sites. Connect Slack first, as a full member |
@@ -201,7 +201,7 @@ the backend runs with `APP_ENV=development`.
 
 ### Backend: signing in with your tools
 
-Step by step for each tool: [connectors/GUIDE.md](connectors/GUIDE.md). In each tool's app settings, register the
+Step by step for each tool: [connectors/SETUP.md](connectors/SETUP.md). In each tool's app settings, register the
 redirect address `{APP_URL}/oauth/<google|slack|atlassian>/callback`.
 
 | Setting | Where to get it |

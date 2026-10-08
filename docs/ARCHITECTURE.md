@@ -3,7 +3,7 @@
 **For:** judges, new teammates, and anyone changing how the parts fit together.
 **You'll:** see what each part does and why, how one question and one sign-in flow through them, and what we traded off.
 **Not here:** API contracts and the exact query steps → [architecture/QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md) ·
-connectors in depth → [connectors/GUIDE.md](connectors/GUIDE.md) §7 · the security rules → [SECURITY.md](SECURITY.md) ·
+connectors in depth → [architecture/CONNECTORS.md](architecture/CONNECTORS.md) · the security rules → [SECURITY.md](SECURITY.md) ·
 why each choice was made → [decisions/DECISIONS.md](decisions/DECISIONS.md).
 
 **Contents:** 1. In one paragraph · 2. The trust boundary · 3. The parts · 4. One question, step by step ·
@@ -219,7 +219,7 @@ flowchart LR
 
 New and edited content appears within about 5 minutes (ADR-005). **Revocations don't wait for sync**: the live check
 applies them on the very next question (ADR-003). Every answer's sources carry `synced_at`, so stale content is
-labelled rather than hidden. Details: [connectors/GUIDE.md](connectors/GUIDE.md) §7.
+labelled rather than hidden. Details: [architecture/CONNECTORS.md](architecture/CONNECTORS.md).
 
 ## 7. Data model
 
@@ -324,7 +324,8 @@ Before building, the team listed the questions the design had to answer. Each is
 |---|---|
 | The query pipeline: every step and API contract | [architecture/QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md) |
 | The frontend: pages, session gate, proxy, server actions, UI rules | [architecture/FRONTEND.md](architecture/FRONTEND.md) |
-| Connectors: sign-in, tokens, sync, live checks, the document format | [connectors/GUIDE.md](connectors/GUIDE.md) §7 and [architecture/CONNECTORS_ARCHITECTURE.md](architecture/CONNECTORS_ARCHITECTURE.md) |
-| Each tool's API and permission model | [connectors/](connectors/) |
+| Connectors: sign-in, tokens, sync, live checks, the document format | [architecture/CONNECTORS.md](architecture/CONNECTORS.md) |
+| Setting up each tool's sign-in | [connectors/SETUP.md](connectors/SETUP.md) |
+| Each tool's API and permission model | [connectors/reference/](connectors/reference/) |
 | Security rules and the tests that guard them | [SECURITY.md](SECURITY.md) |
 | Every decision, with its date and reasons | [decisions/DECISIONS.md](decisions/DECISIONS.md) |

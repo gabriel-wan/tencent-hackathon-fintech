@@ -49,7 +49,7 @@ Rules for connectors:
 
 ## 2. For the frontend (Task 2): the API
 
-The app's routes are under `/api`; sign-in and connections are `/connectors/*` and `/oauth/*` ([GUIDE.md](../connectors/GUIDE.md) §7.2). Identity comes only from the `ib_session` cookie.
+The app's routes are under `/api`; sign-in and connections are `/connectors/*` and `/oauth/*` ([CONNECTORS.md](CONNECTORS.md) §3). Identity comes only from the `ib_session` cookie.
 
 | Method and path | Body | Returns |
 |---|---|---|
@@ -58,13 +58,13 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 | `DELETE /api/session` | | 204, signs out |
 | `GET /api/dev/users` | | Seeded users. **Development only** |
 | `POST /api/dev/session` | `{"user_id": 1}` | Signs in as that user (persona switcher). **Development only** |
-| `GET /api/admin/boundary`, `PUT`/`DELETE /api/admin/boundary/{source}/{scope_id}`, `GET /api/admin/scopes/{source}`, `POST /api/admin/sync` | | The company's boundary and sync. **Admins only** ([GUIDE.md](../connectors/GUIDE.md) §7.2) |
+| `GET /api/admin/boundary`, `PUT`/`DELETE /api/admin/boundary/{source}/{scope_id}`, `GET /api/admin/scopes/{source}`, `POST /api/admin/sync` | | The company's boundary and sync. **Admins only** ([CONNECTORS.md](CONNECTORS.md) §3) |
 | `GET /api/admin/audit` | Query: `user`, `since`, `until`, `event_type`, `document`, `source`, `scope_id`, `before_id`, `limit` | `{"records": [{"id", "ts", "user_email", "event_type", "payload", "prev_hash", "hash"}], "next_before_id"}`, newest first, own company only. **Admins only**; each search is itself audited |
 | `POST /api/admin/audit/verify` | | `{"ok", "checked", "first_broken_id", "reason", "head": {"id", "hash"}}`: recomputes the company's hash chain. **Admins only**; audited |
 
 - **Sign-in:** there is no username/password page (ADR-002). People sign in on
   `/login` with Google, Slack or Atlassian, which connects that tool and sets
-  the same session cookie ([GUIDE.md](../connectors/GUIDE.md)); in development
+  the same session cookie ([CONNECTORS.md](CONNECTORS.md)); in development
   Slack is connected with a pasted token on `/login` or `/connectors`. The
   persona switcher uses the development routes, which do not exist unless
   `APP_ENV=development`.
@@ -115,7 +115,7 @@ called. The answer is returned only after its audit row is committed.
 | Item | Status | Roadmap |
 |---|---|---|
 | Live check | Built: `/api/query` asks each source as the user (`app/connectors/live.py`). In development only, a persona with no connection at all (the seed) still uses the stored-ACL stub. The audit log records `live_check_mode` | Task 1 |
-| Connector sign-in | Built: creates the user in their company, the session and `user_principals` ([GUIDE.md](../connectors/GUIDE.md)) | Task 1 |
+| Connector sign-in | Built: creates the user in their company, the session and `user_principals` ([CONNECTORS.md](CONNECTORS.md)) | Task 1 |
 | Sync | Built: `app/sync.py`, every 5 minutes and on `POST /api/admin/sync` | Task 1 |
 | Audit hash chain and insert-only DB role | Built: one chain per company (`app/audit/log.py`, migrations 0006 and 0007); the app logs in as `knowbuddy_app`, which can read and add audit records only | Task 3 |
 | Audit search API | Built: `GET /api/admin/audit` and `POST /api/admin/audit/verify` (`app/audit/api.py`), admins only, own company only, each use audited | Task 3 |

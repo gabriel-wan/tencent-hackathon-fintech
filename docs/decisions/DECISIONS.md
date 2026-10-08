@@ -190,7 +190,7 @@ source platform**. The stored permission data filters search results; the
 live check against the source has the final say.
 
 Data flow and per-source check calls are described in
-[CONNECTORS_ARCHITECTURE.md](../architecture/CONNECTORS_ARCHITECTURE.md).
+[CONNECTORS.md](../architecture/CONNECTORS.md).
 
 ### Consequences
 
@@ -252,7 +252,7 @@ Data flow and per-source check calls are described in
   1,024 dimensions.
 - **Change detection by polling, no webhooks:** sync every 5 minutes, plus a
   slower sweep for deletions and permission changes, as described in
-  [CONNECTORS_ARCHITECTURE.md](../architecture/CONNECTORS_ARCHITECTURE.md).
+  [CONNECTORS.md](../architecture/CONNECTORS.md).
 - **An administrator "sync now" action** triggers an immediate sync, for the
   live freshness demo.
 
