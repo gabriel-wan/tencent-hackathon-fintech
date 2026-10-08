@@ -28,13 +28,14 @@ from sqlalchemy import Engine, text
 from app.connectors import store
 from app.db import engine as default_engine
 from app.llm.client import EMBEDDING_MAX_CHARS, LLMClient
-from app.redaction import for_embedding, protected_spans
+from app.redaction import for_embedding, names_in, protected_spans
 from app.retrieval.search import vector_literal
 
 log = logging.getLogger(__name__)
 
 INTERVAL_S = 300  # ADR-005: every 5 minutes
 EMBED_BATCH = 512
+CUT_LOOKAHEAD = 200  # characters past the limit scanned, to see an identifier the limit falls inside
 
 
 def _cut(text: str) -> int:
@@ -42,7 +43,7 @@ def _cut(text: str) -> int:
     last space, that is not inside anything the Need-to-Know Shield detects (ADR-010); else the start of the
     identifier the limit falls in; else the limit. Half a card number, or a label without its value, in
     another chunk would escape masking."""
-    spans = protected_spans(text[:EMBEDDING_MAX_CHARS + 200])
+    spans = protected_spans(text[:EMBEDDING_MAX_CHARS + CUT_LOOKAHEAD])
     for sep in ("\n", " "):
         for i in range(EMBEDDING_MAX_CHARS, 0, -1):
             if text[i - 1] == sep and not any(start < i < end for start, end in spans):
@@ -91,13 +92,23 @@ def upsert(conn, company_id: int, doc: dict) -> None:
 def embed_missing(engine: Engine, llm) -> int:
     """Embed one batch of chunks that have no vector yet (new, or the LLM was down). Returns how many."""
     with engine.begin() as conn:
-        rows = conn.execute(text("SELECT id, text FROM chunks WHERE embedding IS NULL ORDER BY id LIMIT :n"),
-                            {"n": EMBED_BATCH}).all()
+        rows = conn.execute(text("SELECT id, document_id, text FROM chunks WHERE embedding IS NULL "
+                                 "ORDER BY id LIMIT :n"), {"n": EMBED_BATCH}).all()
         if rows:
-            for row, vec in zip(rows, llm.embed([for_embedding(r.text) for r in rows]), strict=True):
+            for row, vec in zip(rows, llm.embed(masked_for_embedding(conn, rows)), strict=True):
                 conn.execute(text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
                              {"v": vector_literal(vec), "id": row.id})
     return len(rows)
+
+
+def masked_for_embedding(conn, rows) -> list[str]:
+    """Each chunk's text masked for the embedding model (ADR-010). Names are collected from the whole
+    document, so a name labelled in one chunk is masked in every other chunk too."""
+    docs = conn.execute(text("SELECT d.id, d.title, string_agg(c.text, E'\n' ORDER BY c.ordinal) "
+                             "FROM documents d JOIN chunks c ON c.document_id = d.id WHERE d.id = ANY(:ids) "
+                             "GROUP BY d.id, d.title"), {"ids": list({r.document_id for r in rows})}).all()
+    names = {doc_id: names_in([title, body]) for doc_id, title, body in docs}
+    return [for_embedding(r.text, names[r.document_id]) for r in rows]
 
 
 def sync_company(engine: Engine, company_id: int, sources: list[str] | None = None, llm=None) -> None:

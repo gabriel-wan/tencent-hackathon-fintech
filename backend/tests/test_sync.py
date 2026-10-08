@@ -182,6 +182,15 @@ def test_the_embedding_model_only_receives_masked_text(setup):
     assert "4111" not in sent and "@" not in sent and len(sent) <= EMBEDDING_MAX_CHARS
 
 
+@pytest.mark.security
+def test_a_name_labelled_in_one_chunk_is_masked_in_every_chunk(setup):
+    setup.source.docs = [doc(body="Customer: Jane Lee\n" + "word " * EMBEDDING_MAX_CHARS + "\nJane called back")]
+    llm = FakeLLM()
+    sync.sync_company(engine, setup.company, llm=llm)
+    sent = [t for call in llm.embed_calls for t in call]
+    assert len(sent) > 1 and not any("Jane" in t or "Lee" in t for t in sent)
+
+
 # ---- Live checks: as the asking user's own connection ----
 
 def test_live_check_asks_the_source_as_the_asking_user(setup):

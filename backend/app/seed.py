@@ -200,11 +200,11 @@ def main() -> None:
 
         if embed:
             from app.llm.client import LLMClient
-            from app.redaction import for_embedding
             from app.retrieval.search import vector_literal
+            from app.sync import masked_for_embedding
 
-            rows = conn.execute(text("SELECT id, text FROM chunks ORDER BY id")).all()
-            vectors = LLMClient.from_env().embed([for_embedding(r.text) for r in rows])  # masked (ADR-010)
+            rows = conn.execute(text("SELECT id, document_id, text FROM chunks ORDER BY id")).all()
+            vectors = LLMClient.from_env().embed(masked_for_embedding(conn, rows))  # masked (ADR-010)
             for row, vec in zip(rows, vectors):
                 conn.execute(
                     text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
