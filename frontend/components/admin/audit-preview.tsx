@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatExact } from "@/lib/format";
 import { MOCK_AUDIT_RECORDS, type MockAuditRecord } from "@/lib/mock/audit";
 
-// DEVELOPMENT ONLY design preview of /admin/audit (ui-plan.md 6.3), shown
+// DEVELOPMENT ONLY design preview of /admin/audit, shown
 // inside <DesignPreview>. Filters and "Verify chain" are deliberately
 // disabled: nothing here searches or verifies anything.
 

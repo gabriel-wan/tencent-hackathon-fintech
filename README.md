@@ -69,10 +69,12 @@ embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
 ├── README.md                this file
 ├── AGENTS.md                instructions for AI coding agents (CodeBuddy, WorkBuddy, Claude Code, ...)
 ├── CLAUDE.md                pointer to AGENTS.md
+├── CONTRIBUTING.md          how the team works: branches, commits, PRs, reviews, decisions
+├── .github/                 pull request template
 ├── docs/
 │   ├── PROJECT.md           problem, personas, scenarios, proposed MVP, open items
 │   ├── SECURITY.md          threat model and security invariants
-│   ├── DEVELOPMENT.md       setup, workflow, conventions, integrations, tests
+│   ├── DEVELOPMENT.md       setup, environment variables, tests
 │   ├── ROADMAP.md           tasks by date, with progress
 │   ├── architecture/
 │   │   ├── ARCHITECTURE.md  planned architecture, security boundary, open questions
@@ -93,7 +95,7 @@ embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
 ├── docker-compose.yml       runs db, migrate, backend, sync and frontend
 ├── frontend/                Next.js app (localhost:3000), config in .env.example
 ├── backend/                 FastAPI app (localhost:8000), config in .env.example, tests in tests/, Alembic migrations in migrations/
-└── scripts/                 helper scripts (empty)
+└── scripts/                 helper scripts (check_doc_links.py: broken links in the docs)
 ```
 
 ## Development

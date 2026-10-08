@@ -1,7 +1,7 @@
 // The backend's fixed replies, copied exactly. If the backend wording changes,
 // this is the only file to update.
 // ASSUMPTION: matching on text until the backend returns a status field
-// (ui-plan.md question log, Q2).
+// (an open request to the query pipeline; see the frontend README's open questions).
 import type { QueryResponse } from "@/lib/api/types";
 
 /** backend/app/llm/grounding.py FALLBACK_ANSWER. Same reply whether nothing exists or nothing is permitted (INV-5). */

@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MOCK_SOURCES, type MockScope } from "@/lib/mock/boundary";
 
-// DEVELOPMENT ONLY design preview of /admin/boundary (ui-plan.md 6.4), shown
+// DEVELOPMENT ONLY design preview of /admin/boundary, shown
 // inside <DesignPreview>. Nothing here changes the boundary or syncs: "Sync
 // now" is disabled, and confirming a removal only closes the dialog.
 

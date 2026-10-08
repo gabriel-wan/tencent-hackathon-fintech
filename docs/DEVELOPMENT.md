@@ -37,32 +37,8 @@ run unless `APP_ENV=development`. In development, `GET /api/dev/users` lists the
 seeded users and `POST /api/dev/session` signs in as one of them; see
 [QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md).
 
-**Backend dependencies (uv).** Dependencies are declared in `backend/pyproject.toml`, and exact versions are locked in `backend/uv.lock`. Run every command below from `backend/`.
-
-| Task | Command |
-|---|---|
-| Set up, and again after every pull | `uv sync`. It creates `backend/.venv` with Python 3.12 (downloaded if missing) and installs dev tools such as pytest. Select `.venv` as your editor's interpreter. |
-| Run anything | `uv run <cmd>`, e.g. `uv run pytest`. No activation needed. For plain `python`, activate first: `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (macOS/Linux). |
-| Add a package | `uv add <pkg>`, or `uv add --dev <pkg>` for test-only tools |
-| Remove a package | `uv remove <pkg>` |
-| Upgrade a package | `uv lock --upgrade-package <pkg>`, then `uv sync` |
-
-- Always commit `pyproject.toml` and `uv.lock` together.
-- The Docker image installs exactly what `uv.lock` lists, without dev tools (`uv sync --locked --no-dev`). If you edit `pyproject.toml` by hand, run `uv lock` before building, or the build fails.
-- Never use `pip install`.
-
-**Database changes:**
-- Write a numbered migration in `backend/migrations/versions/`, with `down_revision` set to the previous one.
-- If two branches add the same migration number, whoever merges second renumbers theirs.
-- If your local database was migrated by a migration that was later renumbered, reset it: `docker compose down -v`.
-- Migrations run as the database owner; the app logs in as `knowbuddy_app` (`app/db.py`, password `APP_DB_PASSWORD`). New tables get the app's usual rights automatically (default privileges, migrations 0006 and 0007), but not TRUNCATE: tests that empty tables use `owner_engine()`. `audit_events` is read-and-add only for the app: never write code that updates or deletes audit records, and make `record_event` the last statement of a short transaction (it holds the company's chain lock until commit).
-
-**Git:**
-- Work on a branch named by kind: `feat/…`, `fix/…`, `docs/…` or `chore/…`, then open a pull request to `main`.
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat(audit): …`, `fix(frontend): …`, `docs: …`. One concern per commit.
-- A pull request's description uses the team's template, [.github/pull_request_template.md](../.github/pull_request_template.md): GitHub fills it in when you open a PR on the website; agents copy it (AGENTS.md §3). Its "Security changes" section calls out any change to authorization, filtering, audit logging or what the LLM receives.
-- A change to security behaviour needs a review from a second team member before merging (SECURITY.md §5).
-- Merge with **Create a merge commit**, not squash, so branch history is kept.
+**Working on the code:** branches, commits, pull requests, reviews, backend and frontend
+dependencies, database migrations and tests are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## 2. Environment variables
 

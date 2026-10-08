@@ -76,7 +76,7 @@ export default async function LoginPage({ searchParams }: Props) {
             </div>
             <p className="text-xs text-muted-foreground">
               Signing in connects that tool, and only what you can already see there is used. Your company comes from
-              your Slack workspace or Atlassian site, so connect one of those too.
+              your Slack workspace, so connect Slack too. Jira and Confluence join it once your admin has added them.
             </p>
           </CardContent>
         </Card>
