@@ -1,5 +1,8 @@
 # Google Drive Connector
 
+> **API research and reference** for this tool. What KnowBuddy's code does with it:
+> [architecture/CONNECTORS.md](../../architecture/CONNECTORS.md). Setting up its sign-in: [SETUP.md](../SETUP.md).
+
 ## 1. Introduction
 
 Google Drive stores files (Google Docs, Sheets, Slides, PDFs) in folders and
@@ -71,7 +74,7 @@ domain is on its list, or the list has `anyone`.
 
 ### Auth / setup
 
-Every call uses one person's own Google sign-in (`drive.readonly`, [GUIDE.md §3](GUIDE.md#3-google-drive)):
+Every call uses one person's own Google sign-in (`drive.readonly`, [SETUP.md §3](../SETUP.md#3-google-drive)):
 the company admin's for sync, the asking user's for the live check. There is no service account.
 Sync sees only files the admin can open, and skips a file whose sharing list the admin can't see
 (viewers often can't), rather than guessing a narrower ACL.

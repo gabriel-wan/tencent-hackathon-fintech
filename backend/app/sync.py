@@ -2,7 +2,7 @@
 
 For every boundary scope (channel, folder, project, space) the source is read as the company admin's
 own connection (ADR-002), and each item becomes one `documents` row in the shape of
-docs/connectors/GUIDE.md section 7.4. Chunks are rewritten only when the text changed; ACLs and
+docs/architecture/CONNECTORS.md section 5. Chunks are rewritten only when the text changed; ACLs and
 titles are refreshed every run, but text is downloaded only for items whose modified time changed
 (each source's fetch(client, scope_id, changed) yields `text` None for the others). Items no longer in a scope are soft-deleted (`deleted_at`), but only
 after that scope was read completely. Chunks without an embedding are embedded at the end, so an

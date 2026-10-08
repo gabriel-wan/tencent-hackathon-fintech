@@ -1,6 +1,6 @@
 """Query pipeline: question -> permission-filtered search -> live check -> LLM -> audit.
 
-Security boundary (ARCHITECTURE.md section 1): nothing reaches the LLM unless
+Security boundary (docs/ARCHITECTURE.md section 2): nothing reaches the LLM unless
 it passed the stored-ACL filter, the admin boundary AND the live check. When
 nothing passes, the LLM is not called at all.
 

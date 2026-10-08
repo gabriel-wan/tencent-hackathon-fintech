@@ -1,4 +1,4 @@
-"""Confluence connector. API details: docs/connectors/CONFLUENCE.md.
+"""Confluence connector. API details: docs/connectors/reference/CONFLUENCE.md.
 
 Every call uses one person's own Atlassian sign-in (store.client): the company admin's for sync and
 the scope list, the asking user's for the live check.
@@ -26,7 +26,7 @@ def scopes(http: httpx.Client) -> list[dict]:
 
 
 def fetch(http: httpx.Client, space: str, changed: Callable[[str, str], bool] = lambda *_: True) -> Iterator[dict]:
-    """One document per page (docs/connectors/CONFLUENCE.md section 5); `text` None if not `changed`."""
+    """One document per page (docs/connectors/reference/CONFLUENCE.md section 5); `text` None if not `changed`."""
     groups: dict[str, list[str]] = {}
     readers: dict[str, list[str] | None] = {}  # content id -> its read restriction, None if unrestricted
 

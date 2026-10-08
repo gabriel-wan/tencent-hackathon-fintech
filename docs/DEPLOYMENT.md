@@ -1,0 +1,133 @@
+# Deploying KnowBuddy
+
+**For:** whoever puts KnowBuddy on a server for the live demo.
+**You'll:** set up one HTTPS address, the production settings and sign-in apps, deploy, and check it works.
+**Not here:** running it locally → [RUNNING.md](RUNNING.md) · how it's built → [ARCHITECTURE.md](ARCHITECTURE.md).
+
+> **Status (8 Oct): not deployed yet** (roadmap 9–10 Oct, [PROJECT.md](PROJECT.md#roadmap-and-status)). This page is
+> the plan, from ADR-008 and what the code requires. Whoever deploys updates it with what was actually done, and
+> replaces every `ASSUMPTION:` below with the real choice.
+
+**Contents:** 1. The shape · 2. One HTTPS address · 3. Server settings · 4. Production sign-in apps · 5. Deploy and
+update · 6. Check it works · 7. Never on the live site
+
+## 1. The shape
+
+One Tencent Cloud Lighthouse server in Singapore runs the same five Docker Compose containers as a laptop, with the
+database on the same server (ADR-008). A reverse proxy in front serves everything on one HTTPS address.
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
+flowchart TB
+    U["People's browsers"]
+    P["Reverse proxy<br/>HTTPS on one address"]
+    FE["frontend :3000<br/>every other path"]
+    BE["backend :8000<br/>/connectors/*/connect and /oauth/*"]
+    DB[("db<br/>not reachable from outside")]
+    U --> P
+    P --> FE
+    P --> BE
+    FE -->|"/api/* proxy"| BE
+    BE --> DB
+```
+
+## 2. One HTTPS address
+
+Frontend and backend must share one `https://` address, because:
+- the backend sets the session cookie on its own address during sign-in, and the frontend must receive it;
+- outside development the cookie is marked `Secure`, so browsers only send it over HTTPS.
+
+The browser only goes to the backend directly during sign-in. Route these two paths to the backend, and everything
+else to the frontend:
+
+| Path | Goes to | Why |
+|---|---|---|
+| `/connectors/<tool>/connect` | backend `:8000` | Starts a tool's sign-in |
+| `/oauth/<provider>/callback` | backend `:8000` | Where the tool returns after sign-in |
+| everything else, including `/connectors` and `/api/*` | frontend `:3000` | The website; it forwards `/api/*` to the backend itself |
+
+Only the proxy should be reachable from the internet: close ports 3000 and 8000 in the Lighthouse firewall. The
+database has no public port.
+
+`ASSUMPTION:` the proxy is Caddy or Nginx with a free TLS certificate (e.g. Let's Encrypt), and the address is a domain
+the team controls.
+
+## 3. Server settings
+
+Create the two `.env` files on the server, never in the repository. Use **new** secrets, never the ones from a laptop.
+
+**`backend/.env`:**
+
+| Setting | Production value |
+|---|---|
+| `APP_ENV` | `production`. Development mode refuses to start on any address but `localhost`, so its persona sign-in can never be reachable on a server |
+| `APP_URL`, `FRONTEND_URL` | Both `https://<your address>` |
+| `POSTGRES_PASSWORD` | A new, long random password |
+| `APP_DB_PASSWORD` | Another new, long random password, different from the one above |
+| `TOKEN_ENCRYPTION_KEY` | A new key ([RUNNING.md](RUNNING.md) §2 shows how). Changing it later makes stored tokens unreadable, so everyone would have to connect again |
+| `LLM_API_KEY` | The TokenHub key. Turn on pay-as-you-go so the free quota can't run out mid-demo (ADR-006) |
+| Sign-in apps | The production client IDs and secrets (section 4) |
+
+**`frontend/.env`:** `BACKEND_LOCAL_URL=https://<your address>`. The Slack token form disappears by itself, because
+the backend's development routes don't exist in production.
+
+## 4. Production sign-in apps
+
+Production uses its own apps, never the ones from a laptop. `<APP_URL>` is `https://<your address>`.
+
+1. **Google.** Repeat [connectors/SETUP.md](connectors/SETUP.md) §3 in a new project, with these changes:
+   - **Audience:** **Internal** if the company uses Google Workspace (no review needed). Otherwise **External**, then
+     publish the app, which needs Google's verification for Drive access.
+   - **Authorized redirect URI:** `<APP_URL>/oauth/google/callback`.
+   - Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Serving many companies needs **External**, published and
+     verified: Drive is a restricted scope, so Google's verification includes a security assessment and takes weeks.
+2. **Slack.** Create one app for the product, following [connectors/SETUP.md](connectors/SETUP.md) §4 steps 1 and 2.
+   Then:
+   - **OAuth & Permissions → Redirect URLs:** add `<APP_URL>/oauth/slack/callback`, and save.
+   - **Basic Information → App Credentials:** copy the **Client ID** and **Client Secret**.
+   - **Manage Distribution:** activate public distribution, so other companies' workspaces can install it.
+   - Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`.
+3. **Jira and Confluence: blocked.** Every user signing in to one company app needs **Distribution → Sharing**.
+   Sharing asks whether the app stores personal data: it does (Atlassian account IDs), so Atlassian requires the
+   [Personal Data Reporting API](https://developer.atlassian.com/cloud/jira/platform/user-privacy-developer-guide/)
+   (report stored account IDs every 7 days, erase data for closed accounts). Build it first, and never tick its
+   confirmation box before then.
+4. **Companies** sign themselves up: the first full member to connect Slack from a new workspace creates the company
+   and becomes its admin ([RUNNING.md](RUNNING.md) §5).
+
+## 5. Deploy and update
+
+On the server, from the repository folder:
+
+```bash
+git pull
+```
+
+```bash
+docker compose up --build -d
+```
+
+The `migrate` service updates the database before the backend starts, and sets the app's database password from
+`APP_DB_PASSWORD`. The `sync` service then syncs every company every 5 minutes. To see what's happening:
+`docker compose ps` and `docker compose logs backend sync`.
+
+Never run `docker compose down -v` on the server: it deletes the database, including the audit log.
+
+## 6. Check it works
+
+| Check | ✅ |
+|---|---|
+| `https://<your address>/status` | `db: ok` |
+| `https://<your address>/login` | The Google, Slack and Atlassian sign-in buttons; **no** "Sign in as a seeded user" and **no** token form |
+| Sign in with Slack | You land on Connections with "Connected Slack"; the browser shows the cookie as `Secure` |
+| As the admin, set a boundary and run "sync now" | `docker compose logs sync` shows the scopes synced |
+| Ask a question about that content | An answer with sources |
+| `https://<your address>:8000` and `:3000` | Unreachable from outside (the firewall) |
+
+Then record what was done, and the address, in this page.
+
+## 7. Never on the live site
+
+- Real company data or real people's content: the demo uses fictional, team-owned workspaces (ADR-004).
+- Development mode, the demo personas or mock mode: they don't exist with `APP_ENV=production`.
+- Any secret in the repository, a screenshot or the demo video.

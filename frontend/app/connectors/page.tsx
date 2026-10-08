@@ -70,7 +70,8 @@ export default async function ConnectionsPage({ searchParams }: Props) {
   const slackConnected = connectors?.find((c) => c.id === "slack")?.connected ?? false;
   const atlassianConnected = connectors?.some((c) => (c.id === "jira" || c.id === "confluence") && c.connected) ?? false;
   const anyConnected = connectors?.some((c) => c.connected) ?? false;
-  // A company comes from a Slack workspace or an Atlassian site, never from Google (ADR-002 amendment, 5 Oct).
+  // A company comes from a Slack workspace; an Atlassian sign-in only joins one, and Google never names one
+  // (ADR-002 amendments, 5 and 7 Oct). So any Slack, Jira or Confluence connection means a company.
   const needsCompany = anyConnected && !slackConnected && !atlassianConnected;
 
   return (
@@ -106,8 +107,9 @@ export default async function ConnectionsPage({ searchParams }: Props) {
           <Alert>
             <Info aria-hidden="true" />
             <AlertDescription>
-              Your company comes from your Slack workspace or Atlassian site. Connect Slack, Jira or Confluence to join
-              it; until then, answers can&apos;t include your company&apos;s content.
+              Your company comes from your Slack workspace. Connect Slack to join it (Jira and Confluence join it too,
+              once your admin has added your company&apos;s Atlassian site); until then, answers can&apos;t include your
+              company&apos;s content.
             </AlertDescription>
           </Alert>
         ) : null}

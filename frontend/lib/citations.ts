@@ -6,7 +6,7 @@ const MARKERS = /[ \t]*(?:\[S\d+\])+/g;
 
 /**
  * Removes [S1]-style markers. Citations do not yet say which label they are
- * (ui-plan.md question log, Q1), so markers cannot be linked to the right
+ * (an open request to the query pipeline), so markers cannot be linked to the right
  * source; the Sources list is shown below the answer instead.
  */
 export function stripCitationMarkers(text: string): string {

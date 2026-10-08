@@ -6,7 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Theme tokens: ui-plan.md section 5.3, mapped onto shadcn's variable names (5.8).
+ * Theme tokens (calm, light and dark), mapped onto shadcn's variable names.
  * Every text/background pair was checked against WCAG AA (4.5:1 text, 3:1 UI).
  * Use these through Tailwind classes (bg-card, text-muted-foreground, ...);
  * never hard-code colours in components.
@@ -106,7 +106,7 @@
     }
 }
 
-/* Touch screens: hit targets of at least 44×44 px (ui-plan.md 5.5). Mouse and
+/* Touch screens: hit targets of at least 44×44 px (WCAG 2.5.5). Mouse and
    trackpad layouts keep shadcn's compact sizes. */
 @media (pointer: coarse) {
     [data-slot="button"],

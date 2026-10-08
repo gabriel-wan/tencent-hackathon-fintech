@@ -47,7 +47,7 @@ export function getMe(): Promise<Me> {
  * GET /api/dev/users. Returns null when the routes do not exist (404: the
  * backend is not in development mode) or cannot be listed, so the UI hides
  * every development-only control. The backend is the only source of truth
- * for development mode (ui-plan.md 4.1).
+ * for development mode: the frontend has no APP_ENV of its own.
  */
 export async function listDevUsers(): Promise<DevUser[] | null> {
   try {

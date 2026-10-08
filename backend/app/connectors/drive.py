@@ -1,4 +1,4 @@
-"""Google Drive connector. API details: docs/connectors/GOOGLE_DRIVE.md.
+"""Google Drive connector. API details: docs/connectors/reference/GOOGLE_DRIVE.md.
 
 Every call uses one person's own Google sign-in (store.client): the company admin's for sync and the
 scope list, the asking user's for the live check.
@@ -44,7 +44,7 @@ def scopes(drive) -> list[dict]:
 
 
 def acl(permissions: list[dict]) -> list[str]:
-    """Drive sharing -> ACL principals (docs/connectors/GOOGLE_DRIVE.md section 5)."""
+    """Drive sharing -> ACL principals (docs/connectors/reference/GOOGLE_DRIVE.md section 5)."""
     held = set()
     for p in permissions:
         email = p.get("emailAddress", "").lower()  # missing for e.g. a deleted account: it can't read anyway

@@ -1,5 +1,10 @@
 # PROJECT.md – KnowBuddy
 
+**For:** anyone who wants the why: the problem, the users, the scope, and how far along we are.
+**You'll:** see the challenge's scenarios, what's in and out of scope, the roadmap with each task's status, planned
+work and open questions.
+**Not here:** each scenario working → [FEATURES.md](FEATURES.md) · how it's built → [ARCHITECTURE.md](ARCHITECTURE.md).
+
 Product name **KnowBuddy**, built for the challenge "The Internal Brain" (the
 name nods to Tencent's CodeBuddy and WorkBuddy).
 
@@ -10,7 +15,7 @@ name nods to Tencent's CodeBuddy and WorkBuddy).
 | **Challenge** | The Internal Brain – Building a Context-Aware Enterprise Knowledge System with RBAC, Security Logging & Audit Trail |
 | **Team** | Gabriel Wan, Vincent Ong, Liew Ze Wei |
 | **Deadline** | Submission 16 Oct 2026; finalists 23 Oct; Demo Day 3 Nov (TBC) |
-| **Status** | Architecture decided (ADR-000 to ADR-008). Working end to end locally: sign-in, four real connectors, sync, permission-filtered chat with citations, tamper-evident audit log. Built state: [CURRENT.md](architecture/CURRENT.md) |
+| **Status** | Architecture decided (ADR-000 to ADR-009). Working end to end locally: sign-in, four real connectors, sync, permission-filtered chat with citations, tamper-evident audit log. How it's built: [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 Authoritative challenge text: [docs/hackathon/challenge.md](hackathon/challenge.md).
 Requirements and judging: [docs/hackathon/requirements.md](hackathon/requirements.md).
@@ -106,6 +111,50 @@ Questions the team answered:
   on the next question through the live check (ADR-003).
 - Admin and audit interface: an API plus admin pages (ADR-007).
 
+## Roadmap and status
+
+Status as of 8 October 2026, with the pull request that delivered each task. Task 1 is Vincent's, Task 2 Zewei's
+and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
+
+| Dates | Task | What | Status |
+|---|---|---|---|
+| 3–4 Oct | 1 | Jira, Confluence, Google Drive and Slack connectors; sync their data and permissions into the database | **Done** (#4) |
+| 3–4 Oct | 2 | Frontend: sign-in, persona switcher, chat with answers and citations | **Done** (#6) |
+| 3–4 Oct | 3 | Database schema, auth and permission filter, query pipeline (search → permission check → LLM answer) | **Done** (#5) |
+| 5–6 Oct | 1 | Live permission changes and data freshness | **Done** (#10) |
+| 5–6 Oct | 2 | Compliance/audit dashboard | **In progress**: the page exists with mock data; its API is in `main` since #11 |
+| 5–6 Oct | 3 | Tamper-evident audit log and audit search API | **Done** (#11) |
+| 7–8 Oct | 1 | PII redaction (Need-to-Know Shield) | **Not started** |
+| 7–8 Oct | 2 | UI polish; show redaction and freshness in the UI | **Not started** (the API already returns each citation's `synced_at`) |
+| 7–8 Oct | 3 | Prompt-injection protection; pass all 5 scenarios | **In progress**: retrieved text is fenced as untrusted and citations are checked; no dedicated injection tests or scenario run yet |
+| 9–10 Oct | 1 | Deploy to Tencent Cloud (live link) | **Not started** |
+| 9–10 Oct | 2 | Demo video and cover image | **Not started** |
+| 9–10 Oct | 3 | Tests, bug fixes and docs | **In progress** (with each pull request; docs restructure in progress) |
+| 11–12 Oct | 1 | Final testing on a clean machine | **Not started** |
+| 11–12 Oct | 2 | Project description and diagrams | **Not started** |
+| 11–12 Oct | 3 | Collect the CodeBuddy/WorkBuddy screenshots and submit | **Not started**: the evidence log is still empty, and without proof the project is not scored |
+| 13–16 Oct | | Buffer | |
+
+### Planned UI work
+
+What the frontend does next, and what each item waits for:
+
+
+| Waiting on | UI work |
+|---|---|
+| Nothing (the API exists) | Real `/admin/boundary` on the boundary API: list scopes per tool, add and remove them, "Sync now" |
+| Nothing | Show which sources are connected in the chat |
+| Return target after the OAuth callback | Show sign-in errors on `/login` rather than `/connectors`. The target must come from a fixed allowlist, never an arbitrary URL (open redirect) |
+| `label` on each citation | Turn `[S1]` markers into chips linked to the right source (today they are stripped: an answer citing `[S1]` and `[S3]` came back with two citations, so mapping by position would be wrong) |
+| `status` on query responses | Classify answers by status instead of matching the fixed sentences |
+| Nothing (the API exists) | Real `/admin/audit` (search, verify chain); make "Ref #" a link for admins |
+| Something to poll after `POST /api/admin/sync` (`synced_at` on citations and `last_synced_at` on the boundary already exist) | "Synced N minutes ago" under answers and after "Sync now", for the freshness demo (scenario 2) |
+| A company field on `GET /api/me` | Tell "you have no company yet" apart from "nothing found" (today `/connectors` only infers it from the connections) |
+| Redaction and injection flags (7–8 Oct) | Redaction chip on citations; blocked-injection notice on answers |
+
+Each replaces a stub or a reserved slot; remove the matching "Not built yet"
+panel and design preview in the same PR.
+
 ## Out of scope for the hackathon (proposed)
 
 - Production-grade identity federation with real enterprise IdPs
@@ -119,3 +168,16 @@ Questions the team answered:
 |---|---|
 | Linter / formatter | DECISIONS.md ADR-001 |
 | Track-specific judging criteria (if received) | docs/hackathon/requirements.md |
+
+**Questions for the team** (raised while building; each answer goes into DECISIONS.md or the code, and each can
+become a GitHub issue labelled `question`):
+
+| For | Question |
+|---|---|
+| Whole team | May the audit page show titles of documents the admin cannot read? (the original ARCHITECTURE.md §3.12 vs ADR-007.) Until decided, documents are shown by key |
+| Whole team | Demo accounts: which Google accounts are OAuth test users (Testing-mode tokens expire after 7 days)? A Google-only contractor no longer works (Google names no company), and Slack guests need a paid plan: how does the demo show the contractor? |
+| Query pipeline | Add `label` and `status` to the query response; should a 503 "LLM is not configured" become the fixed "unavailable" reply? |
+| Query pipeline | Without an LLM configured, `/api/query` returns 503 before the pipeline runs, so the question is not audited. Should it be? |
+| Connectors | A fixed-allowlist return target after sign-in, so a successful sign-in can land in the chat; what happens when someone disconnects their last connection; can personal Gmail users get `google:domain:gmail.com` as a principal? |
+| Connectors | `GET /api/me` has no company field, and `POST /api/admin/sync` gives nothing to poll (only each scope's `last_synced_at`): can both be added? |
+

@@ -15,10 +15,10 @@ agent session.
 - **Product:** KnowBuddy.
 - **Team:** Gabriel Wan, Vincent Ong, Liew Ze Wei. Submission deadline **16 Oct 2026**.
 - **Current stage:** architecture decided ([DECISIONS.md](docs/decisions/DECISIONS.md),
-  ADR-000 to ADR-008); the query pipeline, the four connectors, sync, the
-  tamper-evident audit log and the UI are built (what exists right now:
-  [CURRENT.md](docs/architecture/CURRENT.md)). Work follows
-  [ROADMAP.md](docs/ROADMAP.md). **Read the
+  ADR-000 to ADR-009); the query pipeline, the four connectors, sync, the
+  tamper-evident audit log and the UI are built (how it fits together:
+  [ARCHITECTURE.md](docs/ARCHITECTURE.md)). Work follows
+  the roadmap in [PROJECT.md](docs/PROJECT.md#roadmap-and-status). **Read the
   ADRs before building authorization, retrieval, LLM or audit code, and do not
   deviate from them without a new ADR.**
 
@@ -75,7 +75,7 @@ component.
 ## 3. Rules for coding agents
 
 Before substantial changes:
-1. Read [PROJECT.md](docs/PROJECT.md), [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md),
+1. Read [PROJECT.md](docs/PROJECT.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md),
    [SECURITY.md](docs/SECURITY.md) and the relevant files under `docs/`.
 2. Inspect the existing code before creating new abstractions. Reuse what is there.
 
@@ -84,13 +84,15 @@ While working:
 - Prefer simple implementations over premature abstractions.
 - Keep changes focused on one concern. Do not mix refactors with features.
 - Add tests for security-sensitive logic (authorization, filtering, audit
-  integrity, permission revocation). See [backend/tests/README.md](backend/tests/README.md).
+  integrity, permission revocation). See [TESTING.md](docs/TESTING.md) and [CONTRIBUTING.md](CONTRIBUTING.md) §8.
 - **Never silently change security behaviour.** Any change to authorization,
   filtering, audit logging or what the LLM receives must be called out
   explicitly in the change description and, where it is a design change,
   recorded in [DECISIONS.md](docs/decisions/DECISIONS.md).
-- Update documentation in the same change when architecture or important
-  behaviour changes. Stale docs are treated as bugs.
+- Update documentation in the same change when behaviour, setup or architecture
+  changes, following [CONTRIBUTING.md](CONTRIBUTING.md) §9: which page is each
+  topic's one home, how pages are written, and the Mermaid rules. Run
+  `python3 scripts/check_doc_links.py` before finishing. Stale docs are bugs.
 - Clearly distinguish **assumptions** from **confirmed requirements**. Mark
   assumptions as `ASSUMPTION:` in docs and comments.
 - When a product or security decision is genuinely ambiguous, ask the team
@@ -99,17 +101,15 @@ While working:
 - Do not choose a database, vector store, framework, LLM provider or cloud
   service on the team's behalf. Those are ADRs (see DECISIONS.md).
 
+Conventions: branch naming, commit messages, pull requests, reviews, decisions,
+migrations and tests are in [CONTRIBUTING.md](CONTRIBUTING.md). Follow them.
+
 Pull requests (agreed by the team, 8 Oct): every PR description, including one
 an agent writes or pre-fills (`gh pr create`, an API call, a `?body=` link), uses
 the template in [.github/pull_request_template.md](.github/pull_request_template.md)
-with all six sections, in order: Summary, New Features, Setup changes for
-teammates, Security changes, How it was tested, Checklist. Write "None" in a
-section that doesn't apply rather than deleting it, and state test commands and
-results as actually run. GitHub fills the template in only for PRs opened in its
-web UI, so agents must copy the sections themselves.
-
-Conventions (see [DEVELOPMENT.md](docs/DEVELOPMENT.md), section 1): branch
-naming, commit messages, pull requests, migrations and tests.
+with all six sections, in order (CONTRIBUTING.md §3). GitHub fills the template
+in only for PRs opened in its web UI, so agents must copy the sections
+themselves, and state test commands and results as actually run.
 
 ## 4. Tencent tools and proof of usage
 

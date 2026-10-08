@@ -15,7 +15,7 @@ const badgeVariants = cva(
           "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
-        // Ours: development-only aids and mock data (ui-plan.md 5.1, point 4).
+        // Ours: marks development-only aids and mock data, so they can't pass for real features.
         warning: "border-warning-foreground/30 bg-warning text-warning-foreground",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
