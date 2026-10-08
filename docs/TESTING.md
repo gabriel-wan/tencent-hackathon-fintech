@@ -128,7 +128,7 @@ Target: WCAG 2.2 AA. On 4 Oct every page and every chat state, light and dark, h
   header links move into the account menu, and buttons are at least 44 px tall on touch screens.
 - **Not yet checked:** a full pass with a screen reader (VoiceOver or NVDA).
 
-The accessibility rules the frontend follows: [frontend/README.md](../frontend/README.md) ("Accessibility").
+The accessibility rules the frontend follows: [architecture/FRONTEND.md](architecture/FRONTEND.md) ("Accessibility").
 
 ## 6. Mock mode
 
