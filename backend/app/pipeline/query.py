@@ -142,15 +142,16 @@ def answer_question(
             )
             for label, (c, chunks) in zip(by_label, sources)
         ]
+        messages = build_messages(question, blocks)
         audit["llm_called"] = True
         try:
-            result = llm.chat(build_messages(question, blocks))
+            result = llm.chat(messages)
         except Exception as exc:
             log.error("LLM call failed: %s", exc)
             answer = UNAVAILABLE_ANSWER
             audit["llm_error"] = type(exc).__name__
         else:
-            grounded = ground(result.content, set(by_label))
+            grounded = ground(result.content, set(by_label), seen=messages[1]["content"])
             answer = grounded.answer
             citations = [
                 Citation(c.key, c.title, c.url, c.source, c.updated_at, c.synced_at)
@@ -161,6 +162,7 @@ def answer_question(
                 prompt_tokens=result.prompt_tokens,
                 completion_tokens=result.completion_tokens,
                 removed_citations=grounded.removed_labels,  # labels the model invented
+                removed_links=grounded.removed_links,  # links the model was not shown
                 grounding_note=grounded.note,
             )
         finally:

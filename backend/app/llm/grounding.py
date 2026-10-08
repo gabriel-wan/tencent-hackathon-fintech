@@ -5,6 +5,7 @@
   so it cannot open or close one of our tags.
 - Sources get short per-query labels (S1, S2, ...); the model never sees raw IDs.
 - Every claim must cite a label; citations outside the allowed set are removed.
+- Links the model was not shown are removed from the answer.
 - If nothing valid is cited, the fixed "not found" answer is returned.
 """
 import json
@@ -36,6 +37,8 @@ LABEL_RE = re.compile(r"\[(S\d+)\]")
 # An opening bracket, or a look-alike NFKC keeps, before one of our tag names, with any spacing or slash.
 _TAG_RE = re.compile(r"[<\u2039\u3008\u27e8](?=\s*/?\s*(?:source|question))", re.IGNORECASE)
 _VARIATION_SELECTORS = re.compile("[\ufe00-\ufe0f\U000e0100-\U000e01ef]")
+URL_RE = re.compile(r"(?:https?://|www\.)[^\s<>\"'`\[\]{}|\\^]+", re.IGNORECASE)
+LINK_REMOVED = "[link removed]"
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,7 @@ class GroundedAnswer:
     labels: list[str]                       # valid citations, in order of first use
     removed_labels: list[str] = field(default_factory=list)
     note: str = ""
+    removed_links: int = 0
 
 
 def visible(value: str) -> str:
@@ -109,21 +113,39 @@ def is_fallback(answer: str) -> bool:
     return bare(answer) == bare(FALLBACK_ANSWER)
 
 
-def ground(raw: str, allowed_labels: set[str]) -> GroundedAnswer:
+def remove_unseen_links(answer: str, seen: str) -> tuple[str, int]:
+    """Remove every link that does not appear, exactly, in what the model was shown. An injected
+    source cannot get a made-up link into the answer, or one with data appended (exfiltration)."""
+    removed = 0
+
+    def check(m: re.Match) -> str:
+        nonlocal removed
+        url = m.group(0).rstrip(".,;:!?)")
+        if url in seen:
+            return m.group(0)
+        removed += 1
+        return LINK_REMOVED + m.group(0)[len(url):]
+    return URL_RE.sub(check, answer), removed
+
+
+def ground(raw: str, allowed_labels: set[str], seen: str = "") -> GroundedAnswer:
+    """`seen`: the text the model was shown; links in the answer must come from it."""
     answer, cited, valid_json = parse_reply(raw)
     answer = answer.strip()
     if is_fallback(answer):
         return GroundedAnswer(FALLBACK_ANSWER, [], note="model found no answer in the sources")
 
-    seen: list[str] = []
+    seen_labels: list[str] = []
     for label in cited + LABEL_RE.findall(answer):
-        if label not in seen:
-            seen.append(label)
-    valid = [lab for lab in seen if lab in allowed_labels]
-    removed = [lab for lab in seen if lab not in allowed_labels]
+        if label not in seen_labels:
+            seen_labels.append(label)
+    valid = [lab for lab in seen_labels if lab in allowed_labels]
+    removed = [lab for lab in seen_labels if lab not in allowed_labels]
 
     if removed:
         answer = LABEL_RE.sub(lambda m: m.group(0) if m.group(1) in allowed_labels else "", answer).strip()
     if not valid:
         return GroundedAnswer(FALLBACK_ANSWER, [], removed, note="no valid citation in model reply")
-    return GroundedAnswer(answer, valid, removed, note="" if valid_json else "reply was not valid JSON")
+    answer, removed_links = remove_unseen_links(answer, seen)
+    return GroundedAnswer(answer, valid, removed, note="" if valid_json else "reply was not valid JSON",
+                          removed_links=removed_links)
