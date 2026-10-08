@@ -164,7 +164,7 @@ it as a source.
 | `docker compose ps` shows `sync` as "unhealthy" | Harmless: it inherits the backend's web health check but has no web server. `docker compose logs sync` shows it working |
 | A `.env` change has no effect | `.env` is read when a service starts: `docker compose up -d --force-recreate backend sync` |
 | "Cannot connect to the Docker daemon" | Docker Desktop isn't running: start it and wait until it's ready |
-| Port 3000 is already in use | Another frontend is running. Stop it, or run the dev server on another port: [frontend/README.md](../frontend/README.md) ("Running") |
+| Port 3000 is already in use | Another frontend is running. Stop it, or run the dev server on another port: [frontend/README.md](../frontend/README.md) ("Commands") |
 
 Test-specific problems are in [TESTING.md](TESTING.md) §8.
 

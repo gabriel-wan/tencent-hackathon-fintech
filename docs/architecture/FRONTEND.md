@@ -186,7 +186,7 @@ The persona-by-persona checks with expected answers, and the states that can onl
   (`backend/app/pipeline/query.py`), so the real wiring should be a swap.
 - Documents are shown by key (`drive:D_Q3_INCIDENT`), not title, until the
   team decides whether the admin may see titles of documents they cannot
-  read (an open question, listed in [frontend/README.md](../../frontend/README.md)).
+  read (an open question, listed in [PROJECT.md](../PROJECT.md) "Open items").
 
 ## Talking to the backend
 

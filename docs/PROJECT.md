@@ -130,6 +130,26 @@ and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 | 11–12 Oct | 3 | Collect the CodeBuddy/WorkBuddy screenshots and submit | **Not started**: the evidence log is still empty, and without proof the project is not scored |
 | 13–16 Oct | | Buffer | |
 
+### Planned UI work
+
+What the frontend does next, and what each item waits for:
+
+
+| Waiting on | UI work |
+|---|---|
+| Nothing (the API exists) | Real `/admin/boundary` on the boundary API: list scopes per tool, add and remove them, "Sync now" |
+| Nothing | Show which sources are connected in the chat |
+| Return target after the OAuth callback | Show sign-in errors on `/login` rather than `/connectors`. The target must come from a fixed allowlist, never an arbitrary URL (open redirect) |
+| `label` on each citation | Turn `[S1]` markers into chips linked to the right source (today they are stripped: an answer citing `[S1]` and `[S3]` came back with two citations, so mapping by position would be wrong) |
+| `status` on query responses | Classify answers by status instead of matching the fixed sentences |
+| Nothing (the API exists) | Real `/admin/audit` (search, verify chain); make "Ref #" a link for admins |
+| Something to poll after `POST /api/admin/sync` (`synced_at` on citations and `last_synced_at` on the boundary already exist) | "Synced N minutes ago" under answers and after "Sync now", for the freshness demo (scenario 2) |
+| A company field on `GET /api/me` | Tell "you have no company yet" apart from "nothing found" (today `/connectors` only infers it from the connections) |
+| Redaction and injection flags (7–8 Oct) | Redaction chip on citations; blocked-injection notice on answers |
+
+Each replaces a stub or a reserved slot; remove the matching "Not built yet"
+panel and design preview in the same PR.
+
 ## Out of scope for the hackathon (proposed)
 
 - Production-grade identity federation with real enterprise IdPs
@@ -143,3 +163,16 @@ and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 |---|---|
 | Linter / formatter | DECISIONS.md ADR-001 |
 | Track-specific judging criteria (if received) | docs/hackathon/requirements.md |
+
+**Questions for the team** (raised while building; each answer goes into DECISIONS.md or the code, and each can
+become a GitHub issue labelled `question`):
+
+| For | Question |
+|---|---|
+| Whole team | May the audit page show titles of documents the admin cannot read? (the original ARCHITECTURE.md §3.12 vs ADR-007.) Until decided, documents are shown by key |
+| Whole team | Demo accounts: which Google accounts are OAuth test users (Testing-mode tokens expire after 7 days)? A Google-only contractor no longer works (Google names no company), and Slack guests need a paid plan: how does the demo show the contractor? |
+| Query pipeline | Add `label` and `status` to the query response; should a 503 "LLM is not configured" become the fixed "unavailable" reply? |
+| Query pipeline | Without an LLM configured, `/api/query` returns 503 before the pipeline runs, so the question is not audited. Should it be? |
+| Connectors | A fixed-allowlist return target after sign-in, so a successful sign-in can land in the chat; what happens when someone disconnects their last connection; can personal Gmail users get `google:domain:gmail.com` as a principal? |
+| Connectors | `GET /api/me` has no company field, and `POST /api/admin/sync` gives nothing to poll (only each scope's `last_synced_at`): can both be added? |
+
