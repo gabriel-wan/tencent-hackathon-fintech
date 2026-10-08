@@ -55,7 +55,7 @@ seeded users and `POST /api/dev/session` signs in as one of them; see
 - If two branches add the same migration number, whoever merges second renumbers theirs.
 - If your local database was migrated by a migration that was later renumbered, reset it: `docker compose down -v`.
 
-**Git:** work on a branch, then open a pull request to `main`.
+**Git:** work on a branch, then open a pull request to `main`. Its description uses the team's template, [.github/pull_request_template.md](../.github/pull_request_template.md) (GitHub fills it in when you open a PR on the website; agents copy it, see AGENTS.md §3).
 
 ## 2. Environment variables
 
