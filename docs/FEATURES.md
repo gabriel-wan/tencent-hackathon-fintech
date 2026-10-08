@@ -191,7 +191,7 @@ Limits: no dedicated prompt-injection test suite yet (roadmap).
 
 Being allowed to open a document is not the same as needing the customer's card number in it. Before any text
 leaves for the LLM, the Shield masks sensitive identifiers: cards, NRIC/FIN, bank accounts, IBANs, passports, dates
-of birth, phones, emails of people outside the company, names (labelled once anywhere, then every mention) and Singapore addresses. Only the people the
+of birth, phones, emails of people outside the company, names (labelled; a person's name in every mention) and Singapore addresses. Only the people the
 source names as handling that item (Jira assignee and reporter, Drive owners and editors, Confluence owner and
 author) see them in full. Credentials are masked for everyone, admins included. The masking is a fixed set of
 checked patterns (Luhn for cards, mod-97 for IBANs), so the same text always gives the same result.

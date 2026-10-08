@@ -519,13 +519,17 @@ of answers people copy and share.
   just before it; spaced, dashed or dotted), bank account, passport and date of
   birth (after an English or Chinese label), NRIC/FIN, email (any script),
   phone (`+` international, Singapore, or any format after a label), names
-  after a label or honorific (`Customer:`, `Mdm`, `姓名：`) or spelled by an
-  email address the text also writes out (`jane.lee@` and "Jane Lee"), and
-  every other mention of such a name or its first or last name anywhere in
-  the same question's sources (or, for embeddings, the same document), with
-  the same tag ("Jane called" is `[name 1] called`), and Singapore
+  after a label or honorific (`Customer:`, `Mdm`, `姓名：`), and Singapore
   address markers (postal code, `#12-345`, `Blk 123`). Word boundaries are
   ASCII-only, so identifiers written inside Chinese text are caught.
+  A **person's** name (after an honorific or a person label: customer,
+  cardholder, account holder, full name, `姓名`, `持卡人`, `客户`) is also
+  masked in every other mention, with its first and last name, anywhere in
+  the question's sources (for embeddings, the same document), under the same
+  tag ("Jane called" is `[name 1] called`). A generic label (name, client,
+  payee, recipient, applicant, `户名`) can name an organisation or project
+  ("Client: DBS Bank", "Project Name: Gateway"), so its value is masked
+  where it stands only.
   Detection runs on a copy of the text as the model reads it: zero-width and
   other format characters dropped, every dash read as a hyphen, everything
   else in NFKC form, so `4111<U+200B>1111…` or `Ｓ１２３４５６７Ｄ` cannot slip
@@ -573,8 +577,8 @@ of answers people copy and share.
 - Performance: precompiled patterns, linear in text length (hostile inputs of
   200,000 characters are tested); well under the LLM's latency.
 - `ASSUMPTION:` limits accepted for the prototype:
-  - a name that no label, honorific or email marks anywhere in the question's
-    sources, and a street name, are not detected (that needs NER, rejected
+  - a person's name that no person label or honorific marks anywhere in the
+    question's sources, and a street name, are not detected (that needs NER, rejected
     above);
   - a first or last name of a detected person is masked wherever it appears,
     so a capitalised word that is also their name ("May", "Will") is masked

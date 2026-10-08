@@ -103,8 +103,8 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 5. Nothing left: return the fixed "not found" reply without calling the LLM.
    Otherwise the **Need-to-Know Shield** ([app/redaction.py](../../backend/app/redaction.py), ADR-010)
    masks each source's title, link and text: cards, NRIC/FIN, accounts, IBANs, passports,
-   dates of birth, phones, non-colleague emails, non-colleague names (labelled, or a mention of a name labelled in any
-   source of the question) and Singapore
+   dates of birth, phones, non-colleague emails, non-colleague names (labelled, or a mention of a person's name labelled
+   in any source of the question) and Singapore
    addresses, unless the user holds one of the document's
    `metadata.need_to_know` identities; secrets always. Secrets in the question are masked
    before step 2.
