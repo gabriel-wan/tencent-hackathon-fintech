@@ -106,18 +106,7 @@ flowchart TB
     class B,TH,TO outside
 ```
 
-Inside the backend (`backend/app/`):
-
-| Module | Job |
-|---|---|
-| `api/` | HTTP routes: `/api/query`, `/api/me`, `/api/session`, and `/api/dev/*` in development only |
-| `pipeline/query.py` | One question, end to end (section 4) |
-| `auth/` | Sessions, principals, and the live check |
-| `retrieval/search.py` | The permission-filtered hybrid search (gate 1) |
-| `llm/` | The TokenHub client and the grounding rules |
-| `audit/` | The hash-chained audit log and `/api/admin/audit` |
-| `connectors/` | Sign-in with each tool, stored tokens, fetching, live checks, and `/api/admin/*` boundary and sync |
-| `sync.py` | The sync worker (section 6); runs in the `sync` container |
+What each backend module does: [backend/README.md](../backend/README.md).
 
 - **The browser only talks to the frontend**, except during sign-in: the tools' sign-in pages must redirect to the
   backend (`/connectors/{id}/connect` and `/oauth/{provider}/callback`), which then returns the browser to the frontend.

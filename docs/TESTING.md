@@ -59,7 +59,7 @@ The unit tests sit next to the code they test (`*.test.ts`) and cover the securi
 reply an answer is, which source links are safe, removing `[S1]` markers, mock mode staying off in production, and
 the allowlist of sign-in error codes (`lib/connectors.test.ts`).
 
-To run the frontend with live reloading while you edit: [frontend/README.md](../frontend/README.md) ("Running").
+To run the frontend with live reloading while you edit: [frontend/README.md](../frontend/README.md) ("Commands").
 
 ## 3. Security invariants
 
