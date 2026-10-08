@@ -106,6 +106,30 @@ Questions the team answered:
   on the next question through the live check (ADR-003).
 - Admin and audit interface: an API plus admin pages (ADR-007).
 
+## Roadmap and status
+
+Status as of 8 October 2026, with the pull request that delivered each task. Task 1 is Vincent's, Task 2 Zewei's
+and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
+
+| Dates | Task | What | Status |
+|---|---|---|---|
+| 3–4 Oct | 1 | Jira, Confluence, Google Drive and Slack connectors; sync their data and permissions into the database | **Done** (#4) |
+| 3–4 Oct | 2 | Frontend: sign-in, persona switcher, chat with answers and citations | **Done** (#6) |
+| 3–4 Oct | 3 | Database schema, auth and permission filter, query pipeline (search → permission check → LLM answer) | **Done** (#5) |
+| 5–6 Oct | 1 | Live permission changes and data freshness | **Done** (#10) |
+| 5–6 Oct | 2 | Compliance/audit dashboard | **In progress**: the page exists with mock data; its API is in `main` since #11 |
+| 5–6 Oct | 3 | Tamper-evident audit log and audit search API | **Done** (#11) |
+| 7–8 Oct | 1 | PII redaction (Need-to-Know Shield) | **Not started** |
+| 7–8 Oct | 2 | UI polish; show redaction and freshness in the UI | **Not started** (the API already returns each citation's `synced_at`) |
+| 7–8 Oct | 3 | Prompt-injection protection; pass all 5 scenarios | **In progress**: retrieved text is fenced as untrusted and citations are checked; no dedicated injection tests or scenario run yet |
+| 9–10 Oct | 1 | Deploy to Tencent Cloud (live link) | **Not started** |
+| 9–10 Oct | 2 | Demo video and cover image | **Not started** |
+| 9–10 Oct | 3 | Tests, bug fixes and docs | **In progress** (with each pull request; docs restructure in progress) |
+| 11–12 Oct | 1 | Final testing on a clean machine | **Not started** |
+| 11–12 Oct | 2 | Project description and diagrams | **Not started** |
+| 11–12 Oct | 3 | Collect the CodeBuddy/WorkBuddy screenshots and submit | **Not started**: the evidence log is still empty, and without proof the project is not scored |
+| 13–16 Oct | | Buffer | |
+
 ## Out of scope for the hackathon (proposed)
 
 - Production-grade identity federation with real enterprise IdPs
