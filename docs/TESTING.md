@@ -37,6 +37,7 @@ docker compose run --rm --build --user root -e POSTGRES_DB=brain_test -v ./backe
 | `test_live_check.py` | Deny by default: false, missing, errors, timeouts, unlinked accounts |
 | `test_grounding.py` | Citation checking, fallback answer, untrusted text containment |
 | `test_query_pipeline.py` | What the LLM sees, when it is skipped, what is audited |
+| `test_redaction.py` | Need-to-Know Shield: each detector, need-to-know, secrets always, answer guard, hostile input |
 | `test_api.py` | Session-only identity, strict request bodies, development-only routes |
 | `test_connections_api.py` | Connector sign-in into the right company, principals, token refresh, disconnect |
 | `test_drive.py`, `test_slack.py`, `test_atlassian.py` | Fetch and ACL per source, live checks (`can_read`), retries |

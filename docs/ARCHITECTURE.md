@@ -41,7 +41,7 @@ flowchart TB
     G1["Gate 1: stored permissions<br/>one SQL query: own company,<br/>ACL shares a principal,<br/>scope is in the boundary,<br/>then rank the matches<br/>app/retrieval/search.py"]
     G2["Gate 2: ask each tool<br/>as this person, in parallel<br/>no, error or 2 s timeout: dropped<br/>app/auth/live_check.py"]
     N["Fixed 'not found' reply<br/>LLM not called"]
-    C["Allowed sources only,<br/>wrapped as untrusted data<br/>app/llm/grounding.py"]
+    C["Allowed sources only,<br/>identifiers masked unless need-to-know<br/>app/redaction.py,<br/>wrapped as untrusted data<br/>app/llm/grounding.py"]
     M["LLM: hy3 on TokenHub"]
     V["Citations checked<br/>against what was sent"]
     A[("Audit record written<br/>every decision and reason,<br/>hash-chained<br/>app/audit/log.py")]
@@ -139,9 +139,9 @@ sequenceDiagram
     alt Nothing allowed
         API-->>API: Fixed "not found" reply, LLM not called
     else Some sources allowed
-        API->>LLM: Allowed sources as untrusted blocks (≤ 12,000 characters)
+        API->>LLM: Allowed sources, identifiers masked, as untrusted blocks (≤ 12,000 characters)
         LLM-->>API: Answer citing [S1], [S2]…
-        API-->>API: Drop citations to anything not sent
+        API-->>API: Drop citations to anything not sent; mask identifiers the model was not shown
     end
     API->>DB: Add one hash-chained audit record (committed before replying)
     API-->>FE: Answer, sources (with synced_at), audit id
@@ -196,7 +196,7 @@ flowchart TB
     F --> W["Upsert documents and ACLs;<br/>rewrite chunks only if the text changed"]
     W --> D["Soft-delete items no longer there<br/>(only after a complete read)"]
     D --> S["Record the scope's last<br/>complete sync (synced_at)"]
-    S --> E["Embed new chunks<br/>(retried next run if TokenHub fails)"]
+    S --> E["Embed new chunks, identifiers masked<br/>(retried next run if TokenHub fails)"]
 ```
 
 New and edited content appears within about 5 minutes (ADR-005). **Revocations don't wait for sync**: the live check

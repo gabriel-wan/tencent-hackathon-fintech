@@ -198,6 +198,7 @@ One document per page:
   "text": "Discount bands for 2027 ...",                          // body.storage.value, tags stripped
   "url": "https://yourteam.atlassian.net/wiki/spaces/ENG/pages/77777/Pricing", // _links.base + webui
   "updated_at": "2026-10-01T13:05:00Z",                           // version.createdAt
+  "metadata": { "need_to_know": ["atlassian:user:5b10-sara"] },  // ownerId + authorId: ADR-010
   "acl": ["atlassian:user:5b10-sara"]
 }
 ```

@@ -37,6 +37,10 @@ Rules for connectors:
 - **`documents.company_id`** is the company that synced it. Search only ever
   reads the user's own company, so `public` and `slack:members` never cross
   companies.
+- **`documents.metadata.need_to_know`** lists the identity principals the source
+  names as the item's handlers (Jira assignee and reporter, Drive owners and
+  editors, Confluence owner and author). They see its identifiers unmasked
+  (ADR-010). Leave it empty when the source names nobody (Slack).
 - **`documents.scope_id`** is the Slack channel ID, Drive folder ID, Jira project
   key or Confluence space ID that appears in `boundary`. Documents whose
   `(company_id, source, scope_id)` is not in `boundary` are never used.
@@ -58,7 +62,7 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 
 | Method and path | Body | Returns |
 |---|---|---|
-| `POST /api/query` | `{"question": "..."}` (1 to 2,000 characters, no other fields) | `{"answer", "citations": [{"id", "title", "url", "source", "updated_at", "synced_at"}], "audit_id"}`. `updated_at`: last edit at the source. `synced_at`: when our copy was last confirmed against the source (null = never, e.g. seeded); show it as "as of" so stale content never looks current |
+| `POST /api/query` | `{"question": "..."}` (1 to 2,000 characters, no other fields) | `{"answer", "citations": [{"id", "title", "url", "source", "updated_at", "synced_at", "redacted"}], "audit_id"}`. `redacted`: identifiers masked in that source for you, by kind, e.g. `{"card": 1, "phone": 2}` (ADR-010). `updated_at`: last edit at the source. `synced_at`: when our copy was last confirmed against the source (null = never, e.g. seeded); show it as "as of" so stale content never looks current |
 | `GET /api/me` | | `{"email", "name", "is_admin"}`, or 401 if not signed in |
 | `DELETE /api/session` | | 204, signs out |
 | `GET /api/dev/users` | | Seeded users. **Development only** |
@@ -97,16 +101,24 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
    leaks, because only permitted documents are ever returned.
 4. Live check per source, in parallel, 2-second timeout. Deny by default.
 5. Nothing left: return the fixed "not found" reply without calling the LLM.
+   Otherwise the **Need-to-Know Shield** ([app/redaction.py](../../backend/app/redaction.py), ADR-010)
+   masks each source's title and text: cards, NRIC/FIN, accounts, IBANs, passports, dates of
+   birth, phones and non-colleague emails, unless the user holds one of the document's
+   `metadata.need_to_know` identities; secrets always. Secrets in the question are masked
+   before step 2.
 6. Up to 10 documents go to the LLM as `<source id="S1">` blocks marked as
    untrusted data, best-ranked chunks first, within 12,000 characters in total
    (smaller prompts answer faster); replies are capped at 1,024 tokens, with
    `hy3`'s hidden reasoning turned off (ADR-006). The model sees short labels,
    never raw IDs.
 7. Citations outside the labels sent are removed; with no valid citation the
-   reply becomes the fixed "not found" answer.
+   reply becomes the fixed "not found" answer. The answer guard then masks any
+   identifier the model was not shown unmasked and the user did not type.
 8. One `audit_events` row: user, question, search mode, every candidate with
    its decision and reason, what was sent to the LLM, answer, citations, model,
    and `timings_ms` per step (embed, search, live_check, llm, total; also logged).
+   `redactions` and `answer_masked` hold, per source, need-to-know and the count
+   masked per kind: counts, never values.
    It also records **restricted matches**: documents the question matched by
    keyword but the user may not see, with the reason. These come from a
    separate audit-only search and never reach the user or the LLM (ADR-007).

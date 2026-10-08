@@ -166,7 +166,7 @@ Each source's `fetch` yields one document per Drive file, Slack thread, Jira tic
   "text": "<plain text>",
   "url": "<link that opens it in the tool>",
   "updated_at": "2026-10-01T05:00:00Z",   // UTC
-  "metadata": {},                         // optional, per source
+  "metadata": {},                         // optional, per source; "need_to_know": handlers (ADR-010)
   "acl": ["google:user:<email>", "public"]
 }
 ```
