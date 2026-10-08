@@ -84,4 +84,4 @@ Built this way (app/pipeline/query.py; INV-1, INV-5):
 
 Tell the team immediately in the team channel and open an issue labelled
 `security`. Do not push a fix that changes security behaviour without a review
-from a second team member (see DEVELOPMENT.md).
+from a second team member (see [CONTRIBUTING.md](../CONTRIBUTING.md) §4).

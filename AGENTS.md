@@ -99,17 +99,15 @@ While working:
 - Do not choose a database, vector store, framework, LLM provider or cloud
   service on the team's behalf. Those are ADRs (see DECISIONS.md).
 
+Conventions: branch naming, commit messages, pull requests, reviews, decisions,
+migrations and tests are in [CONTRIBUTING.md](CONTRIBUTING.md). Follow them.
+
 Pull requests (agreed by the team, 8 Oct): every PR description, including one
 an agent writes or pre-fills (`gh pr create`, an API call, a `?body=` link), uses
 the template in [.github/pull_request_template.md](.github/pull_request_template.md)
-with all six sections, in order: Summary, New Features, Setup changes for
-teammates, Security changes, How it was tested, Checklist. Write "None" in a
-section that doesn't apply rather than deleting it, and state test commands and
-results as actually run. GitHub fills the template in only for PRs opened in its
-web UI, so agents must copy the sections themselves.
-
-Conventions (see [DEVELOPMENT.md](docs/DEVELOPMENT.md), section 1): branch
-naming, commit messages, pull requests, migrations and tests.
+with all six sections, in order (CONTRIBUTING.md §3). GitHub fills the template
+in only for PRs opened in its web UI, so agents must copy the sections
+themselves, and state test commands and results as actually run.
 
 ## 4. Tencent tools and proof of usage
 
