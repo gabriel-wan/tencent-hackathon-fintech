@@ -272,21 +272,5 @@ later run.
 
 ### 7.6 Check it works
 
-Run from the repo root. Replace `<POSTGRES_USER>` and `<POSTGRES_DB>` with the values in your `backend/.env`.
-
-- **Tests:** see [DEVELOPMENT.md §3](../DEVELOPMENT.md#3-unit-tests). ✅ All pass, with no real API calls.
-- **Same session as the app:** after connecting, open http://localhost:8000/api/me. ✅ It shows your email.
-- **Tokens are encrypted at rest:**
-  ```
-  docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "select provider, left(encode(access_token,'escape'),6) from connections;"
-  ```
-  ✅ The token column shows `gAAAAA` (ciphertext), never a raw token.
-- **Principals are written:**
-  ```
-  docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "select * from user_principals;"
-  ```
-  ✅ After connecting Drive: `google:user:<your email>` and `google:domain:<your domain>`.
-- **Outsiders are rejected:** connect Slack with a token from another workspace while you are already in a company. ✅ `?error=no_company` (or `account_mismatch`), and your company is unchanged.
-- **Revocations apply at once:** after a sync, remove a teammate from a private channel in the boundary, then ask about it as them. ✅ The answer no longer uses that channel, before any new sync.
-- **Disconnect:** click **Disconnect**. ✅ The tool shows **Connect** again, its rows are gone from `user_principals`, and the app is gone from https://myaccount.google.com/permissions.
-- **Log out:** at http://localhost:8000/docs, run **`DELETE /api/session`**. ✅ **Test** now returns `401`.
+Checks after connecting (session, encrypted tokens, principals, outsiders refused, revocations, disconnect, sign
+out): [TESTING.md](../TESTING.md) section 4, "With your own tools". Unit tests: [TESTING.md](../TESTING.md) section 1.

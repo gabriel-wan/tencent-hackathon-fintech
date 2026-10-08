@@ -164,31 +164,10 @@ Rules:
   returns to the question box after each answer. The thread follows new
   answers unless the reader has scrolled up.
 
-### Demo script (manual test)
+### Checking the chat by hand
 
-Sign in through the persona switcher with seed data loaded. Answers depend on
-the LLM: check the state and the sources, not the exact wording. Needs
-`LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` in `backend/.env` (values in
-`backend/.env.example`), then `docker compose up -d --force-recreate backend`;
-if any is missing, every question shows "The assistant isn't available right
-now" (the backend returns 503 before searching). Checked 4 Oct with the real
-LLM: all seven rows below behaved as expected.
-
-| Persona | Question | Expected |
-|---|---|---|
-| Alice | What's blocking the payment gateway migration? | Answer citing `#payments-oncall` (Slack) |
-| Alice | What does the runbook say about failover? | Answer citing the Drive runbook and/or `#eng` |
-| Ben | What's blocking the payment gateway migration? | Less, or "not found" (not in `#payments-oncall`) |
-| Charlie | What happened in the Q3 security incident? | Fixed "not found" (scenario 3) |
-| Priya | What happened in the Q3 security incident? | Answer citing the incident report and/or `#security-incidents` |
-| anyone | What are the salary bands? | Fixed "not found" (folder outside the admin boundary) |
-| anyone | asdkjh qwe | Fixed "not found", looking identical to Charlie's |
-
-Also: stop the backend → "Couldn't reach the server"; sign out in another tab
-→ the next question goes to `/login`. States that cannot be triggered on
-demand (unavailable, 422, a `javascript:` source URL, very long answers) are
-checked in mock mode with `mock:unavailable`, `mock:422`, `mock:bad-url`,
-`mock:long`.
+The persona-by-persona checks with expected answers, and the states that can only be triggered in mock mode:
+[docs/TESTING.md](../docs/TESTING.md) sections 4 and 6.
 
 ## Admin pages (stubs)
 
@@ -273,27 +252,14 @@ Rerun it whenever a backend route or response changes, and commit the result.
 
 ### Mock mode (development only)
 
-Builds the chat states without spending LLM tokens. Add
-`NEXT_PUBLIC_API_MOCK=1` to `frontend/.env` and restart `npm run dev`.
-
-- Only `askQuestion` (`POST /api/query`) is mocked; sign-in and `/api/me` stay
-  real, so the backend must be running.
-- A keyword in the question picks the reply: `mock:answered` (default),
-  `mock:long`, `mock:markers`, `mock:bad-url`, `mock:no-citations`,
-  `mock:not-found`, `mock:unavailable`, `mock:401`, `mock:422`, `mock:503`,
-  `mock:offline`. Replies take ~6 s; add `mock:fast` to skip the delay.
-- A **MOCK DATA** badge shows in the header, and mocked answers have
-  `audit_id` 0 (never audited).
-- Ignored in production builds (`next build`), so Docker images and the live
-  site cannot run it. Fixtures live in `lib/api/mock.ts`.
+`NEXT_PUBLIC_API_MOCK=1` fakes `askQuestion` (`POST /api/query`) with labelled fixtures from `lib/api/mock.ts`, so
+the chat states can be built without spending LLM tokens. It is ignored in production builds. How to use it:
+[docs/TESTING.md](../docs/TESTING.md) section 6.
 
 ## Tests
 
-From `frontend/`: `npm test` (Vitest). Tests sit next to the code
-(`*.test.ts`) and are named after behaviour. They cover the security-relevant
-helpers: fixed-reply classification, link safety, marker stripping, mock
-mode staying off in production, and the allowlist of sign-in error codes
-(`lib/connectors.test.ts`).
+From `frontend/`: `npm test` (Vitest); tests sit next to the code (`*.test.ts`). What they cover and the other
+checks to run: [docs/TESTING.md](../docs/TESTING.md) section 2.
 
 ## Folders
 
@@ -360,7 +326,7 @@ than explaining it.
 
 Target: WCAG 2.2 AA. Checked on 4 Oct with axe-core (the engine behind
 Lighthouse's accessibility audit) on every page and every chat state, light
-and dark: no violations.
+and dark: no violations. How to check: [docs/TESTING.md](../docs/TESTING.md) section 5.
 
 - **Keyboard.** The first Tab stop is "Skip to content". Every control has a
   visible focus ring. Menus open with Enter, move with the arrow keys and
