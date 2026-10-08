@@ -11,23 +11,37 @@ from sqlalchemy.exc import DBAPIError
 
 from app.api.deps import get_conn, get_llm, get_tx
 from app.audit.log import record_event, verify_chain
-from app.db import engine
+from app.db import APP_ROLE, engine, owner_engine
 from app.main import create_app
 from tests.helpers import within
 
 OWNER = os.environ["POSTGRES_USER"]
 
 
-def as_owner(conn):
-    """Act as the database owner for the rest of the test's transaction (rolled back afterwards)."""
-    conn.execute(text(f'SET LOCAL ROLE "{OWNER}"'))
+@pytest.fixture
+def owner():
+    """A connection as the database owner, who can switch the triggers off; rolled back afterwards."""
+    with owner_engine().connect() as connection:
+        transaction = connection.begin()
+        try:
+            yield connection
+        finally:
+            transaction.rollback()
 
 
-def tamper(conn, sql, **params):
+@pytest.fixture
+def owner_user(owner):
+    """(company id, user id), created on the owner's connection."""
+    company = owner.execute(text("INSERT INTO companies (name) VALUES ('Acme') RETURNING id")).scalar_one()
+    user = owner.execute(text("INSERT INTO users (email, company_id) VALUES ('alice@co.example', :c) RETURNING id"),
+                         {"c": company}).scalar_one()
+    return company, user
+
+
+def tamper(owner, sql, **params):
     """What someone with full database access could do: switch the trigger off and change the log."""
-    as_owner(conn)
-    conn.execute(text("ALTER TABLE audit_events DISABLE TRIGGER audit_events_no_update_delete"))
-    conn.execute(text(sql), params)
+    owner.execute(text("ALTER TABLE audit_events DISABLE TRIGGER audit_events_no_update_delete"))
+    owner.execute(text(sql), params)
 
 
 def chain(conn, company_id):
@@ -73,37 +87,37 @@ def test_a_record_without_a_company_goes_in_the_no_company_chain(conn, make_user
 
 
 @pytest.mark.security
-def test_a_changed_record_is_detected(conn, company, make_user):
-    alice = make_user("alice@co.example", [])
-    ids = [record_event(conn, alice.id, "query", {"question": f"q{i}"}) for i in range(3)]
-    assert verify_chain(conn, company)["ok"]
+def test_a_changed_record_is_detected(owner, owner_user):
+    company, alice = owner_user
+    ids = [record_event(owner, alice, "query", {"question": f"q{i}"}) for i in range(3)]
+    assert verify_chain(owner, company)["ok"]
 
-    tamper(conn, "UPDATE audit_events SET payload = '{\"question\": \"nothing to see\"}' WHERE id = :i", i=ids[1])
-    result = verify_chain(conn, company)
+    tamper(owner, "UPDATE audit_events SET payload = '{\"question\": \"nothing to see\"}' WHERE id = :i", i=ids[1])
+    result = verify_chain(owner, company)
     assert (result["ok"], result["first_broken_id"]) == (False, ids[1])
     assert result["reason"] == "this record was changed after it was written"
 
 
 @pytest.mark.security
-def test_a_deleted_record_is_detected(conn, company, make_user):
-    alice = make_user("alice@co.example", [])
-    ids = [record_event(conn, alice.id, "query", {"question": f"q{i}"}) for i in range(3)]
+def test_a_deleted_record_is_detected(owner, owner_user):
+    company, alice = owner_user
+    ids = [record_event(owner, alice, "query", {"question": f"q{i}"}) for i in range(3)]
 
-    tamper(conn, "DELETE FROM audit_events WHERE id = :i", i=ids[1])
-    result = verify_chain(conn, company)
+    tamper(owner, "DELETE FROM audit_events WHERE id = :i", i=ids[1])
+    result = verify_chain(owner, company)
     assert (result["ok"], result["first_broken_id"]) == (False, ids[2])  # the next record's link breaks
     assert result["reason"] == "the record before this one was changed, deleted or reordered"
 
 
 @pytest.mark.security
-def test_recomputing_a_changed_records_hash_still_breaks_the_next_link(conn, company, make_user):
-    alice = make_user("alice@co.example", [])
-    ids = [record_event(conn, alice.id, "query", {"question": f"q{i}"}) for i in range(3)]
+def test_recomputing_a_changed_records_hash_still_breaks_the_next_link(owner, owner_user):
+    company, alice = owner_user
+    ids = [record_event(owner, alice, "query", {"question": f"q{i}"}) for i in range(3)]
 
-    tamper(conn, "UPDATE audit_events SET payload = '{}', "
-                 "hash = audit_event_hash(prev_hash, id, ts, company_id, user_id, event_type, '{}') WHERE id = :i",
+    tamper(owner, "UPDATE audit_events SET payload = '{}', "
+                  "hash = audit_event_hash(prev_hash, id, ts, company_id, user_id, event_type, '{}') WHERE id = :i",
            i=ids[1])
-    assert verify_chain(conn, company)["first_broken_id"] == ids[2]
+    assert verify_chain(owner, company)["first_broken_id"] == ids[2]
 
 
 @pytest.mark.security
@@ -113,6 +127,7 @@ def test_the_app_role_can_add_records_but_never_change_them_or_switch_the_trigge
     for statement in ("UPDATE audit_events SET payload = '{}' WHERE id = :i",
                       "DELETE FROM audit_events WHERE id = :i",
                       "TRUNCATE audit_events",
+                      "TRUNCATE users CASCADE",  # the app never empties tables
                       "ALTER TABLE audit_events DISABLE TRIGGER audit_events_no_update_delete"):
         savepoint = conn.begin_nested()
         with pytest.raises(DBAPIError, match="permission denied|must be owner"):
@@ -121,12 +136,25 @@ def test_the_app_role_can_add_records_but_never_change_them_or_switch_the_trigge
 
 
 @pytest.mark.security
-def test_even_the_owner_is_stopped_by_the_triggers(conn, make_user):
-    alice = make_user("alice@co.example", [])
-    event = record_event(conn, alice.id, "query", {"question": "q"})
-    as_owner(conn)
+def test_the_app_can_never_switch_to_a_more_powerful_role(conn):
+    """Review of PR #11: the app used to log in as the owner, and `SET ROLE NONE` switched back to it."""
+    conn.execute(text("SET ROLE NONE"))
+    assert conn.execute(text("SELECT current_user, session_user")).one() == (APP_ROLE, APP_ROLE)
+    assert conn.execute(text("SELECT rolsuper OR rolcreaterole OR rolbypassrls FROM pg_roles "
+                             "WHERE rolname = current_user")).scalar() is False
+    for statement in (f'SET ROLE "{OWNER}"', f'SET SESSION AUTHORIZATION "{OWNER}"'):
+        savepoint = conn.begin_nested()
+        with pytest.raises(DBAPIError, match="permission denied"):
+            conn.execute(text(statement))
+        savepoint.rollback()
+
+
+@pytest.mark.security
+def test_even_the_owner_is_stopped_by_the_triggers(owner, owner_user):
+    _, alice = owner_user
+    event = record_event(owner, alice, "query", {"question": "q"})
     with pytest.raises(DBAPIError, match="append-only"):
-        conn.execute(text("UPDATE audit_events SET payload = '{}' WHERE id = :i"), {"i": event})
+        owner.execute(text("UPDATE audit_events SET payload = '{}' WHERE id = :i"), {"i": event})
 
 
 @pytest.mark.security
@@ -262,3 +290,4 @@ def test_searching_and_verifying_are_themselves_audited(conn, company, people):
     assert logged[0].payload == {"filters": {"user": "jdoe@co.example", "limit": 50}, "results": 1}
     assert logged[1].payload["ok"] is True
     assert verify_chain(conn, company)["ok"]  # those records are in the chain too
+
