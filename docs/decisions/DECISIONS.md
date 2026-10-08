@@ -18,6 +18,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | [006](#adr-006-llmprovider-selection) | LLM / provider selection | Accepted |
 | [007](#adr-007-audit-log-design) | Audit-log design | Accepted |
 | [008](#adr-008-deployment-architecture) | Deployment architecture | Accepted |
+| [009](#adr-009-frontend-architecture) | Frontend architecture | Accepted |
 
 ---
 
@@ -435,3 +436,51 @@ the existing Docker Compose setup, with the database on the same server.
 - Secrets on the server come from environment variables, never from the
   repository.
 - The live site must not expose real credentials or real company data.
+
+---
+
+## ADR-009: Frontend architecture
+
+- **Status:** Accepted
+- **Date:** 2026-10-04 (recorded here 2026-10-08)
+- **Deciders:** Zewei (frontend owner); reviewed by Gabriel in PR #6
+- **Scope:** UI toolkit, how the browser reaches the backend, where sign-in is
+  checked, how development-only features are switched on, and how answers
+  are rendered. Relates to INV-2, INV-3, INV-5 and T6 (SECURITY.md).
+
+### Decision
+
+- **UI toolkit:** Tailwind CSS v4 and shadcn/ui (Radix), with the system
+  light/dark theme plus a toggle (next-themes). A calm, plain look: system
+  fonts, colours only from theme variables.
+- **One origin for the browser:** the browser calls the backend only through
+  the frontend's `/api/*` proxy, a route handler that forwards the session
+  cookie. A Next.js rewrite was rejected because it fixes the backend address
+  at build time, while Docker sets it at run time.
+- **Sign-in checked on the server:** the signed-in layout calls `GET /api/me`
+  before rendering, and `/connectors` (where every sign-in returns) checks its
+  own session so it can pass an allowlisted `?error=` code to `/login`.
+  Sign-in links are plain links to the backend, because the tools' sign-in
+  must start and end there.
+- **No development flag in the frontend:** development-only controls (persona
+  switcher, Slack token form, design previews) appear only when the backend
+  answers `GET /api/dev/users`, which exists only with `APP_ENV=development`.
+- **Server actions for Test and Disconnect,** treated as public endpoints:
+  they accept only the four known connector ids and leave every decision to
+  the backend.
+- **Answers are plain text,** and only absolute `http(s)` source links are
+  clickable. Chat history lives in memory only and is cleared by a full page
+  load on sign-out or user switch.
+- **Mock mode** fakes chat answers for UI work, labelled MOCK DATA, and is
+  ignored by production builds.
+
+### Consequences
+
+- The frontend never decides who may see what; hiding a link is cosmetic and
+  the backend refuses anyway (INV-2).
+- No cross-origin cookie handling is needed, locally or live.
+- One switch (`APP_ENV` on the backend) turns every development-only feature
+  on or off, so a production build can't show them by mistake.
+- Retrieved text can't inject HTML or scripts into the page (T12).
+- Details: [docs/architecture/FRONTEND.md](../architecture/FRONTEND.md).
+

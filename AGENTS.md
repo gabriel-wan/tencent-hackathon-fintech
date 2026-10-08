@@ -15,9 +15,9 @@ agent session.
 - **Product:** KnowBuddy.
 - **Team:** Gabriel Wan, Vincent Ong, Liew Ze Wei. Submission deadline **16 Oct 2026**.
 - **Current stage:** architecture decided ([DECISIONS.md](docs/decisions/DECISIONS.md),
-  ADR-000 to ADR-008); the query pipeline, the four connectors, sync, the
-  tamper-evident audit log and the UI are built (what exists right now:
-  [CURRENT.md](docs/architecture/CURRENT.md)). Work follows
+  ADR-000 to ADR-009); the query pipeline, the four connectors, sync, the
+  tamper-evident audit log and the UI are built (how it fits together:
+  [ARCHITECTURE.md](docs/ARCHITECTURE.md)). Work follows
   the roadmap in [PROJECT.md](docs/PROJECT.md#roadmap-and-status). **Read the
   ADRs before building authorization, retrieval, LLM or audit code, and do not
   deviate from them without a new ADR.**
@@ -75,7 +75,7 @@ component.
 ## 3. Rules for coding agents
 
 Before substantial changes:
-1. Read [PROJECT.md](docs/PROJECT.md), [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md),
+1. Read [PROJECT.md](docs/PROJECT.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md),
    [SECURITY.md](docs/SECURITY.md) and the relevant files under `docs/`.
 2. Inspect the existing code before creating new abstractions. Reuse what is there.
 
