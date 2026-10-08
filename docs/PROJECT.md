@@ -10,7 +10,7 @@ name nods to Tencent's CodeBuddy and WorkBuddy).
 | **Challenge** | The Internal Brain – Building a Context-Aware Enterprise Knowledge System with RBAC, Security Logging & Audit Trail |
 | **Team** | Gabriel Wan, Vincent Ong, Liew Ze Wei |
 | **Deadline** | Submission 16 Oct 2026; finalists 23 Oct; Demo Day 3 Nov (TBC) |
-| **Status** | Architecture decided (ADR-000 to ADR-008). Working end to end locally: sign-in, four real connectors, sync, permission-filtered chat with citations, tamper-evident audit log. How it's built: [ARCHITECTURE.md](ARCHITECTURE.md) |
+| **Status** | Architecture decided (ADR-000 to ADR-009). Working end to end locally: sign-in, four real connectors, sync, permission-filtered chat with citations, tamper-evident audit log. How it's built: [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 Authoritative challenge text: [docs/hackathon/challenge.md](hackathon/challenge.md).
 Requirements and judging: [docs/hackathon/requirements.md](hackathon/requirements.md).

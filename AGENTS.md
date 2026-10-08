@@ -15,7 +15,7 @@ agent session.
 - **Product:** KnowBuddy.
 - **Team:** Gabriel Wan, Vincent Ong, Liew Ze Wei. Submission deadline **16 Oct 2026**.
 - **Current stage:** architecture decided ([DECISIONS.md](docs/decisions/DECISIONS.md),
-  ADR-000 to ADR-008); the query pipeline, the four connectors, sync, the
+  ADR-000 to ADR-009); the query pipeline, the four connectors, sync, the
   tamper-evident audit log and the UI are built (how it fits together:
   [ARCHITECTURE.md](docs/ARCHITECTURE.md)). Work follows
   the roadmap in [PROJECT.md](docs/PROJECT.md#roadmap-and-status). **Read the

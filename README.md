@@ -27,7 +27,7 @@ statement: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 
 ## Current status
 
-**Architecture decided (ADR-000 to ADR-008). End to end working locally: sign-in, the four connectors, sync, permission-filtered chat with citations, and a tamper-evident audit log.**
+**Architecture decided (ADR-000 to ADR-009). End to end working locally: sign-in, the four connectors, sync, permission-filtered chat with citations, and a tamper-evident audit log.**
 
 `docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector. People sign
 in by connecting their own Slack, Google Drive, Jira or Confluence account
@@ -81,7 +81,7 @@ embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
 │   ├── architecture/        deep dives: query pipeline, connectors, frontend
 │   ├── connectors/          GUIDE.md (setup and API) and one page per tool
 │   ├── decisions/
-│   │   ├── DECISIONS.md     decision log (ADR-000 to ADR-008 accepted)
+│   │   ├── DECISIONS.md     decision log (ADR-000 to ADR-009 accepted)
 │   │   └── adr-template.md
 │   └── hackathon/
 │       ├── handbook.pdf     official handbook (source of truth)
