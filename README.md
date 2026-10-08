@@ -1,137 +1,99 @@
 # KnowBuddy
 
-> Built for the Aspire challenge "The Internal Brain". Product name: **KnowBuddy**.
+**Ask your company's tools a question. See only what you're allowed to.**
 
-A permission-aware enterprise knowledge system that answers natural-language
-questions across Confluence, Jira, Slack and Google Drive without ever showing
-a user, or the LLM, content that user is not authorized to see, and keeps a
-tamper-evident audit trail of who asked what, what was retrieved, and what was
-answered.
+KnowBuddy answers questions from a company's Slack, Google Drive, Jira and Confluence, with citations, using only
+what the person asking can already see in those tools. Content they may not see never reaches the AI model, and every
+question and admin action goes into a tamper-evident audit log.
 
-| | |
+Built for the **Tencent Cloud AI CAN DO IT Hackathon Singapore 2026**, FinTech track, Aspire's challenge *"The
+Internal Brain: Building a Context-Aware Enterprise Knowledge System with RBAC, Security Logging & Audit Trail"*.
+
+## What it solves
+
+The challenge's five scenarios, each worked through with real output in [FEATURES.md](docs/FEATURES.md):
+
+| # | Scenario | Status |
+|---|---|---|
+| 1 | One answer from several tools, with citations | Works |
+| 2 | Fresh within a stated window: content in about 5 minutes, or at once with "sync now" | Works; "synced N minutes ago" in the UI is planned |
+| 3 | A restricted document stays invisible, and its existence isn't revealed | Works |
+| 4 | A revoked permission applies on the very next question | Works |
+| 5 | An admin can reconstruct what someone accessed, from a tamper-evident log | Works through the API; the Audit page is being wired |
+
+## How it works
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
+flowchart LR
+    Q["Question"] --> G1["Gate 1<br/>stored permissions"]
+    G1 --> G2["Gate 2<br/>ask each tool,<br/>as this person"]
+    G2 --> L["LLM sees only<br/>what passed both"]
+    L --> A["Answer +<br/>sources"]
+    G2 -.-> AU[("Audit log")]
+    L -.-> AU
+
+    classDef gate fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#000
+    classDef llm fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000
+    class G1,G2 gate
+    class L llm
+```
+
+Deterministic code decides who may see what, twice, before the model is called: first from permissions copied from
+each tool, then by asking each tool, as the person asking, whether they can still read each document. The model never
+decides access. The full trust boundary, the parts and the trade-offs: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Try it
+
+- **Live demo:** coming with the deployment (planned 9–10 Oct, [DEPLOYMENT.md](docs/DEPLOYMENT.md)).
+- **On your computer** (needs Git and Docker Desktop; details in [RUNNING.md](docs/RUNNING.md)):
+
+  ```bash
+  git clone <repo-url> && cd tencent-hackathon-fintech
+  cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env
+  ```
+
+  Fill in the four settings in [RUNNING.md](docs/RUNNING.md) §2, then:
+
+  ```bash
+  docker compose up --build
+  ```
+
+  Then, in a second terminal, load the demo data:
+
+  ```bash
+  docker compose run --rm backend python -m app.seed
+  ```
+
+  Open http://localhost:3000/login and sign in as Alice, Charlie or Priya to see what each may see.
+
+## Documentation
+
+| Guide | Read it to |
 |---|---|
-| **Hackathon** | Tencent Cloud AI CAN DO IT Hackathon Singapore 2026 |
-| **Track** | FinTech – Aspire |
-| **Challenge** | The Internal Brain – Building a Context-Aware Enterprise Knowledge System with RBAC, Security Logging & Audit Trail |
-| **Team** | Gabriel Wan, Vincent Ong, Liew Ze Wei |
-| **Submission deadline** | **16 October 2026** |
+| [RUNNING.md](docs/RUNNING.md) | Run and use KnowBuddy, with demo personas or your own tools |
+| [FEATURES.md](docs/FEATURES.md) | See each feature and scenario working, and how it works |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | See how it's built: the trust boundary, the parts, the data model, the trade-offs |
+| [SECURITY.md](docs/SECURITY.md) | Know the security rules and the tests that guard them |
+| [TESTING.md](docs/TESTING.md) | Test a change, or check everything before submitting |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Put it on a server |
+| [PROJECT.md](docs/PROJECT.md) | Know the goals, scope, roadmap and open questions |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Change code, open a pull request, or propose a decision |
 
-## Problem
+Every other page, where things live and a glossary: [docs/README.md](docs/README.md).
 
-Enterprise knowledge is fragmented across wikis, tickets, chat and files, each
-with its own permission model. An AI assistant that can read everything can
-also leak everything. The challenge is to deliver unified, grounded answers
-with citations while respecting every source platform's access controls,
-staying fresh within a bounded window, and recording an auditable trail. Full
-statement: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
+## Built with
 
-## Current status
+Next.js · FastAPI · PostgreSQL with pgvector · Tencent Cloud TokenHub (`hy3` and embeddings) · Docker Compose on
+Tencent Cloud Lighthouse. Why each was chosen: [DECISIONS.md](docs/decisions/DECISIONS.md).
 
-**Architecture decided (ADR-000 to ADR-009). End to end working locally: sign-in, the four connectors, sync, permission-filtered chat with citations, and a tamper-evident audit log.**
+## Team
 
-`docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector. People sign
-in by connecting their own Slack, Google Drive, Jira or Confluence account
-([setting up the tools](docs/connectors/SETUP.md)). Many companies can share one
-deployment, each seeing only its own data. Sync copies each company's chosen
-channels, folders, projects and spaces, with their permissions, every 5
-minutes. A question is answered only from documents the asker may see,
-confirmed live with each tool as that person, with citations
-([QUERY_PIPELINE.md](docs/architecture/QUERY_PIPELINE.md)). Every question and
-admin action goes into a per-company hash chain that admins can search and
-verify (ADR-007). Fictional seed data is available for development.
+| | Owns |
+|---|---|
+| Vincent Ong | Connectors, sync and companies |
+| Liew Ze Wei | Frontend |
+| Gabriel Wan | Query pipeline and audit log |
 
-Not built yet: the admin Audit and Boundary pages (the APIs exist; the pages
-are previews with mock data), PII redaction, the prompt-injection test suite,
-and the hosted deployment ([roadmap](docs/PROJECT.md#roadmap-and-status)).
-
-## Architecture
-
-How it's built, with diagrams of the trust boundary, the parts, one question and one sign-in:
-[ARCHITECTURE.md](docs/ARCHITECTURE.md).
-The non-negotiable security boundary:
-
-```
-USER → AUTHENTICATION → AUTHORIZATION → PERMISSION-AWARE RETRIEVAL
-     → CONTEXT ASSEMBLY → LLM → ANSWER + CITATIONS
-```
-
-Authorization is evaluated by deterministic code that knows the user's
-identity, **before** anything reaches the LLM. The LLM never decides who may
-see what. Every stage emits audit events. Stack: Next.js, FastAPI,
-PostgreSQL + pgvector (ADR-001); Tencent Cloud TokenHub for the LLM and
-embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
-(ADR-008). All decisions: [DECISIONS.md](docs/decisions/DECISIONS.md).
-
-## Repository structure
-
-```
-.
-├── README.md                this file
-├── AGENTS.md                instructions for AI coding agents (CodeBuddy, WorkBuddy, Claude Code, ...)
-├── CLAUDE.md                pointer to AGENTS.md
-├── CONTRIBUTING.md          how the team works: branches, commits, PRs, reviews, decisions
-├── .github/                 pull request template
-├── docs/
-│   ├── PROJECT.md           problem, users, scenarios, scope, roadmap and status
-│   ├── SECURITY.md          threat model and security invariants
-│   ├── README.md            map of the docs, and a glossary
-│   ├── RUNNING.md           run and use it: settings, demo personas, your own tools, troubleshooting
-│   ├── TESTING.md           backend, frontend, manual and accessibility checks
-│   ├── ARCHITECTURE.md      how it's built: trust boundary, parts, flows, data model, trade-offs
-│   ├── architecture/        deep dives: query pipeline, connectors, frontend
-│   ├── connectors/          SETUP.md (set up each tool) and reference/ (each tool's API)
-│   ├── decisions/
-│   │   ├── DECISIONS.md     decision log (ADR-000 to ADR-009 accepted)
-│   │   └── adr-template.md
-│   └── hackathon/
-│       ├── handbook.pdf     official handbook (source of truth)
-│       ├── challenge.md     the Internal Brain challenge, organised
-│       ├── requirements.md  mandatory requirements, timeline, judging, credits
-│       ├── submission.md    submission checklist with deadline
-│       ├── tool-usage.md    CodeBuddy/WorkBuddy usage log and checklist
-│       └── evidence/        real screenshots / recordings, captured during development
-├── docker-compose.yml       runs db, migrate, backend, sync and frontend
-├── frontend/                Next.js app (localhost:3000), config in .env.example
-├── backend/                 FastAPI app (localhost:8000), config in .env.example, tests in tests/, Alembic migrations in migrations/
-└── scripts/                 helper scripts (check_doc_links.py: broken links in the docs)
-```
-
-## Development
-
-Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to
-`frontend/.env`, then `docker compose up --build`. Frontend at
-http://localhost:3000, backend at http://localhost:8000/health. `.env` is
-git-ignored and must never be committed. Step by step, with demo personas:
-[RUNNING.md](docs/RUNNING.md). Testing: [TESTING.md](docs/TESTING.md). Every doc: [docs/README.md](docs/README.md).
-
-## Security principles
-
-Design principles, not claims about the implementation. Full list and threat
-model in [SECURITY.md](docs/SECURITY.md).
-
-- Unauthorized content never enters the LLM context.
-- The LLM is never the component that decides authorization.
-- Source-platform permission semantics are preserved, not flattened.
-- Restricted content's existence is not revealed in negative cases.
-- Permission changes are reflected within a stated freshness window.
-- Every meaningful action produces a tamper-evident, queryable audit event.
-- Retrieved content is untrusted data, never instructions.
-- Secrets live only in the environment.
-
-## Hackathon submission
-
-- Deadline **16 Oct 2026**; finalists 23 Oct; Demo Day 3 Nov (TBC).
-- The project must be built with **CodeBuddy or WorkBuddy**, with mandatory
-  proof (3+ screenshots or a screen recording of development chat logs).
-- Required: title, blurb under 10 words, description, source code on GitHub,
-  16:9 cover image, tool-usage proof, worked examples for the five challenge
-  scenarios, architecture and trust-boundary diagram. Optional: demo video,
-  live link.
-- Checklist: [docs/hackathon/submission.md](docs/hackathon/submission.md).
-  Requirements: [docs/hackathon/requirements.md](docs/hackathon/requirements.md).
-
-## For AI coding agents
-
-Read [AGENTS.md](AGENTS.md) first, and the ADRs in
-[DECISIONS.md](docs/decisions/DECISIONS.md) before touching authorization,
-retrieval, LLM or audit code.
+CodeBuddy and WorkBuddy usage evidence: [tool-usage.md](docs/hackathon/tool-usage.md). Submission deadline:
+16 October 2026 ([checklist](docs/hackathon/submission.md)).
