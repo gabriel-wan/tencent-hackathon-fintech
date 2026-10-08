@@ -1,11 +1,12 @@
 /**
  * MOCK DATA for the audit page's design preview (development only).
  *
- * ASSUMPTION: there is no audit API yet (ui-plan.md 6.5 proposes one). The
- * payload keys copy what backend/app/pipeline/query.py writes today, taken
- * from real local records on 4 Oct, so wiring the real API should mostly be a
- * swap. Documents are shown by key only: whether the page may show titles of
- * restricted documents is an open team decision (question log, Q15).
+ * The real audit API now exists (GET /api/admin/audit and POST
+ * /api/admin/audit/verify, backend/app/audit/api.py); these fixtures stay only
+ * until /admin/audit is wired to it. The payload keys copy what
+ * backend/app/pipeline/query.py writes, so wiring the real API should mostly be
+ * a swap. Documents are shown by key only: whether the page may show titles of
+ * restricted documents is an open team decision.
  */
 
 export type AuditDecision = { document: string; allowed: boolean; reason: string };

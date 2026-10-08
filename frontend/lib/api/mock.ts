@@ -7,7 +7,7 @@
  * On when NEXT_PUBLIC_API_MOCK=1 in frontend/.env AND this is not a
  * production build, so it can never run in Docker images or on the live site.
  * Whenever it is on, the header shows a MOCK DATA badge (AGENTS.md §2.5).
- * Content is fictional (the MerlionPay seed world). See ui-plan.md step 2.6.
+ * Content is fictional (the MerlionPay seed world).
  */
 import { NOT_FOUND_ANSWER, UNAVAILABLE_ANSWER } from "@/lib/answers";
 
