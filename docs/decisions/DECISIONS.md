@@ -108,7 +108,7 @@ implementation:
 - **Why:** dependency groups (PEP 735) keep dev tools such as pytest out of
   the production image, and pip cannot install a project's dependencies
   without packaging the app. uv also locks every transitive dependency.
-- **Cost:** each developer installs uv once (`docs/DEVELOPMENT.md` §1).
+- **Cost:** each developer installs uv once (`docs/RUNNING.md` §1).
 
 ## ADR-002: Authentication and identity model
 

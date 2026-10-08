@@ -12,7 +12,7 @@ DB_NAME = os.environ.get("POSTGRES_DB", "")
 if not DB_NAME.endswith("_test"):
     pytest.exit(
         f"Refusing to run tests against database {DB_NAME!r}: POSTGRES_DB must end with '_test'. "
-        "See docs/DEVELOPMENT.md section 3.",
+        "See docs/TESTING.md section 1.",
         returncode=2,
     )
 

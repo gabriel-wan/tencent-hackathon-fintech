@@ -2,7 +2,7 @@
 
 **For:** the team (and AI agents working with us).
 **You'll:** ship a change the way we do: branch, commit, pull request, review, merge, and record decisions.
-**Not here:** running the app → [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) · security rules → [docs/SECURITY.md](docs/SECURITY.md) · agent-specific rules → [AGENTS.md](AGENTS.md).
+**Not here:** running the app → [docs/RUNNING.md](docs/RUNNING.md) · testing → [docs/TESTING.md](docs/TESTING.md) · security rules → [docs/SECURITY.md](docs/SECURITY.md) · agent-specific rules → [AGENTS.md](AGENTS.md).
 
 ## The short version
 
@@ -161,7 +161,8 @@ that seeds or resets data must say so in its name and refuse to run against anyt
 ## 9. Docs
 
 - Docs are part of the change: a PR that changes behaviour or architecture updates the matching doc in the same PR.
-- Each topic is written in one place; other docs link to it instead of repeating it.
+- Each topic is written in one place; other docs link to it instead of repeating it. The map of which page holds
+  what is [docs/README.md](docs/README.md).
 - Stale docs are bugs. If you find one, fix it or open a `documentation` issue.
 - Before opening a PR that touches docs, check every link still works:
   ```bash

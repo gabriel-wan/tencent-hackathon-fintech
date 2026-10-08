@@ -18,7 +18,7 @@ agent session.
   ADR-000 to ADR-008); the query pipeline, the four connectors, sync, the
   tamper-evident audit log and the UI are built (what exists right now:
   [CURRENT.md](docs/architecture/CURRENT.md)). Work follows
-  [ROADMAP.md](docs/ROADMAP.md). **Read the
+  the roadmap in [PROJECT.md](docs/PROJECT.md#roadmap-and-status). **Read the
   ADRs before building authorization, retrieval, LLM or audit code, and do not
   deviate from them without a new ADR.**
 
@@ -84,7 +84,7 @@ While working:
 - Prefer simple implementations over premature abstractions.
 - Keep changes focused on one concern. Do not mix refactors with features.
 - Add tests for security-sensitive logic (authorization, filtering, audit
-  integrity, permission revocation). See [backend/tests/README.md](backend/tests/README.md).
+  integrity, permission revocation). See [TESTING.md](docs/TESTING.md) and [CONTRIBUTING.md](CONTRIBUTING.md) §8.
 - **Never silently change security behaviour.** Any change to authorization,
   filtering, audit logging or what the LLM receives must be called out
   explicitly in the change description and, where it is a design change,

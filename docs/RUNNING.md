@@ -70,6 +70,9 @@ No accounts needed. Load two fictional companies:
 docker compose run --rm backend python -m app.seed
 ```
 
+The seed only runs with `APP_ENV=development`. Add `--embed` to also compute embeddings through TokenHub, so
+search matches by meaning as well as by keyword.
+
 Open http://localhost:3000/login and pick a person under **Sign in as a seeded user** (development only; identity
 isn't checked). Personas have no real connections, so their questions are checked against the stored permissions.
 
