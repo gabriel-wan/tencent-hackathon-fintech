@@ -30,6 +30,7 @@ class FakeLLM:
         self.embed_error = embed_error
         self.chat_error = chat_error
         self.chat_calls: list[list[dict]] = []
+        self.embed_calls: list[list[str]] = []
 
     def chat(self, messages: list[dict]) -> ChatResult:
         self.chat_calls.append(messages)
@@ -38,6 +39,7 @@ class FakeLLM:
         return ChatResult(self.reply, "fake-model", 100, 20)
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        self.embed_calls.append(list(texts))
         if self.embed_error:
             raise self.embed_error
         return [self.embedding for _ in texts]

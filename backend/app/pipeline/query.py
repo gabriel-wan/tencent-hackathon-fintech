@@ -1,8 +1,9 @@
-"""Query pipeline: question -> permission-filtered search -> live check -> LLM -> audit.
+"""Query pipeline: question -> permission-filtered search -> live check -> Shield -> LLM -> audit.
 
 Security boundary (docs/ARCHITECTURE.md section 2): nothing reaches the LLM unless
 it passed the stored-ACL filter, the admin boundary AND the live check. When
-nothing passes, the LLM is not called at all.
+nothing passes, the LLM is not called at all. What does pass is masked by the
+Need-to-Know Shield (app/redaction.py, ADR-010) before the LLM sees it.
 
 No database connection is held during the slow external calls (embedding, live
 check, LLM): the database is used in two short transactions.
@@ -14,13 +15,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
+from sqlalchemy import text
+
 from app.audit.log import record_event
 from app.auth.live_check import CanRead, default_checkers, live_check
 from app.auth.principals import principals_for
 from app.auth.session import User
 from app.db import Tx
-from app.llm.client import ChatResult
+from app.llm.client import EMBEDDING_MAX_CHARS, ChatResult
 from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, build_messages, ground
+from app.redaction import Shield, has_need_to_know, mask_secrets
 from app.retrieval.search import Candidate, ChunkHit, hybrid_search, restricted_matches
 
 log = logging.getLogger(__name__)
@@ -45,6 +49,7 @@ class Citation:
     source: str
     updated_at: datetime
     synced_at: datetime | None
+    redacted: dict[str, int]  # identifiers masked in this source for this user, by kind (ADR-010)
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,8 @@ def answer_question(
     checkers_factory: CheckersFactory = default_checkers,
     live_check_timeout_s: float = 2.0,
 ) -> QueryResult:
+    # Credentials never reach TokenHub or the audit log; the user's own PII stays searchable.
+    question = mask_secrets(question)
     audit: dict = {
         "user_email": user.email,
         "role": "admin" if user.is_admin else "user",
@@ -93,7 +100,7 @@ def answer_question(
     # 1. Embed the question; fall back to keyword-only search if that fails.
     embedding = None
     try:
-        embedding = llm.embed([question])[0]
+        embedding = llm.embed([question[:EMBEDDING_MAX_CHARS]])[0]  # a masked secret can lengthen it
         audit["search_mode"] = "hybrid"
     except Exception as exc:
         log.warning("question embedding failed, using keyword search only: %s", exc)
@@ -105,6 +112,8 @@ def answer_question(
         # 2. Search only documents the user's stored ACL and the boundary allow.
         principals = audit["principals"] = principals_for(conn, user.id)
         candidates = hybrid_search(conn, user.company_id, principals, question, embedding)
+        colleagues = conn.execute(text("SELECT email FROM users WHERE company_id = :c"),
+                                  {"c": user.company_id}).scalars().all()
 
         # AUDIT ONLY (ADR-007): restricted documents this question would have reached.
         # Runs in a savepoint so a failure here cannot lose the audit event itself.
@@ -132,16 +141,23 @@ def answer_question(
         audit["llm_called"] = False
     else:
         by_label = {f"S{i}": c for i, (c, _) in enumerate(sources, start=1)}
-        blocks = [
-            SourceBlock(
+        # 4. Need-to-Know Shield (ADR-010): mask identifiers unless the user is a handler of the source.
+        shield = Shield(colleagues)
+        blocks, titles = [], {}
+        redactions = audit["redactions"] = {}
+        for label, (c, chunks) in zip(by_label, sources):
+            cleared = has_need_to_know(principals, c.need_to_know)
+            titles[c.key], in_title = shield.redact(c.title, cleared)
+            body, in_body = shield.redact(
+                "\n...\n".join(ch.text for ch in sorted(chunks, key=lambda ch: ch.ordinal)), cleared)
+            redactions[c.key] = {"need_to_know": cleared, "masked": dict(in_title + in_body)}  # counts, never values
+            blocks.append(SourceBlock(
                 label=label,
                 platform=c.source,
-                title=c.title,
+                title=titles[c.key],
                 updated_at=c.updated_at.isoformat(),
-                text="\n...\n".join(ch.text for ch in sorted(chunks, key=lambda ch: ch.ordinal)),
-            )
-            for label, (c, chunks) in zip(by_label, sources)
-        ]
+                text=body,
+            ))
         audit["llm_called"] = True
         try:
             result = llm.chat(build_messages(question, blocks))
@@ -151,9 +167,11 @@ def answer_question(
             audit["llm_error"] = type(exc).__name__
         else:
             grounded = ground(result.content, set(by_label))
-            answer = grounded.answer
+            answer, answer_masked = shield.guard(grounded.answer, question)
+            audit["answer_masked"] = dict(answer_masked)
             citations = [
-                Citation(c.key, c.title, c.url, c.source, c.updated_at, c.synced_at)
+                Citation(c.key, titles[c.key], c.url, c.source, c.updated_at, c.synced_at,
+                         redactions[c.key]["masked"])
                 for c in (by_label[label] for label in grounded.labels)
             ]
             audit.update(

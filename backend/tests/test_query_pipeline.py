@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
+from app.llm.client import EMBEDDING_MAX_CHARS
 from app.llm.grounding import FALLBACK_ANSWER
 from app.pipeline.query import MAX_CONTEXT_CHARS, UNAVAILABLE_ANSWER, answer_question
 from tests.helpers import FakeLLM, within
@@ -225,3 +226,99 @@ def test_each_step_is_timed_in_the_audit(conn, make_user, add_doc, fake_llm):
     timings = audit_payload(conn, result.audit_id)["timings_ms"]
     assert set(timings) == {"embed", "search", "live_check", "llm", "total"}
     assert timings["total"] >= max(v for k, v in timings.items() if k != "total")
+
+
+# ---- Need-to-Know Shield (ADR-010) ----
+
+CARD = "4111 1111 1111 1111"  # fictional, Luhn-valid test number
+PRIYA = ["slack:user:U004", "slack:members", "google:user:priya@co.example"]
+DISPUTE = f"Customer dispute: card {CARD}, NRIC S1234567D, admin password: hunter2"
+
+
+def add_dispute(add_doc, need_to_know):
+    add_doc("drive", "D1", ["slack:members"], DISPUTE, title="Dispute for S1234567D",
+            metadata={"need_to_know": need_to_know})
+
+
+@pytest.mark.security
+@pytest.mark.parametrize("need_to_know", [["google:user:priya@co.example"], ["public"], ["slack:members"]])
+def test_pii_is_masked_before_the_llm_for_users_without_need_to_know(conn, make_user, add_doc, fake_llm,
+                                                                    need_to_know):
+    alice = make_user("alice@co.example", ALICE)
+    add_dispute(add_doc, need_to_know)
+    llm = fake_llm(reply=json.dumps({"answer": "A dispute [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), alice, "customer dispute", llm)
+
+    prompt = llm.all_prompt_text()
+    assert CARD not in prompt and "S1234567D" not in prompt and "hunter2" not in prompt
+    assert "[card ending 1111]" in prompt and "[NRIC *****567D]" in prompt
+    [citation] = result.citations
+    assert citation.title == "Dispute for [NRIC *****567D]"
+    assert citation.redacted == {"card": 1, "nric": 2, "secret": 1}
+    payload = audit_payload(conn, result.audit_id)
+    assert payload["redactions"] == {"drive:D1": {"need_to_know": False, "masked": citation.redacted}}
+    assert "4111" not in json.dumps(payload) and "1234567" not in json.dumps(payload)  # counts, never values
+
+
+@pytest.mark.security
+def test_a_handler_named_by_the_source_sees_pii_but_never_secrets(conn, make_user, add_doc, fake_llm):
+    priya = make_user("priya@co.example", PRIYA)
+    add_dispute(add_doc, ["google:user:priya@co.example"])
+    llm = fake_llm(reply=json.dumps({"answer": f"Card {CARD} [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), priya, "customer dispute", llm)
+
+    prompt = llm.all_prompt_text()
+    assert CARD in prompt and "S1234567D" in prompt and "hunter2" not in prompt
+    assert result.answer == f"Card {CARD} [S1]."  # shown to her unmasked, so the guard keeps it
+    assert result.citations[0].redacted == {"secret": 1}
+    assert audit_payload(conn, result.audit_id)["redactions"]["drive:D1"]["need_to_know"] is True
+
+
+@pytest.mark.security
+def test_answer_guard_masks_pii_the_model_was_never_given(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
+    llm = fake_llm(reply=json.dumps({"answer": "Card 5555 5555 5555 4444 [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), alice, "gateway migration", llm)
+
+    assert result.answer == "Card [card ending 4444] [S1]."
+    assert audit_payload(conn, result.audit_id)["answer_masked"] == {"card": 1}
+
+
+@pytest.mark.security
+def test_secrets_in_the_question_never_reach_the_llm_or_the_audit_log(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
+    llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
+
+    result = answer_question(within(conn), alice, "gateway migration, token: xyz-secret-123", llm)
+
+    assert "xyz-secret-123" not in llm.all_prompt_text()
+    assert audit_payload(conn, result.audit_id)["question"] == "gateway migration, token: [secret]"
+
+
+def test_colleague_emails_stay_visible(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    make_user("priya@co.example", PRIYA)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration: ask priya@co.example, not vendor@acme.example")
+    llm = fake_llm(reply=json.dumps({"answer": "Ask Priya [S1].", "citations": ["S1"]}))
+
+    answer_question(within(conn), alice, "gateway migration", llm)
+
+    prompt = llm.all_prompt_text()
+    assert "priya@co.example" in prompt and "vendor@acme.example" not in prompt
+
+
+def test_a_masked_secret_cannot_push_the_question_past_the_embedding_limit(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
+    llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
+    question = "gateway migration " + "x" * 1975 + " pwd: a"  # 2,000 characters; "[secret]" is longer than "a"
+
+    result = answer_question(within(conn), alice, question, llm)
+
+    assert all(len(t) <= EMBEDDING_MAX_CHARS for t in llm.embed_calls[0])
+    assert audit_payload(conn, result.audit_id)["search_mode"] == "hybrid"

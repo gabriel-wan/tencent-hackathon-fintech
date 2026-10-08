@@ -1,4 +1,5 @@
 """Test setup: a separate *_test database, migrated once, one rolled-back transaction per test."""
+import json
 import os
 from collections.abc import Sequence
 
@@ -98,6 +99,7 @@ def add_doc(conn, company):
         deleted: bool = False,
         title: str = "",
         company_id: int | None = None,
+        metadata: dict | None = None,
     ) -> int:
         company_id = company_id or company
         if in_boundary:
@@ -111,11 +113,12 @@ def add_doc(conn, company):
         doc_id = conn.execute(
             text(
                 "INSERT INTO documents (company_id, source, source_id, scope_id, title, url, updated_at, acl, "
-                "deleted_at) VALUES (:c, :s, :sid, :scope, :t, :url, now(), CAST(:acl AS text[]), "
-                "CASE WHEN :deleted THEN now() END) RETURNING id"
+                "deleted_at, metadata) VALUES (:c, :s, :sid, :scope, :t, :url, now(), CAST(:acl AS text[]), "
+                "CASE WHEN :deleted THEN now() END, CAST(:meta AS jsonb)) RETURNING id"
             ),
             {"c": company_id, "s": source, "sid": source_id, "scope": scope_id, "t": title or source_id,
-             "url": f"https://example.test/{source_id}", "acl": list(acl), "deleted": deleted},
+             "url": f"https://example.test/{source_id}", "acl": list(acl), "deleted": deleted,
+             "meta": json.dumps(metadata or {})},
         ).scalar_one()
         conn.execute(
             text(

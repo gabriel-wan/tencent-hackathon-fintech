@@ -58,6 +58,7 @@ _SEARCH_TEMPLATE = """
     )
     SELECT f.score, c.id AS chunk_id, c.ordinal, c.text,
            d.id AS document_id, d.source, d.source_id, d.title, d.url, d.updated_at, d.acl,
+           d.metadata -> 'need_to_know' AS need_to_know,
            EXISTS (
                SELECT 1 FROM boundary b
                WHERE b.company_id = d.company_id AND b.source = d.source AND b.scope_id = d.scope_id
@@ -127,6 +128,7 @@ class Candidate:
     score: float
     in_boundary: bool = True
     synced_at: datetime | None = None  # its scope's last complete sync
+    need_to_know: object = None  # metadata.need_to_know as stored: checked by app.redaction.has_need_to_know
     chunks: list[ChunkHit] = field(default_factory=list)
 
     @property
@@ -185,6 +187,7 @@ def _ranked(
                 score=row["score"],
                 in_boundary=row["in_boundary"],
                 synced_at=row["synced_at"],
+                need_to_know=row["need_to_know"],
             )
         if len(doc.chunks) < chunks_per_doc:
             doc.chunks.append(ChunkHit(row["chunk_id"], row["ordinal"], row["text"], row["score"]))
