@@ -46,8 +46,8 @@ and the hosted deployment ([roadmap](docs/PROJECT.md#roadmap-and-status)).
 
 ## Architecture
 
-Built state: [CURRENT.md](docs/architecture/CURRENT.md). Original design and
-the questions the ADRs answered: [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md).
+How it's built, with diagrams of the trust boundary, the parts, one question and one sign-in:
+[ARCHITECTURE.md](docs/ARCHITECTURE.md).
 The non-negotiable security boundary:
 
 ```
@@ -77,11 +77,8 @@ embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
 │   ├── README.md            map of the docs, and a glossary
 │   ├── RUNNING.md           run and use it: settings, demo personas, your own tools, troubleshooting
 │   ├── TESTING.md           backend, frontend, manual and accessibility checks
-│   ├── architecture/
-│   │   ├── ARCHITECTURE.md  planned architecture, security boundary, open questions
-│   │   ├── CURRENT.md       diagram of what is built right now
-│   │   ├── CONNECTORS_ARCHITECTURE.md  data flow from the 4 sources
-│   │   └── QUERY_PIPELINE.md  query flow, schema and API contracts
+│   ├── ARCHITECTURE.md      how it's built: trust boundary, parts, flows, data model, trade-offs
+│   ├── architecture/        deep dives: query pipeline, connectors, frontend
 │   ├── connectors/          GUIDE.md (setup and API) and one page per tool
 │   ├── decisions/
 │   │   ├── DECISIONS.md     decision log (ADR-000 to ADR-008 accepted)

@@ -9,7 +9,7 @@
 |---|---|
 | run KnowBuddy on my computer and try it | [RUNNING.md](RUNNING.md) |
 | test a change, or check everything before submitting | [TESTING.md](TESTING.md) |
-| see how it's built | [architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md) (what is built right now: [architecture/CURRENT.md](architecture/CURRENT.md)) |
+| see how it's built: the trust boundary, the parts, and how a question and a sign-in flow | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | know the security rules and what guards them | [SECURITY.md](SECURITY.md) |
 | connect Google Drive, Slack, Jira or Confluence, or deploy them for real | [connectors/GUIDE.md](connectors/GUIDE.md) |
 | know the project's goals, scope and progress | [PROJECT.md](PROJECT.md) |
@@ -53,7 +53,7 @@ docker-compose.yml   runs db, migrate, backend, sync and frontend
 | **Scope** | One item in the boundary, such as one Slack channel or one Drive folder |
 | **Sync** | Copying everything inside the boundary, with its ACLs, into KnowBuddy's database: every 5 minutes, or at once with "sync now" |
 | **Live check** | At question time, asking each tool, as the person asking, whether they can still read each candidate document. A "no", an error or a timeout drops it |
-| **Citation** | A source listed under an answer, with when it was last synced |
+| **Citation** | A source listed under an answer, with a link and when it was last updated |
 | **Audit event** | One record of something that happened (a question, a boundary change, a search of the log). Records are chained by hash, so a change is detectable |
 | **Restricted match** | A document a question matched but the asker may not see. Recorded in the audit log only, never shown to them |
 | **Persona** | A fictional development user (Alice, Ben, Charlie, Priya, Dana) from the seed data |
