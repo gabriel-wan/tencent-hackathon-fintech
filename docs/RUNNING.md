@@ -2,7 +2,7 @@
 
 **For:** anyone running KnowBuddy on their own computer.
 **You'll:** start it, sign in, ask questions, and connect your own tools (about 15 minutes for the first part).
-**Not here:** testing → [TESTING.md](TESTING.md) · putting it on a server → [connectors/SETUP.md](connectors/SETUP.md) §6 · changing the code → [CONTRIBUTING.md](../CONTRIBUTING.md).
+**Not here:** testing → [TESTING.md](TESTING.md) · putting it on a server → [DEPLOYMENT.md](DEPLOYMENT.md) · changing the code → [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 **Contents:** 1. What you need · 2. Settings · 3. Start · 4. Try it with demo personas · 5. Use your own tools ·
 6. Using KnowBuddy · 7. Stop, reset, re-seed · 8. When something goes wrong · Appendix: every setting
@@ -92,7 +92,7 @@ Try these:
 |---|---|---|
 | Alice | What's blocking the payment gateway migration? | An answer citing `#payments-oncall` |
 | Charlie | What happened in the Q3 security incident? | "I could not find this in the sources you have access to." |
-| Dana | What's blocking the payment gateway migration? | Kopi Labs' own answer (no blockers), never MerlionPay's |
+| Dana | How did the payment gateway migration go? | Kopi Labs' own answer ("finished last week with no blockers"), never MerlionPay's |
 
 ✅ Alice gets an answer with sources, Charlie gets "not found", and Dana never sees MerlionPay content.
 More cases: [TESTING.md](TESTING.md) §4.

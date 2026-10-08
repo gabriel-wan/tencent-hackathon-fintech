@@ -82,7 +82,7 @@ sources, not the exact wording:
 | Ben | What's blocking the payment gateway migration? | Less, or "not found" (he isn't in `#payments-oncall`) |
 | Charlie | What happened in the Q3 security incident? | The fixed "not found" reply (scenario 3) |
 | Priya | What happened in the Q3 security incident? | An answer citing the incident report and/or `#security-incidents` |
-| Dana | What's blocking the payment gateway migration? | Only Kopi Labs' own content, never MerlionPay's |
+| Dana | How did the payment gateway migration go? | Kopi Labs' own answer ("finished last week with no blockers"), never MerlionPay's |
 | anyone | What are the salary bands? | "Not found": that folder is outside the admin boundary |
 | anyone | asdkjh qwe | "Not found", looking exactly like Charlie's |
 
