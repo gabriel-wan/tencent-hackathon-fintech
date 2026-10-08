@@ -60,9 +60,10 @@ so a successful sign-in lands there, with an "Ask a question" link to the chat.
 There is no app login form and no password (ADR-002): signing in means
 connecting a tool, handled by the backend's OAuth (`backend/app/connectors`).
 The first connection creates your user and session. **Your company comes from
-a Slack workspace or Atlassian site**, never from Google: the first sign-in
-from a new workspace or site creates a company and its first member becomes
-admin, and a user with only Google has no company and sees nothing.
+a Slack workspace**, never from Google or Atlassian: the first full member (not
+a guest) to sign in from a new workspace creates the company and becomes its
+admin. An Atlassian sign-in only joins a company whose admin has added that
+site, and a user with only Google has no company and sees nothing.
 
 - **Session gate.** `app/(app)/layout.tsx` calls `GET /api/me` on the server
   for every signed-in page. 401 → `/login`. Backend unreachable → "Can't reach
