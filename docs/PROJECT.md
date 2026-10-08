@@ -1,5 +1,10 @@
 # PROJECT.md – KnowBuddy
 
+**For:** anyone who wants the why: the problem, the users, the scope, and how far along we are.
+**You'll:** see the challenge's scenarios, what's in and out of scope, the roadmap with each task's status, planned
+work and open questions.
+**Not here:** each scenario working → [FEATURES.md](FEATURES.md) · how it's built → [ARCHITECTURE.md](ARCHITECTURE.md).
+
 Product name **KnowBuddy**, built for the challenge "The Internal Brain" (the
 name nods to Tencent's CodeBuddy and WorkBuddy).
 
