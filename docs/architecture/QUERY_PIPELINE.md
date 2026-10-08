@@ -102,8 +102,9 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 4. Live check per source, in parallel, 2-second timeout. Deny by default.
 5. Nothing left: return the fixed "not found" reply without calling the LLM.
    Otherwise the **Need-to-Know Shield** ([app/redaction.py](../../backend/app/redaction.py), ADR-010)
-   masks each source's title and text: cards, NRIC/FIN, accounts, IBANs, passports, dates of
-   birth, phones and non-colleague emails, unless the user holds one of the document's
+   masks each source's title, link and text: cards, NRIC/FIN, accounts, IBANs, passports,
+   dates of birth, phones, non-colleague emails, labelled non-colleague names and Singapore
+   addresses, unless the user holds one of the document's
    `metadata.need_to_know` identities; secrets always. Secrets in the question are masked
    before step 2.
 6. Up to 10 documents go to the LLM as `<source id="S1">` blocks marked as

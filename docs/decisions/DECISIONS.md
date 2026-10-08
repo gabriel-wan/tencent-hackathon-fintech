@@ -511,16 +511,24 @@ of answers people copy and share.
 
 - **Deterministic detectors, no ML** (`backend/app/redaction.py`): regular
   expressions with checksums where the format has one, tuned for recall over
-  precision. Secrets (private keys, cloud and Slack tokens, JWTs, bearer
-  tokens, credential names in config and env files such as `password: ...`,
-  `DB_PASSWORD=...` or `"api_key": "..."`, and `user:pass@` in URLs), IBAN (mod-97), payment card (Luhn, or a card word
-  just before it), bank account, NRIC/FIN, passport and date of birth (after a
-  keyword), email, phone (`+` international and Singapore numbers).
+  precision. Secrets (private keys and base64 key lines, cloud and Slack
+  tokens, JWTs, bearer tokens, credential names in config and env files such
+  as `password: ...`, `DB_PASSWORD=...`, `"api_key": "..."` or `密码：...`,
+  `user:pass@` in URLs, and any 32+ character run mixing cases and digits),
+  IBAN (mod-97), payment card (Luhn, or a card word such as `card` or `卡`
+  just before it; spaced, dashed or dotted), bank account, passport and date of
+  birth (after an English or Chinese label), NRIC/FIN, email (any script),
+  phone (`+` international, Singapore, or any format after a label), names
+  after a label or honorific (`Customer:`, `Mdm`, `姓名：`), and Singapore
+  address markers (postal code, `#12-345`, `Blk 123`). Word boundaries are
+  ASCII-only, so identifiers written inside Chinese text are caught.
 - **Mask where text leaves our system**, never in storage: the LLM prompt and
-  the citation title (per source), the answer (any value the model was not
+  the citation title and link (per source; Confluence links also drop the page
+  title at sync), the answer (any value the model was not
   shown unmasked and the user did not type), the question (secrets only), and
   embeddings (everything). Stored chunks stay raw, so keyword search and
-  need-to-know readers keep full fidelity.
+  need-to-know readers keep full fidelity. Chunks are never cut inside a
+  detected identifier or between a label and its value.
 - **Need-to-know comes from the source**, not from a new role: Jira assignee and
   reporter, Drive owners and editors (named users only), Confluence page owner
   and author, written by each connector as `metadata.need_to_know`. A user
@@ -556,11 +564,11 @@ of answers people copy and share.
 - Performance: precompiled patterns, linear in text length (hostile inputs of
   200,000 characters are tested); well under the LLM's latency.
 - `ASSUMPTION:` limits accepted for the prototype:
-  - names and postal addresses are not detected;
-  - emails with a non-ASCII address or domain are not detected (so that an
-    address written inside Chinese text never swallows the words around it);
-  - a value split across a 2,000-character chunk cut (only lines longer than
-    that are cut) can escape detection;
+  - a name with no label or honorific, and a street name, are not detected
+    (that needs NER, rejected above);
+  - masking favours recall: some ordinary text is masked too, e.g. a bare
+    8-digit number starting 3/6/8/9 (read as a phone) or a 32+ character
+    identifier mixing cases and digits (read as a token);
   - `need_to_know` is up to one sync (5 minutes) stale after a reassignment,
     the same window as ACLs (T7);
   - embeddings written before this change came from raw text (they are never
