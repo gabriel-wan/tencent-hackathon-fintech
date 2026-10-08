@@ -87,13 +87,14 @@ def test_adf_text_one_line_per_block():
 def test_jira_fetch_one_document_per_ticket(atlassian_api):
     def search(request):
         body = json.loads(request.content)
-        assert body["jql"] == 'project = "PAY"'
+        assert body["jql"] == 'project = "PAY"' and {"assignee", "reporter"} <= set(body["fields"])
         if "nextPageToken" not in body:  # two pages, each with a ticket
             return {"issues": [{"id": "10012", "key": "PAY-12", "fields": {
                 "summary": "Slow refunds", "updated": "2026-09-30T09:00:00.000+0800"}}], "nextPageToken": "p2"}
         assert body["nextPageToken"] == "p2"
         return {"issues": [{"id": "10013", "key": "PAY-13", "fields": {
             "summary": "Double charge", "description": doc("Card charged twice."), "updated": "2026-10-01T09:00:00.000+0800",
+            "assignee": {"accountId": "A2"}, "reporter": {"accountId": "C9"},
             "comment": {"comments": [{"body": doc("Refund issued.")}]}}}]}
 
     http, _, _ = atlassian_api(site({
@@ -105,11 +106,12 @@ def test_jira_fetch_one_document_per_ticket(atlassian_api):
     assert list(jira.fetch(http, "PAY")) == [{
         "source": "jira", "source_id": "10012", "scope_id": "PAY", "title": "PAY-12: Slow refunds",
         "url": "https://corp.atlassian.net/browse/PAY-12", "updated_at": "2026-09-30T09:00:00.000+0800",
-        "acl": acl, "text": "Slow refunds",
+        "acl": acl, "text": "Slow refunds", "metadata": {"need_to_know": []},
     }, {
         "source": "jira", "source_id": "10013", "scope_id": "PAY", "title": "PAY-13: Double charge",
         "url": "https://corp.atlassian.net/browse/PAY-13", "updated_at": "2026-10-01T09:00:00.000+0800",
         "acl": acl, "text": "Double charge\nCard charged twice.\n\nRefund issued.",
+        "metadata": {"need_to_know": ["atlassian:user:A2", "atlassian:user:C9"]},  # assignee and reporter
     }]
 
 
@@ -137,7 +139,7 @@ def restricted(users=(), groups=()):
 
 def confluence_site(restrictions):
     """Space S1: page 1 (Runbook) and its child page 2, under a folder F that is not a page."""
-    pages = [{"id": "1", "parentId": "F", "title": "Runbook", "version": {"createdAt": "2026-10-01T13:05:00Z"},
+    pages = [{"id": "1", "parentId": "F", "title": "Runbook", "ownerId": "A1", "authorId": "A2", "version": {"createdAt": "2026-10-01T13:05:00Z"},
               "body": {"storage": {"value": "<p>Fail over</p>"}}, "_links": {"webui": "/pages/1"}},
              {"id": "2", "parentId": "1", "title": "Child", "version": {"createdAt": "2026-10-01T13:05:00Z"},
               "body": {"storage": {"value": "<p>Secret</p>"}}, "_links": {"webui": "/pages/2"}}]
@@ -160,6 +162,12 @@ def test_confluence_fetch_downloads_text_only_for_changed_pages(atlassian_api):
     assert docs["1"]["text"] is None and docs["2"]["text"] == "Secret"
     assert docs["2"]["url"] == "https://corp.atlassian.net/wiki/pages/2"
     assert len(sent) == 3  # the listing, then one restriction check per page: nothing else per page
+
+
+def test_confluence_page_owner_and_author_have_need_to_know(atlassian_api):
+    http, _, _ = atlassian_api(confluence_site({}))
+    assert {d["source_id"]: d["metadata"]["need_to_know"] for d in confluence.fetch(http, "S1")} == \
+        {"1": ["atlassian:user:A1", "atlassian:user:A2"], "2": []}
 
 
 def test_confluence_unrestricted_pages_are_for_the_whole_company(atlassian_api):
