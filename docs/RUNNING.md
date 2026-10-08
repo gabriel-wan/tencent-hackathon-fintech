@@ -162,7 +162,7 @@ it as a source.
 | "That account is already linked to someone else…" (`account_mismatch`) | You're signed in as someone else (e.g. a persona). Sign out, then connect again |
 | "That sign-in belongs to no company you can join" (`no_company`) | You're a Slack guest, the Atlassian site hasn't been added by your company's admin, or you granted several Atlassian sites. Connect Slack first, as a full member |
 | "Google Drive access wasn't granted" (`missing_permission`) | Connect again and tick "See and download all your Google Drive files" |
-| `docker compose ps` shows `sync` as "unhealthy" | Harmless: it inherits the backend's web health check but has no web server. `docker compose logs sync` shows it working |
+| `docker compose ps` shows `sync` as "unhealthy" | The sync loop made no progress for 15 minutes (`python -m app.sync --health`): check `docker compose logs sync` |
 | A `.env` change has no effect | `.env` is read when a service starts: `docker compose up -d --force-recreate backend sync` |
 | "Cannot connect to the Docker daemon" | Docker Desktop isn't running: start it and wait until it's ready |
 | Port 3000 is already in use | Another frontend is running. Stop it, or run the dev server on another port: [frontend/README.md](../frontend/README.md) ("Commands") |

@@ -20,8 +20,10 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import time
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import Engine, text
 
@@ -36,6 +38,8 @@ log = logging.getLogger(__name__)
 INTERVAL_S = 300  # ADR-005: every 5 minutes
 EMBED_BATCH = 512
 CUT_LOOKAHEAD = 200  # characters past the limit scanned, to see an identifier the limit falls inside
+HEARTBEAT = Path(tempfile.gettempdir()) / "sync-heartbeat"  # touched while the loop makes progress
+HEALTHY_WITHIN_S = 3 * INTERVAL_S  # the container is unhealthy when the heartbeat is older
 
 
 def _cut(text: str) -> int:
@@ -137,6 +141,7 @@ def _sync_company(engine: Engine, company_id: int, sources: list[str] | None, ll
         log.warning("company %s has no admin: nothing synced", company_id)
         return
     for source, scope_id in scopes:
+        HEARTBEAT.touch()
         try:
             with engine.connect() as db:  # what is stored, to download only new or edited items
                 known = dict(db.execute(text("SELECT source_id, updated_at FROM documents WHERE company_id = :c "
@@ -171,7 +176,7 @@ def _sync_company(engine: Engine, company_id: int, sources: list[str] | None, ll
     try:
         llm = llm or LLMClient.from_env()
         while embed_missing(engine, llm):
-            pass
+            HEARTBEAT.touch()
     except Exception as e:  # keyword search still works; vectors are filled on a later run
         log.warning("embedding skipped: %s", type(e).__name__)
 
@@ -188,10 +193,15 @@ def main(argv: list[str]) -> int:
     parser.add_argument("sources", nargs="*", help=f"any of {', '.join(store.SOURCES)} (default: all)")
     parser.add_argument("--company", type=int, help="one company ID (default: all)")
     parser.add_argument("--loop", action="store_true", help=f"repeat every {INTERVAL_S} seconds")
+    parser.add_argument("--health", action="store_true",
+                        help=f"exit 0 if the loop made progress in the last {HEALTHY_WITHIN_S} seconds")
     args = parser.parse_args(argv)
+    if args.health:
+        return 0 if HEARTBEAT.exists() and time.time() - HEARTBEAT.stat().st_mtime < HEALTHY_WITHIN_S else 1
     if unknown := set(args.sources) - store.SOURCES.keys():
         parser.error(f"unknown source(s): {', '.join(sorted(unknown))}")
     while True:
+        HEARTBEAT.touch()
         with default_engine.connect() as db:
             companies = [args.company] if args.company else db.execute(text("SELECT id FROM companies")).scalars().all()
         for company in companies:
@@ -201,6 +211,7 @@ def main(argv: list[str]) -> int:
                 log.exception("company %s: sync failed", company)
         if not args.loop:
             return 0
+        HEARTBEAT.touch()
         time.sleep(INTERVAL_S)
 
 

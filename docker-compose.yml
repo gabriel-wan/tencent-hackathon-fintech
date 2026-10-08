@@ -35,6 +35,10 @@ services:
   sync:
     build: ./backend
     command: python -m app.sync --loop
+    healthcheck:  # the image's check calls the web server, which this worker does not run
+      test: ["CMD", "python", "-m", "app.sync", "--health"]
+      interval: 30s
+      timeout: 10s
     env_file: backend/.env
     environment:
       POSTGRES_HOST: db

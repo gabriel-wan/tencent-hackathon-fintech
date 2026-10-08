@@ -1,6 +1,7 @@
 """Sync engine and live checks, with a fake source in place of the APIs. The database is real: sync commits
 its own transactions, so companies (and everything under them) are emptied around each test."""
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -189,6 +190,16 @@ def test_a_name_labelled_in_one_chunk_is_masked_in_every_chunk(setup):
     sync.sync_company(engine, setup.company, llm=llm)
     sent = [t for call in llm.embed_calls for t in call]
     assert len(sent) > 1 and not any("Jane" in t or "Lee" in t for t in sent)
+
+
+def test_the_health_check_follows_the_loops_heartbeat(monkeypatch, tmp_path):
+    monkeypatch.setattr(sync, "HEARTBEAT", tmp_path / "beat")
+    assert sync.main(["--health"]) == 1  # never ran
+    sync.HEARTBEAT.touch()
+    assert sync.main(["--health"]) == 0
+    stale = sync.HEARTBEAT.stat().st_mtime - sync.HEALTHY_WITHIN_S - 1
+    os.utime(sync.HEARTBEAT, (stale, stale))
+    assert sync.main(["--health"]) == 1  # stuck
 
 
 # ---- Live checks: as the asking user's own connection ----
