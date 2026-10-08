@@ -2,13 +2,16 @@
 
 Three layers protect it:
 1. Triggers reject UPDATE, DELETE and TRUNCATE on audit_events (migration 0002).
-2. The app runs as a database role that may only read and add records (app/db.py, migration 0006).
+2. The app logs in as a database role that may only read and add records (app/db.py, migrations
+   0006 and 0007). It is the app's own login, so no statement can switch it to the owner.
 3. Each record stores the hash of the previous record of its company (prev_hash) and its own hash,
    computed by the database function audit_event_hash from its id, time, company, user, event type
    and payload. Changing or deleting a record breaks the chain, and verify_chain finds the first break.
 
 Records of people who are not in a company yet (e.g. Drive connected first) form their own chain
-(company_id NULL). A record's company is its user's company when it is written.
+(company_id NULL). A record's company is its user's company when it is written. Once that person
+joins a company, its admin can search those earlier records (search_events), but only the
+no-company chain as a whole can verify them, so no admin API does.
 
 Limitation: someone with full database access could rewrite every record after a change and
 recompute the hashes. The chain's head (verify_chain's `head`) can be noted outside the system, e.g.
@@ -37,12 +40,18 @@ _TOUCHES = """(
 
 
 def record_event(conn: Connection, user_id: int | None, event_type: str, payload: dict[str, Any]) -> int:
-    """Append one record to its company's chain, inside the caller's transaction. Returns its id."""
+    """Append one record to its company's chain, inside the caller's transaction. Returns its id.
+
+    Holds that company's chain lock until the caller's transaction ends, so make this the transaction's
+    last statement and commit promptly: anything slow after it (an API call, the LLM) would stall every
+    other audit write of that company."""
     company_id = None
     if user_id is not None:
         company_id = conn.execute(text("SELECT company_id FROM users WHERE id = :u"), {"u": user_id}).scalar()
     # One writer per chain until this transaction ends, so two records can't link to the same previous one.
-    conn.execute(text("SELECT pg_advisory_xact_lock(:ns, CAST(:c AS int))"), {"ns": CHAIN_LOCK, "c": company_id or 0})
+    # Postgres lock keys are 32-bit: fold the id in, so huge ids don't fail (a shared key only means waiting).
+    conn.execute(text("SELECT pg_advisory_xact_lock(:ns, CAST(:k AS int))"),
+                 {"ns": CHAIN_LOCK, "k": (company_id or 0) % 2147483647})
     prev = conn.execute(
         text("SELECT hash FROM audit_events WHERE company_id IS NOT DISTINCT FROM CAST(:c AS bigint) "
              "ORDER BY id DESC LIMIT 1"),
@@ -111,7 +120,8 @@ def search_events(
     before_id: int | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """One company's records, newest first. `document` is a document key such as "jira:10042";
+    """One company's records, newest first, including its members' records from before they joined it
+    (the no-company chain). `document` is a document key such as "jira:10042";
     `source` (+ `scope_id`) matches records that touched any document of that tool (or channel, folder,
     project or space), and admin changes to that scope."""
     in_scope = (
@@ -125,7 +135,7 @@ def search_events(
         text(
             "SELECT e.id, e.ts, u.email AS user_email, e.event_type, e.payload, e.prev_hash, e.hash "
             "FROM audit_events e LEFT JOIN users u ON u.id = e.user_id "
-            "WHERE e.company_id = :c "
+            "WHERE (e.company_id = :c OR (e.company_id IS NULL AND u.company_id = :c)) "
             "  AND (CAST(:email AS text) IS NULL OR u.email = lower(:email)) "
             "  AND (CAST(:etype AS text) IS NULL OR e.event_type = :etype) "
             "  AND (CAST(:since AS timestamptz) IS NULL OR e.ts >= CAST(:since AS timestamptz)) "

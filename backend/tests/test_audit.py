@@ -157,6 +157,16 @@ def test_even_the_owner_is_stopped_by_the_triggers(owner, owner_user):
         owner.execute(text("UPDATE audit_events SET payload = '{}' WHERE id = :i"), {"i": event})
 
 
+def test_a_huge_company_id_still_gets_its_chain(conn):
+    """Lock keys are 32-bit; company ids are 64-bit."""
+    company = conn.execute(text("INSERT INTO companies (id, name) VALUES (3000000000, 'Big') RETURNING id")).scalar_one()
+    user = conn.execute(text("INSERT INTO users (email, company_id) VALUES ('b@big.example', :c) RETURNING id"),
+                        {"c": company}).scalar_one()
+    record_event(conn, user, "query", {"question": "q"})
+    assert verify_chain(conn, company) | {"head": None} == {
+        "ok": True, "checked": 1, "first_broken_id": None, "reason": None, "head": None}
+
+
 @pytest.mark.security
 def test_concurrent_writes_never_fork_the_chain():
     with engine.begin() as c:
@@ -264,6 +274,8 @@ def test_filters_by_document_type_and_time(conn, people):
     assert ids(admin.get("/api/admin/audit", params={"event_type": "query", "until": yesterday})) == []
     assert admin.get("/api/admin/audit", params={"event_type": "DROP TABLE"}).status_code == 422
     assert admin.get("/api/admin/audit", params={"source": "teams"}).status_code == 422
+    # A scope id without its tool used to be ignored silently, returning everything.
+    assert admin.get("/api/admin/audit", params={"scope_id": "GATEWAY"}).status_code == 422
 
 
 def test_pages_newest_first(conn, people):
@@ -291,3 +303,14 @@ def test_searching_and_verifying_are_themselves_audited(conn, company, people):
     assert logged[1].payload["ok"] is True
     assert verify_chain(conn, company)["ok"]  # those records are in the chain too
 
+
+@pytest.mark.security
+def test_records_from_before_someone_joined_are_searchable_by_their_companys_admin_only(conn, company, people):
+    newcomer = conn.execute(text("INSERT INTO users (email) VALUES ('new@co.example') RETURNING id")).scalar_one()
+    before = record_event(conn, newcomer, "connector_connected", {"provider": "google"})  # no company yet
+    conn.execute(text("UPDATE users SET company_id = :c WHERE id = :u"), {"c": company, "u": newcomer})
+
+    found = ids(client_for(conn, people["admin"]).get("/api/admin/audit", params={"user": "new@co.example"}))
+    assert before in found
+    conn.execute(text("UPDATE users SET is_admin = true WHERE id = :u"), {"u": people["outsider"].id})
+    assert before not in ids(client_for(conn, people["outsider"]).get("/api/admin/audit"))

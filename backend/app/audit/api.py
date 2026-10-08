@@ -11,7 +11,7 @@ last 30 days"):  GET /api/admin/audit?user=jdoe@co.com&source=confluence&scope_i
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import get_tx
 from app.audit.log import SEARCH_LIMIT, record_event, search_events, verify_chain
@@ -38,12 +38,14 @@ def search(
     before_id: Annotated[int | None, Query(ge=1)] = None,
     limit: Annotated[int, Query(ge=1, le=SEARCH_LIMIT)] = 50,
 ):
+    if scope_id is not None and source is None:  # a scope id means nothing without its tool
+        raise HTTPException(422, "scope_id needs source (slack, drive, jira or confluence)")
     filters = {"user": user, "event_type": event_type, "since": since, "until": until, "document": document,
                "source": source, "scope_id": scope_id, "before_id": before_id, "limit": limit}
     with tx() as conn:
         records = search_events(
             conn, admin.company_id, user_email=user, event_type=event_type, since=since, until=until,
-            document=document, source=source, scope_id=scope_id if source else None, before_id=before_id,
+            document=document, source=source, scope_id=scope_id, before_id=before_id,
             limit=limit,
         )
         # Searching the trail is itself audited (ADR-007): who looked at what, and how much they saw.
