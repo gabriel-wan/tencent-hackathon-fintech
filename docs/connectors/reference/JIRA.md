@@ -202,7 +202,7 @@ One document per ticket:
   "text": "Card ending 4242 was charged twice. Refund issued.",   // description + comments, ADF flattened
   "url": "https://yourteam.atlassian.net/browse/PAY-13",          // site + /browse/ + key
   "updated_at": "2026-10-01T01:00:00Z",                           // fields.updated, in UTC
-  "metadata": { "assignee": "atlassian:user:5b10-sara" },         // used by the Need-to-Know Shield
+  "metadata": { "need_to_know": ["atlassian:user:5b10-sara"] },   // assignee + reporter: the Need-to-Know Shield (ADR-010)
   "acl": ["atlassian:user:5b10-sara"]                             // security-level holders, expanded
 }
 ```

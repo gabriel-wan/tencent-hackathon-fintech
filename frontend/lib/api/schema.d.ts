@@ -336,6 +336,10 @@ export interface components {
             updated_at: string;
             /** Synced At */
             synced_at: string | null;
+            /** Redacted */
+            redacted: {
+                [key: string]: number;
+            };
         };
         /** DevSessionRequest */
         DevSessionRequest: {

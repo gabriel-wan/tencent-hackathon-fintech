@@ -38,6 +38,7 @@ docker compose run --rm --build --user root -e POSTGRES_DB=brain_test -v ./backe
 | `test_grounding.py` | Citation checking, fallback answer, untrusted text containment |
 | `test_injection.py` | Prompt injection: the source fence in every spelling, the scanner (attacks found in English and Chinese, ordinary lines left alone), answer suppression, invented links, the audit record and the API |
 | `test_query_pipeline.py` | What the LLM sees, when it is skipped, what is audited |
+| `test_redaction.py` | Need-to-Know Shield: each detector, need-to-know, secrets always, answer guard, hostile input |
 | `test_api.py` | Session-only identity, strict request bodies, development-only routes |
 | `test_connections_api.py` | Connector sign-in into the right company, principals, token refresh, disconnect |
 | `test_drive.py`, `test_slack.py`, `test_atlassian.py` | Fetch and ACL per source, live checks (`can_read`), retries |

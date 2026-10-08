@@ -78,8 +78,8 @@ isn't checked). Personas have no real connections, so their questions are checke
 
 | Persona | Company | Can see | Can't see |
 |---|---|---|---|
-| Alice, payments engineer | MerlionPay | `#payments-oncall`, `#eng`, the on-call runbook, the contractor guide | `#security-incidents`, the Q3 incident report |
-| Ben, backend engineer | MerlionPay | `#eng`, the runbook, the contractor guide | `#payments-oncall`, the security channel and report |
+| Alice, payments engineer | MerlionPay | `#payments-oncall`, `#eng`, the on-call runbook, the contractor guide, the dispute log (customer data masked) | `#security-incidents`, the Q3 incident report |
+| Ben, backend engineer | MerlionPay | `#eng`, the runbook, the contractor guide, the dispute log (customer data masked) | `#payments-oncall`, the security channel and report |
 | Charlie, external contractor | MerlionPay | Only the contractor onboarding guide | Everything else |
 | Priya, admin and compliance | MerlionPay | Everything in MerlionPay's boundary; the admin pages | Nothing in the boundary is hidden from her |
 | Dana, engineer | Kopi Labs | Kopi Labs' `#general` | Anything of MerlionPay |
@@ -93,6 +93,7 @@ Try these:
 | Alice | What's blocking the payment gateway migration? | An answer citing `#payments-oncall` |
 | Charlie | What happened in the Q3 security incident? | "I could not find this in the sources you have access to." |
 | Dana | How did the payment gateway migration go? | Kopi Labs' own answer ("finished last week with no blockers"), never MerlionPay's |
+| Alice, then Priya | What happened in dispute 118? | Alice: the customer's details as tags (`[card ending 1111]`, `[NRIC *****567D]`); Priya, who owns the dispute log, sees them in full (ADR-010) |
 
 ✅ Alice gets an answer with sources, Charlie gets "not found", and Dana never sees MerlionPay content.
 More cases: [TESTING.md](TESTING.md) §4.
@@ -161,7 +162,7 @@ it as a source.
 | "That account is already linked to someone else…" (`account_mismatch`) | You're signed in as someone else (e.g. a persona). Sign out, then connect again |
 | "That sign-in belongs to no company you can join" (`no_company`) | You're a Slack guest, the Atlassian site hasn't been added by your company's admin, or you granted several Atlassian sites. Connect Slack first, as a full member |
 | "Google Drive access wasn't granted" (`missing_permission`) | Connect again and tick "See and download all your Google Drive files" |
-| `docker compose ps` shows `sync` as "unhealthy" | Harmless: it inherits the backend's web health check but has no web server. `docker compose logs sync` shows it working |
+| `docker compose ps` shows `sync` as "unhealthy" | The sync loop made no progress for 15 minutes (`python -m app.sync --health`): check `docker compose logs sync` |
 | A `.env` change has no effect | `.env` is read when a service starts: `docker compose up -d --force-recreate backend sync` |
 | "Cannot connect to the Docker daemon" | Docker Desktop isn't running: start it and wait until it's ready |
 | Port 3000 is already in use | Another frontend is running. Stop it, or run the dev server on another port: [frontend/README.md](../frontend/README.md) ("Commands") |
