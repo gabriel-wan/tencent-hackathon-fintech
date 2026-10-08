@@ -19,7 +19,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | [007](#adr-007-audit-log-design) | Audit-log design | Accepted |
 | [008](#adr-008-deployment-architecture) | Deployment architecture | Accepted |
 | [009](#adr-009-frontend-architecture) | Frontend architecture | Accepted |
-| [010](#adr-010-pii-redaction-need-to-know-shield) | PII redaction (Need-to-Know Shield) | Proposed |
+| [010](#adr-010-pii-redaction-need-to-know-shield) | PII redaction (Need-to-Know Shield) | Accepted |
 
 ---
 
@@ -490,7 +490,7 @@ the existing Docker Compose setup, with the database on the same server.
 
 ## ADR-010: PII redaction (Need-to-Know Shield)
 
-- **Status:** Proposed (built; for the team to discuss and accept)
+- **Status:** Accepted (2026-10-08, after review of PR #16)
 - **Date:** 2026-10-08
 - **Proposed by:** v1-nce
 - **Scope:** which sensitive identifiers are masked, where, and who sees them
@@ -519,9 +519,18 @@ of answers people copy and share.
   just before it; spaced, dashed or dotted), bank account, passport and date of
   birth (after an English or Chinese label), NRIC/FIN, email (any script),
   phone (`+` international, Singapore, or any format after a label), names
-  after a label or honorific (`Customer:`, `Mdm`, `姓名：`), and Singapore
+  after a label or honorific (`Customer:`, `Mdm`, `姓名：`) or spelled by an
+  email address the text also writes out (`jane.lee@` and "Jane Lee"), and
+  every other mention of such a name or its first or last name anywhere in
+  the same question's sources (or, for embeddings, the same document), with
+  the same tag ("Jane called" is `[name 1] called`), and Singapore
   address markers (postal code, `#12-345`, `Blk 123`). Word boundaries are
   ASCII-only, so identifiers written inside Chinese text are caught.
+  Detection runs on a copy of the text as the model reads it: zero-width and
+  other format characters dropped, every dash read as a hyphen, everything
+  else in NFKC form, so `4111<U+200B>1111…` or `Ｓ１２３４５６７Ｄ` cannot slip
+  past. Only the masked spans are replaced in the original; all other text,
+  such as Chinese punctuation, stays as written.
 - **Mask where text leaves our system**, never in storage: the LLM prompt and
   the citation title and link (per source; Confluence links also drop the page
   title at sync), the answer (any value the model was not
@@ -537,8 +546,8 @@ of answers people copy and share.
   Only identity principals count: `public`, `slack:members` or a domain never
   clear anyone, whatever a connector writes.
 - **Secrets are masked for everyone, always.**
-- **Emails** of users registered in the asker's company stay visible; all
-  others are masked.
+- **Colleagues stay visible:** emails and names (and first or last names) of
+  users registered in the asker's company are not masked; all others are.
 - **Tags keep documents usable:** `[card ending 4242]` and `[account ending
   6789]` (PCI DSS allows the last 4), `[NRIC *****567D]` (PDPC's partial-NRIC
   guidance), otherwise `[phone 1]`, `[email 2]` numbered per question so the
@@ -564,8 +573,12 @@ of answers people copy and share.
 - Performance: precompiled patterns, linear in text length (hostile inputs of
   200,000 characters are tested); well under the LLM's latency.
 - `ASSUMPTION:` limits accepted for the prototype:
-  - a name with no label or honorific, and a street name, are not detected
-    (that needs NER, rejected above);
+  - a name that no label, honorific or email marks anywhere in the question's
+    sources, and a street name, are not detected (that needs NER, rejected
+    above);
+  - a first or last name of a detected person is masked wherever it appears,
+    so a capitalised word that is also their name ("May", "Will") is masked
+    too;
   - masking favours recall: some ordinary text is masked too, e.g. a bare
     8-digit number starting 3/6/8/9 (read as a phone) or a 32+ character
     identifier mixing cases and digits (read as a token);
@@ -574,6 +587,8 @@ of answers people copy and share.
   - embeddings written before this change came from raw text (they are never
     returned, so they were not recomputed).
 - The audit log (ADR-007) stores the question and answer fully masked, even
-  for a need-to-know user: it is append-only, so PII in it could never be
-  erased (PDPA), and the administrator must not read there what the Shield
-  hides from them in chat.
+  for a need-to-know user: every detected identifier, and every value the
+  Shield showed that user unmasked wherever it appears again (an answer can
+  repeat a name without its label). Reason: it is append-only, so PII in it
+  could never be erased (PDPA), and the administrator must not read there what
+  the Shield hides from them in chat.

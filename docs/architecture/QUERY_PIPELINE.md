@@ -103,7 +103,8 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 5. Nothing left: return the fixed "not found" reply without calling the LLM.
    Otherwise the **Need-to-Know Shield** ([app/redaction.py](../../backend/app/redaction.py), ADR-010)
    masks each source's title, link and text: cards, NRIC/FIN, accounts, IBANs, passports,
-   dates of birth, phones, non-colleague emails, labelled non-colleague names and Singapore
+   dates of birth, phones, non-colleague emails, non-colleague names (labelled, or a mention of a name labelled in any
+   source of the question) and Singapore
    addresses, unless the user holds one of the document's
    `metadata.need_to_know` identities; secrets always. Secrets in the question are masked
    before step 2.
@@ -120,7 +121,8 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
    and `timings_ms` per step (embed, search, live_check, llm, total; also logged).
    `redactions` and `answer_masked` hold, per source, need-to-know and the count
    masked per kind: counts, never values. The question and answer are stored
-   fully masked, even when the user saw them unmasked (ADR-010).
+   fully masked, even when the user saw them unmasked, including where a value
+   reappears without its label (ADR-010).
    It also records **restricted matches**: documents the question matched by
    keyword but the user may not see, with the reason. These come from a
    separate audit-only search and never reach the user or the LLM (ADR-007).

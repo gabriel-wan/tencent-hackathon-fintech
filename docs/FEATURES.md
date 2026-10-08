@@ -191,7 +191,7 @@ Limits: no dedicated prompt-injection test suite yet (roadmap).
 
 Being allowed to open a document is not the same as needing the customer's card number in it. Before any text
 leaves for the LLM, the Shield masks sensitive identifiers: cards, NRIC/FIN, bank accounts, IBANs, passports, dates
-of birth, phones, emails of people outside the company, labelled names and Singapore addresses. Only the people the
+of birth, phones, emails of people outside the company, names (labelled once anywhere, then every mention) and Singapore addresses. Only the people the
 source names as handling that item (Jira assignee and reporter, Drive owners and editors, Confluence owner and
 author) see them in full. Credentials are masked for everyone, admins included. The masking is a fixed set of
 checked patterns (Luhn for cards, mod-97 for IBANs), so the same text always gives the same result.
@@ -206,7 +206,7 @@ model was not shown and the user did not type is masked (challenge §2.5). The a
 answer fully masked, even for Priya, because it can never be edited or erased.
 
 Tested by `test_redaction.py`, the Shield tests in `test_query_pipeline.py`, and `test_sync.py` (embeddings only
-ever receive masked text). Limits: a name with no label before it and street names are not detected; a bare 8-digit
+ever receive masked text). Limits: a name that nothing labels anywhere in the sources, and street names, are not detected; a bare 8-digit
 number starting 3, 6, 8 or 9 is masked as a phone (ADR-010).
 
 ### Development aids, clearly labelled
