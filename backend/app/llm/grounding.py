@@ -101,7 +101,12 @@ def parse_reply(raw: str) -> tuple[str, list[str], bool]:
 
 
 def is_fallback(answer: str) -> bool:
-    return FALLBACK_ANSWER.lower().rstrip(".") in answer.lower()
+    """The model's "not found" reply: the fixed sentence on its own (citation labels aside). A cited
+    answer that also contains the sentence is not one, so a source cannot suppress answers by
+    getting the model to append it."""
+    def bare(s: str) -> str:
+        return " ".join(LABEL_RE.sub("", s).split()).strip("\"'").rstrip(".").lower()
+    return bare(answer) == bare(FALLBACK_ANSWER)
 
 
 def ground(raw: str, allowed_labels: set[str]) -> GroundedAnswer:
