@@ -1,5 +1,10 @@
 # SECURITY.md
 
+**For:** anyone changing how KnowBuddy decides who sees what, and judges checking the security claims.
+**You'll:** see the threats, the rules KnowBuddy must never break, and which tests guard each rule.
+**Not here:** where each rule is enforced in the code → [ARCHITECTURE.md](ARCHITECTURE.md) §2 · running the security
+tests → [TESTING.md](TESTING.md) §1 and §3.
+
 > **What this is:** the guarantees the system must give. The threat model and
 > invariants are design statements; the **Test status** column in section 2
 > says, for each invariant, what is built and which tests prove it. A guarantee

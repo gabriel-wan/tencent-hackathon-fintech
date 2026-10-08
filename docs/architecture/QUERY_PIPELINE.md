@@ -1,5 +1,10 @@
 # Query pipeline and shared contracts
 
+**For:** anyone changing the question pipeline, or building against its API or tables.
+**You'll:** see the exact steps of one question, the API contracts, and what connectors must write.
+**Not here:** the overview and diagrams → [ARCHITECTURE.md](../ARCHITECTURE.md) · connectors in depth →
+[CONNECTORS.md](CONNECTORS.md).
+
 What roadmap Task 3 built, and the formats Tasks 1 and 2 build against.
 Decisions behind it: ADR-002, ADR-003, ADR-005, ADR-006, ADR-007 in
 [DECISIONS.md](../decisions/DECISIONS.md).
