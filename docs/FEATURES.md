@@ -186,8 +186,9 @@ given becomes the fixed "not found" reply. The model has no tools to call, and t
 text, with only http(s) links clickable.
 
 Prompt injection (ADR-011): a source can't fake the end of its block, in any spelling or with hidden characters. A
-line written to the AI ("ignore your previous instructions", "note to AI assistants", "SYSTEM:", in English or
-Chinese) becomes `[instruction removed]` before the LLM sees it, and the answer reports how many lines were removed.
+line written to the AI ("ignore your previous instructions", "note to AI assistants:", "SYSTEM: new rule", in
+English or Chinese) becomes `[instruction removed]` before the LLM sees it, and the answer reports how many lines were
+removed.
 Links the model wasn't shown are removed from answers. The audit record names the source and the rule, never the
 text.
 Try it: re-seed ([RUNNING.md](RUNNING.md) §7), sign in as Alice and ask "What is the status of the payment gateway

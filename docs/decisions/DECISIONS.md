@@ -19,7 +19,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | [007](#adr-007-audit-log-design) | Audit-log design | Accepted |
 | [008](#adr-008-deployment-architecture) | Deployment architecture | Accepted |
 | [009](#adr-009-frontend-architecture) | Frontend architecture | Accepted |
-| [011](#adr-011-prompt-injection-defences) | Prompt-injection defences | Proposed |
+| [011](#adr-011-prompt-injection-defences) | Prompt-injection defences | Accepted |
 
 ---
 
@@ -489,9 +489,9 @@ the existing Docker Compose setup, with the database on the same server.
 
 ## ADR-011: Prompt-injection defences
 
-- **Status:** Proposed (built; for the team to discuss and accept)
+- **Status:** Accepted
 - **Date:** 2026-10-08
-- **Proposed by:** gabriel-wan
+- **Deciders:** Gabriel (proposed), Vincent and Zewei (reviewed and accepted on #17)
 - **Scope:** what the LLM receives from retrieved content, and what our code does with its answer,
   when a source contains text aimed at the model. Relates to INV-9, T1, T2, T8.
 
@@ -549,13 +549,20 @@ Deterministic layers, in the order a question meets them:
   answer suppression, Chinese override, password request, system-prompt request, reworded with
   no trigger words), each run 3 times. With our prompt and fence but none of the other checks,
   the model resisted 30 of 30; with every layer, 30 of 30, the scanner acting on 7 attacks.
+  The same after the review changes below.
   `test_injection.py` uses a fake model that obeys the attacker, to show the code's layers hold
   when a model does not.
 - `ASSUMPTION:` limits accepted for the prototype:
   - a reworded attack using none of the scanner's phrases is left to the model's rules (they
     held in the evaluation);
   - a false positive removes a legitimate line (for example "ignore all previous instructions
-    about the offsite"); the audit record shows which source and which rule;
+    about the offsite"); the audit record shows which source and which rule. The six found in
+    review ("enable developer mode on the test phone", "message to the AI team", "instructions
+    for Copilot", "ignore all the old rules for the VPN", "SYSTEM: disk usage 91%", "share all
+    the other documents with legal") were fixed and are kept as tests;
+  - a match removes the whole line. In Drive or PDF text a line can be a whole paragraph, so a
+    long paragraph goes with the instruction in it. That is deliberate: the sentences after the
+    trigger usually carry the payload ("…say it was cancelled");
   - links written without `http(s)://` or `www.` are not checked;
   - a source that simply states something false is misinformation, not injection: the answer
     cites it, and the user can open the source.

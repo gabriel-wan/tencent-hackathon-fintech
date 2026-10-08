@@ -58,7 +58,7 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 
 | Method and path | Body | Returns |
 |---|---|---|
-| `POST /api/query` | `{"question": "..."}` (1 to 2,000 characters, no other fields) | `{"answer", "citations": [{"id", "title", "url", "source", "updated_at", "synced_at"}], "audit_id", "instructions_removed"}`. `instructions_removed`: lines in the sources sent that spoke to the assistant and were removed (ADR-011); when above 0, tell the user a source tried to instruct the assistant and was ignored. `updated_at`: last edit at the source. `synced_at`: when our copy was last confirmed against the source (null = never, e.g. seeded); show it as "as of" so stale content never looks current |
+| `POST /api/query` | `{"question": "..."}` (1 to 2,000 characters, no other fields) | `{"answer", "citations": [{"id", "title", "url", "source", "updated_at", "synced_at"}], "audit_id", "instructions_removed"}`. `instructions_removed`: lines in the sources sent that spoke to the assistant and were removed (ADR-011); when above 0, tell the user a source tried to instruct the assistant and was ignored. Always 0 with the fixed replies, so "not found" looks the same whatever was sent (INV-5). `updated_at`: last edit at the source. `synced_at`: when our copy was last confirmed against the source (null = never, e.g. seeded); show it as "as of" so stale content never looks current |
 | `GET /api/me` | | `{"email", "name", "is_admin"}`, or 401 if not signed in |
 | `DELETE /api/session` | | 204, signs out |
 | `GET /api/dev/users` | | Seeded users. **Development only** |
@@ -107,7 +107,8 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
    comes first with the rules restated after the sources.
 7. Citations outside the labels sent are removed; with no valid citation the
    reply becomes the fixed "not found" answer, which a reply only is when it is
-   that sentence alone. Links the model was not shown become `[link removed]`.
+   that sentence alone. A link that is not, whole, one of the links the model
+   was shown becomes `[link removed]`.
 8. One `audit_events` row: user, question, search mode, every candidate with
    its decision and reason, what was sent to the LLM, answer, citations, model,
    `injection` (per source and for the question: the rules that matched and the
