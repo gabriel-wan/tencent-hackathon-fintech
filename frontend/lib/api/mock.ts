@@ -39,6 +39,7 @@ const SLACK_ONCALL: Citation = {
   source: "slack",
   updated_at: "2026-10-02T09:14:00Z",
   synced_at: null, // like seeded data: never synced from a real tool
+  redacted: {}, // nothing masked in the mock sources
 };
 const DRIVE_RUNBOOK: Citation = {
   id: "drive:D_RUNBOOK",
@@ -47,6 +48,7 @@ const DRIVE_RUNBOOK: Citation = {
   source: "drive",
   updated_at: "2026-10-02T13:00:00Z",
   synced_at: null, // like seeded data: never synced from a real tool
+  redacted: {}, // nothing masked in the mock sources
 };
 const SLACK_ENG: Citation = {
   id: "slack:C_ENG:1727827400.000200",
@@ -55,6 +57,7 @@ const SLACK_ENG: Citation = {
   source: "slack",
   updated_at: "2026-10-02T13:30:00Z",
   synced_at: null, // like seeded data: never synced from a real tool
+  redacted: {}, // nothing masked in the mock sources
 };
 const JIRA_TICKET: Citation = {
   id: "jira:PAY-412",
@@ -63,6 +66,7 @@ const JIRA_TICKET: Citation = {
   source: "jira",
   updated_at: "2026-09-30T08:00:00Z",
   synced_at: null, // like seeded data: never synced from a real tool
+  redacted: {}, // nothing masked in the mock sources
 };
 const CONFLUENCE_DOC: Citation = {
   id: "confluence:98765",
@@ -71,6 +75,7 @@ const CONFLUENCE_DOC: Citation = {
   source: "confluence",
   updated_at: "2026-09-28T10:00:00Z",
   synced_at: null, // like seeded data: never synced from a real tool
+  redacted: {}, // nothing masked in the mock sources
 };
 
 function reply(answer: string, citations: Citation[]): QueryResponse {
