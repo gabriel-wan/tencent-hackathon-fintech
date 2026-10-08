@@ -1,5 +1,5 @@
 """Need-to-Know Shield (ADR-010): deterministic masking of sensitive identifiers wherever document
-text leaves our system: the LLM prompt, citation titles, the answer, and embeddings.
+text leaves our system: the LLM prompt, citation titles and links, the answer, and embeddings.
 
 Authorization decides WHICH documents a user may read (ADR-003); the Shield decides which identifiers
 inside them they see. A document's handlers, as its source names them (`metadata.need_to_know`: Jira
@@ -15,7 +15,7 @@ from app.auth.principals import IDENTITY_PREFIX
 from app.llm.client import EMBEDDING_MAX_CHARS
 
 _IDENTITIES = tuple(set(IDENTITY_PREFIX.values()))
-_CARD_WORD = re.compile(r"(?i)\b(?:card|visa|master ?card|amex|pan|cc|credit|debit)\b")
+_CARD_WORD = re.compile(r"(?i)\b(?:card|visa|master ?card|amex|pan|cc|credit|debit)\b|卡")
 
 
 def _decimals(value: str) -> list[int]:
@@ -49,18 +49,25 @@ def _iban(m: re.Match) -> int:
     return 0
 
 
+def _random(m: re.Match) -> int:  # a long run mixing upper case, lower case and digits: a key or token
+    v = m["v"]
+    return len(v) if any(c.isupper() for c in v) and any(c.islower() for c in v) and any(c.isdigit() for c in v) else 0
+
+
 def _at_least(n: int, most: int = 99) -> Callable[[re.Match], int]:
     return lambda m: len(m["v"]) if n <= len(_decimals(m["v"])) <= most else 0
 
-
-_NUMBER_WORD = r"(?:\s*(?:no\.?|number|num|#))?(?:\s+(?:is|was))?\s*[:#]?\s*"  # "account number is 123..."
 
 # ASCII-only word boundaries. Python's \b and \w count Chinese characters as letters, so "身份证S1234567D"
 # would have no boundary before the NRIC and escape. These still keep identifiers glued to ASCII IDs and
 # links apart (Slack's /p1727...), and \d still matches any Unicode digit.
 _B = r"(?<![A-Za-z0-9_])"
 _E = r"(?![A-Za-z0-9_])"
-_CJK = "⺀-鿿豈-﫿　-〿＀-￯"  # an unquoted value ends at Chinese text
+_CJK = "⺀-鿿豈-﫿　-〿＀-￯가-힯"  # Chinese, Japanese, Korean
+_COLON = r"[:：]"  # ASCII and full-width
+_NUMBER_WORD = rf"(?:\s*(?:no\.?|number|num|#|号码|号))?(?:\s+(?:is|was))?\s*(?:{_COLON}|#)?\s*"  # "account no. is"
+_NAME = r"[A-Z][a-zA-Z'’-]+(?:[ \t]+[A-Z][a-zA-Z'’-]+){0,3}"  # capitalised words on one line
+_LETTER = rf"[^\W{_CJK}]"  # a letter or digit of any script except CJK (emails may be non-ASCII)
 
 # (kind, pattern with the sensitive value in group "v", check), applied in this order. Tags left by an
 # earlier detector hold at most 4 digits, so later ones never match them. Patterns that scan runs of
@@ -75,50 +82,80 @@ DETECTORS: list[tuple[str, re.Pattern, Callable[[re.Match], int]]] = [
     ("secret", re.compile(_B + r"(?P<v>sk-[A-Za-z0-9_-]{20,})"), _whole),
     ("secret", re.compile(_B + r"(?P<v>eyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]+)"), _whole),
     ("secret", re.compile(r"(?i)" + _B + r"bearer\s+(?P<v>[A-Za-z0-9_.~+/-]{16,}=*)"), _whole),
-    # A credential word, alone or ending a name (DB_PASSWORD=, "api_key":), then its value. A value that is
-    # already a tag is skipped, so a token masked above is not counted twice.
-    ("secret", re.compile(r"(?i)(?<![a-z0-9])(?:password|passwd|pwd|passcode|secret|token|"
-                          r"(?:api|access|private|encryption|signing)[ _-]?key)(?![a-z0-9])[\"']?\s*"
-                          r"(?:=(?!=)|:)\s*"  # an assignment, not a comparison (==)
+    # A credential word, alone or ending a name (DB_PASSWORD=, "api_key":, 密码：), then its value. A value
+    # that is already a tag is skipped, so a token masked above is not counted twice.
+    ("secret", re.compile(r"(?i)(?:(?<![a-z0-9])(?:password|passwd|pwd|passcode|secret|token|"
+                          r"(?:api|access|private|encryption|signing)[ _-]?key)(?![a-z0-9])|密码|口令|密钥|令牌)"
+                          rf"[\"']?\s*(?:=(?!=)|{_COLON})\s*"  # an assignment, not a comparison (==)
                           rf"(?P<v>(?!\[secret\])(?:\"[^\"\n]*\"|'[^'\n]*'|[^\s{_CJK}]+))"), _whole),
     # user:pass@ in a URL. The scheme is bounded: unbounded, every word start rescans the rest (quadratic).
     ("secret", re.compile(r"(?i)" + _B + r"[a-z][a-z0-9+.-]{0,30}://[^\s/:@]+:(?P<v>[^\s/@]+)@"), _whole),
+    # A whole line of base64 (key material, e.g. the body of a private key whose BEGIN line is elsewhere).
+    # Before the next pattern, which would mask only the part of the line before a "/".
+    ("secret", re.compile(r"(?m)^[ \t]*(?P<v>[A-Za-z0-9+/]{40,76}={0,2})[ \t]*$"), _random),
+    # Any other key or token: 32+ characters mixing cases and digits. Not after "/": IDs in link paths.
+    ("secret", re.compile(r"(?<![A-Za-z0-9_+=/-])(?P<v>[A-Za-z0-9_+=-]{32,})"), _random),
     ("iban", re.compile(_B + r"(?P<v>[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30})" + _E), _iban),
     ("card", re.compile(_B + r"(?<!\d)(?P<v>\d(?:[ -]?\d){12,18})(?!\d)"), _card),
-    ("account", re.compile(r"(?i)" + _B + r"(?:account|acct|a/c)" + _NUMBER_WORD + r"(?P<v>\d[\d -]{4,24}\d)"),
-     _at_least(6)),
+    ("card", re.compile(_B + r"(?<!\d)(?P<v>\d{4}\.\d{4,6}\.\d{4,5}(?:\.\d{1,4})?)(?![\d.])"), _card),  # dotted
+    ("account", re.compile(r"(?i)(?:" + _B + r"(?:account|acct|a/c)|账号|账户|帐号|帐户|卡号)" + _NUMBER_WORD
+                           + r"(?P<v>\d[\d -]{4,24}\d)"), _at_least(6)),
     ("nric", re.compile(r"(?i)" + _B + r"(?P<v>[STFGM]\d{7}[A-Z])" + _E), _whole),
-    ("passport", re.compile(r"(?i)" + _B + r"passport" + _NUMBER_WORD + r"(?P<v>[A-Z]{1,2}\d{6,8}[A-Z]?)" + _E),
-     _whole),
-    ("dob", re.compile(r"(?i)" + _B + r"(?:dob|d\.o\.b\.?|date\s+of\s+birth|born(?:\s+on)?)(?:\s+(?:is|was))?"
-                       r"\s*[:-]?\s*(?P<v>\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2}"
+    ("passport", re.compile(r"(?i)(?:" + _B + r"passport|护照)" + _NUMBER_WORD + r"(?P<v>[A-Z]{1,2}\d{6,8}[A-Z]?)"
+                            + _E), _whole),
+    ("dob", re.compile(r"(?i)(?:" + _B + r"(?:dob|d\.o\.b\.?|date\s+of\s+birth|born(?:\s+on)?)|出生日期|生日)"
+                       rf"(?:\s+(?:is|was))?\s*(?:{_COLON}|-)?\s*"
+                       r"(?P<v>\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{4}年\d{1,2}月\d{1,2}日?"
                        r"|\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4}|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})"), _whole),
-    ("email", re.compile(r"(?<![A-Za-z0-9_.%+-])(?P<v>[A-Za-z0-9_.%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)"),
-     _whole),
+    ("email", re.compile(rf"(?<!{_LETTER})(?<![.%+-])(?P<v>(?:{_LETTER}|[.%+-]){{1,64}}@(?:{_LETTER}|-)+"
+                         rf"(?:\.(?:{_LETTER}|-)+)+)"), _whole),
     ("phone", re.compile(r"(?<![A-Za-z0-9_+])(?P<v>\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,5})"), _at_least(8, 15)),
     ("phone", re.compile(r"(?<![A-Za-z\d_.+/-])(?P<v>(?:\(?65\)?[ -]?)?[3689]\d{3}[ -]?\d{4})"
                          r"(?![A-Za-z\d_]|[.-]\d)"), _whole),
+    # Any other number after a phone label, any country's format.
+    ("phone", re.compile(r"(?i)(?:" + _B + r"(?:tel|phone|mobile|mob|hp|cell|contact|whatsapp|fax)"
+                         r"(?:\s*(?:no\.?|number|#))?|电话|手机|联系电话)"
+                         rf"\s*{_COLON}?\s*(?P<v>\+?\(?\d[\d ()./-]{{5,18}}\d)"), _at_least(7, 15)),
+    # Names: only where the text says it is a name (label or honorific). Bare names need NER (rejected).
+    ("name", re.compile(r"(?<![A-Za-z])(?:Mr|Mrs|Ms|Mdm|Miss|Madam|Dr|Mx)\.?[ \t]+(?P<v>" + _NAME + ")"), _whole),
+    ("name", re.compile(r"(?i:" + _B + r"(?:customer|client|cardholder|card holder|account holder|applicant"
+                        r"|beneficiary|payee|payer|recipient|full name|customer name|name))[ \t]*"
+                        + _COLON + r"[ \t]*(?P<v>" + _NAME + ")"), _whole),
+    ("name", re.compile(r"(?:姓名|户名|持卡人|客户姓名|客户)[ \t]*" + _COLON + r"[ \t]*(?P<v>[一-鿿]{2,4})"),
+     _whole),
+    # Singapore addresses: postal code, unit number, block number.
+    ("address", re.compile(r"(?i)(?:" + _B + r"(?:singapore|s'pore|spore)|新加坡)[ \t,]*\(?(?P<v>\d{6})(?!\d)"),
+     _whole),
+    ("address", re.compile(r"(?<![A-Za-z0-9#])#(?P<v>\d{1,3}-\d{1,5}[A-Za-z]?)(?![A-Za-z0-9-])"), _whole),
+    ("address", re.compile(r"(?i)" + _B + r"blk\.?[ \t]+(?P<v>\d{1,4}[A-Za-z]?)" + _E), _whole),
 ]
 
 
 def _key(kind: str, value: str) -> str:
-    """Comparable form of a value: emails by address, numbers without separators."""
+    """Comparable form of a value: emails by address, everything else without separators or case."""
     return value.lower() if kind == "email" else re.sub(r"[\W_]", "", value.lower())
+
+
+def _plain_name(name: str) -> str:
+    return _key("name", re.sub(r"\s*\(.*\)\s*$", "", name))  # "Alice Tan (payments engineer)" -> "alicetan"
 
 
 class Shield:
     """One per question, so the same value gets the same tag in every source, and the answer guard
     knows which values were shown unmasked."""
 
-    def __init__(self, colleagues: Iterable[str] = ()):
-        self.colleagues = {e.lower() for e in colleagues}  # the asker's company's users: not masked
+    def __init__(self, colleagues: Iterable[str] = (), colleague_names: Iterable[str] = ()):
+        # The asker's company's users: their emails and names are not masked.
+        self.colleagues = {e.lower() for e in colleagues}
+        self.colleague_names = {_plain_name(n) for n in colleague_names if n}
         self._numbers: dict[str, dict[str, int]] = defaultdict(dict)
         self._shown: set[str] = set()
 
     def redact(self, text: str, cleared: bool) -> tuple[str, Counter]:
         """Mask `text` for this reader. `cleared` (need-to-know): only secrets are masked."""
         def keep(kind: str, key: str) -> bool:
-            if kind != "secret" and (cleared or kind == "email" and key in self.colleagues):
+            if kind != "secret" and (cleared or kind == "email" and key in self.colleagues
+                                     or kind == "name" and key in self.colleague_names):
                 self._shown.add(key)
                 return True
             return False
@@ -149,8 +186,8 @@ class Shield:
     def _tag(self, kind: str, value: str) -> str:
         if kind == "secret":
             return "[secret]"
-        if kind == "dob":
-            return "[date of birth]"
+        if kind in ("dob", "address"):
+            return "[date of birth]" if kind == "dob" else "[address]"
         if kind in ("card", "account", "iban"):  # last 4 shown, as PCI DSS allows for cards
             last4 = "".join(c for c in value if c.isalnum())[-4:]
             return f"[{'IBAN' if kind == 'iban' else kind} ending {last4}]"
@@ -173,6 +210,13 @@ def mask_secrets(text: str) -> str:
 def for_embedding(text: str) -> str:
     """Everything masked, cut to the model's limit (tags can be longer than what they replace)."""
     return Shield().redact(text, cleared=False)[0][:EMBEDDING_MAX_CHARS]
+
+
+def protected_spans(text: str) -> list[tuple[int, int]]:
+    """Where anything that could be an identifier sits, with its label and the 30 characters before it (a
+    card word): places a chunk must not be cut, or half of a card number, or a label without its value,
+    would reach different chunks."""
+    return sorted((max(0, m.start() - 30), m.end()) for _, pattern, _ in DETECTORS for m in pattern.finditer(text))
 
 
 def has_need_to_know(principals: Iterable[str], need_to_know: object) -> bool:

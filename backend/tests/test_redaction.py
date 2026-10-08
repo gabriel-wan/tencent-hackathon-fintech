@@ -40,6 +40,20 @@ POSITIVES = [
     ("电话+65 9123 4567", "电话[phone 1]"),
     ("邮箱jane.lee@gmail.com的", "邮箱[email 1]的"),
     ("护照passport no. E1234567", "护照passport no. [passport 1]"),
+    # Chinese labels and full-width colons.
+    ("账号：123-45678-9", "账号：[account ending 6789]"),
+    ("护照号码：E1234567", "护照号码：[passport 1]"),
+    ("出生日期：1990年3月12日", "出生日期：[date of birth]"),
+    ("卡号4111 1111 1111 1112", "卡号[card ending 1112]"),  # fails Luhn, but 卡 (card) precedes it
+    # Formats the first pass missed.
+    ("tel: 012-345 6789", "tel: [phone 1]"),  # a phone with no + and not Singaporean, after a label
+    ("Card 4111.1111.1111.1111", "Card [card ending 1111]"),
+    ("write to josé@exämple.com", "write to [email 1]"),
+    # Names after a label or an honorific, and Singapore addresses.
+    ("Customer: Jane Lee (jane@x.example)", "Customer: [name 1] ([email 1])"),
+    ("Mdm Tan Ah Kow called twice", "Mdm [name 1] called twice"),
+    ("姓名：张伟", "姓名：[name 1]"),
+    ("Blk 123 Ang Mo Kio Ave 3 #12-345 Singapore 560123", "Blk [address] Ang Mo Kio Ave 3 #[address] Singapore [address]"),
 ]
 
 
@@ -59,6 +73,10 @@ def test_sensitive_identifiers_are_masked(raw, expected):
     "Thread: https://x.slack.com/archives/C1/p4111111111111111",  # Luhn-valid digits inside a link or ID
     "The secrets: none here. Tokens are rotated monthly.",
     "if password == '' or token != expected: raise",  # comparisons in code are not assignments
+    "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit",  # an ID in a link path
+    "git sha 4b825dc642cb6eb9a060e54bf8d69288fbee4904",  # lower-case hex is not a random secret
+    "Deploy block 3 of the migration; PR #123 merged.",
+    "The customer called twice about the refund.",
 ])
 def test_ordinary_text_is_left_alone(raw):
     assert masked(raw) == raw
@@ -79,7 +97,19 @@ SECRETS = [
     ("TOKEN_ENCRYPTION_KEY=abc123def456", "TOKEN_ENCRYPTION_KEY=[secret]"),
     ('{"password": "hunter 2", "user": "app"}', '{"password": [secret], "user": "app"}'),
     ("DATABASE_URL=postgresql://app:s3cretpw@db:5432/brain", "DATABASE_URL=postgresql://app:[secret]@db:5432/brain"),
+    ("password：hunter2", "password：[secret]"),  # full-width colon
+    ("密码：abc123然后登录", "密码：[secret]然后登录"),  # Chinese label; the sentence after it stays
+    ("use wJalrXUtnFEMI7K7MDENGbPxRfiCYEXAMPLEKEY12 for prod", "use [secret] for prod"),  # random, no label
+    # A private key's body without its BEGIN line (cut into another chunk): each base64 line still masked.
+    ("MIIEowIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM2Bx/9a+PbNcdeL2Xr8iBm6q1qYz0\nQwJkLm7nE8fGhT3vK9pXyZ2aBcDeFgHiJkLmNoPq",
+     "[secret]\n[secret]"),
 ]
+
+
+def test_colleague_names_stay_visible():
+    shield = Shield(colleague_names=["Priya Nair (admin and compliance)"])
+    assert shield.redact("Customer: Priya Nair. Customer: Jane Lee", cleared=False)[0] == \
+        "Customer: Priya Nair. Customer: [name 1]"
 
 
 def test_each_secret_is_counted_once():
