@@ -13,9 +13,11 @@ from app.llm.grounding import (
     SourceBlock,
     build_messages,
     ground,
+    neutralise,
 )
 from app.llm.injection import REMOVED, find, strip, strip_blocks
 from app.pipeline.query import answer_question
+from app.redaction import Shield
 from tests.helpers import within
 
 pytestmark = pytest.mark.security
@@ -293,3 +295,16 @@ def alice_client(conn, make_user, fake_llm):
     client = make_client(conn, llm)
     client.post("/api/dev/session", json={"user_id": alice.id})
     return client, llm
+
+
+# ---- With the Need-to-Know Shield (ADR-010): one normalisation for both ----
+
+@pytest.mark.parametrize("sep", [chr(0x200B), chr(0x2060), chr(0xA0), chr(0xFE0F), chr(0xE0101), chr(0x2011),
+                                 chr(0x3000)])
+def test_nothing_the_shield_misses_is_restored_by_the_fence(sep):
+    """The Shield searches the text through the same `plain_char` the fence sends on, so a hidden or
+    look-alike separator cannot hide a card from it and then vanish before the model reads it."""
+    raw = "card 4111" + sep + "1111" + sep + "1111" + sep + "1111"
+    masked, _ = Shield().redact(raw, cleared=False)
+    assert "[card ending 1111]" in masked
+    assert not re.search(r"4111\D{0,2}1111\D{0,2}1111", neutralise(masked))

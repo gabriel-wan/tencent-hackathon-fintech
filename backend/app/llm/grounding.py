@@ -12,6 +12,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 FALLBACK_ANSWER = "I could not find this in the sources you have access to."
 
@@ -36,7 +37,9 @@ REMINDER = ("Answer the question above from the sources only, following your rul
 LABEL_RE = re.compile(r"\[(S\d+)\]")
 # An opening bracket, or a look-alike NFKC keeps, before one of our tag names, with any spacing or slash.
 _TAG_RE = re.compile(r"[<\u2039\u3008\u27e8](?=\s*/?\s*(?:source|question))", re.IGNORECASE)
-_VARIATION_SELECTORS = re.compile("[\ufe00-\ufe0f\U000e0100-\U000e01ef]")
+_CHAR_CACHE_SIZE = 1 << 16  # bounded: hostile text can hold every code point
+_VARIATION_SELECTORS = (("\N{VARIATION SELECTOR-1}", "\N{VARIATION SELECTOR-16}"),
+                        ("\N{VARIATION SELECTOR-17}", "\N{VARIATION SELECTOR-256}"))
 URL_RE = re.compile(r"(?:https?://|www\.)[^\s<>\"'`\[\]{}|\\^]+", re.IGNORECASE)
 LINK_REMOVED = "[link removed]"
 
@@ -59,12 +62,23 @@ class GroundedAnswer:
     removed_links: int = 0
 
 
+@lru_cache(maxsize=_CHAR_CACHE_SIZE)
+def plain_char(c: str) -> str:
+    """One character as the model reads it, and as the Need-to-Know Shield (app/redaction.py) searches
+    it: format characters (zero-width spaces and joiners, direction marks, Unicode tag characters) and
+    variation selectors removed, every dash a hyphen, everything else in NFKC form (full-width,
+    mathematical, no-break spaces). One definition for both, so nothing the Shield misses is restored
+    by the fence."""
+    category = unicodedata.category(c)
+    if category == "Cf" or any(low <= c <= high for low, high in _VARIATION_SELECTORS):
+        return ""
+    return "-" if category == "Pd" else unicodedata.normalize("NFKC", c)
+
+
 def visible(value: str) -> str:
-    """Canonical, visible characters only: full-width and other compatibility forms become their
-    plain form (NFKC), and invisible format characters (zero-width, direction marks, Unicode tag
-    characters) and variation selectors are dropped, so hidden text cannot carry instructions."""
-    value = "".join(c for c in value if unicodedata.category(c) != "Cf")
-    return _VARIATION_SELECTORS.sub("", unicodedata.normalize("NFKC", value))
+    """Untrusted text as the model receives it: each character through `plain_char`, so hidden or
+    look-alike characters can neither carry instructions nor fake our tags."""
+    return value if value.isascii() else "".join(map(plain_char, value))
 
 
 def neutralise(value: str) -> str:

@@ -632,9 +632,9 @@ Deterministic layers, in the order a question meets them:
 1. **Fence** (`app/llm/grounding.py`): untrusted text (the sources and the question) is
    normalised (NFKC; invisible format characters and variation selectors dropped), then any `<`
    or look-alike in front of `source` or `question` is escaped. The question comes first, then
-   the sources, then the rules restated. The Need-to-Know Shield (ADR-010) masks the same
-   normalised text, before the scanner, so a hidden or full-width character cannot hide an
-   identifier from it that the fence would then restore.
+   the sources, then the rules restated. The Need-to-Know Shield (ADR-010) runs first and
+   searches the text through the same function (`plain_char`), so a hidden or look-alike
+   character cannot hide an identifier from it that the fence would then restore.
 2. **Scanner** (`app/llm/injection.py`): fixed English and Chinese patterns for text addressed
    to an AI: overriding instructions, changing its role, "note to AI assistants", fake chat
    turns (`SYSTEM:`, `<|im_start|>`), asking for the prompt. Each matching **line** (a message,
