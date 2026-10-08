@@ -8,7 +8,7 @@
 // Server actions are public endpoints (anyone can call one with any
 // argument), so the connector id is checked against the fixed list before it
 // goes anywhere near a URL.
-import { unstable_rethrow } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 import { BackendUnreachableError } from "@/lib/api/errors";
 import { backendFetch } from "@/lib/api/server";
@@ -19,11 +19,19 @@ export type ActionResult = { ok: true; detail?: string } | { ok: false; message:
 const UNREACHABLE: ActionResult = { ok: false, message: "Couldn't reach the server. Try again in a moment." };
 const BAD_CONNECTOR: ActionResult = { ok: false, message: "Unknown connection." };
 
+/** The app session ended (e.g. after 12 hours): go to sign-in, as every page does, instead of blaming the tool. */
+async function redirectIfSignedOut(res: Response): Promise<void> {
+  if (res.status !== 401) return;
+  const body = (await res.clone().json().catch(() => null)) as { detail?: unknown } | null;
+  if (body?.detail === "Not signed in") redirect("/login"); // the backend's current_user (app/api/deps.py)
+}
+
 /** GET /connectors/{id}/ping: calls the tool's own API as you, which proves the connection works. */
 export async function testConnection(connector: string): Promise<ActionResult> {
   if (!isConnectorId(connector)) return BAD_CONNECTOR;
   try {
     const res = await backendFetch(`/connectors/${connector}/ping`, {}, 15_000); // calls the tool's own API
+    await redirectIfSignedOut(res);
     if (res.ok) {
       const body = (await res.json()) as { as?: unknown };
       return { ok: true, detail: typeof body.as === "string" ? body.as : undefined };
@@ -45,6 +53,7 @@ export async function disconnectConnection(connector: string): Promise<ActionRes
   if (!isConnectorId(connector)) return BAD_CONNECTOR;
   try {
     const res = await backendFetch(`/connectors/${connector}`, { method: "DELETE" });
+    await redirectIfSignedOut(res);
     return res.ok ? { ok: true } : { ok: false, message: "Couldn't disconnect. Try again." };
   } catch (error) {
     unstable_rethrow(error);

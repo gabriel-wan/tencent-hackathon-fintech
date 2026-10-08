@@ -3,12 +3,12 @@
 ## 1. Introduction
 
 Confluence is Atlassian's wiki: pages (runbooks, design docs, incident
-reports) live inside spaces, and it shares one site, account and API token
-with [Jira](JIRA.md). Our connector reads, as an Atlassian **admin**, the
-**text** of every changed page and the **exact rules for who can read it**
-(space permissions plus page restrictions). Those rules are the
-"security-team-only page" case (challenge scenario 3), so they must be
-reproduced exactly, not approximated.
+reports) live inside spaces, and it shares one site and sign-in with
+[Jira](JIRA.md). Our connector reads, through one person's own Atlassian
+sign-in (the admin's for sync), the **text** of every page and **who can read
+it** (page read restrictions, including inherited ones; space permissions are
+not stored yet). Those rules are the "security-team-only page" case (challenge
+scenario 3), so the live check, a search asked as the user, has the final say.
 
 ## 2. Glossary
 
@@ -22,7 +22,7 @@ reproduced exactly, not approximated.
 | Page restriction | An optional extra lock that limits a page (and everything below it) to named users or groups. |
 | Group | A site-wide named list of people, e.g. `security-team`, shared by Confluence and Jira. |
 | accountId | The opaque, permanent ID of an Atlassian user (e.g. `5b10ac8d82e05b22cc7d4ef5`), shared by Confluence and Jira. |
-| API token | A password-like secret created at id.atlassian.com that lets a script act as the user who created it. |
+| API token | A password-like secret from id.atlassian.com. **Not used**: every call is one person's OAuth sign-in. |
 | Storage format | The HTML-like markup Confluence stores page bodies in, e.g. `<p>Step 1</p>`. |
 | CQL | Confluence Query Language, used here to find pages changed since a time. |
 | Cursor | The `_links.next` URL in a response, which you call to get the next page of results. |
@@ -209,11 +209,11 @@ so search never misses them, and 4.9 removes anyone extra.
 **Takeaways**
 
 - **Free plan has no permissions.** A plan with permissions is required.
-- The API token must belong to an **admin**, or restricted pages are invisible to the connector.
+- Sync uses the **admin's** sign-in, so the admin must be able to open every restricted page, or it's invisible to the connector.
 - **Check ancestors.** A restriction on any page above applies too. The live check (4.9) is the authority either way.
 - Restriction changes don't bump `lastmodified`, so `sweep` recomputes every ACL.
 - Page bodies are HTML. Strip the tags.
-- People are `accountId`s. Emails are often hidden, so identity linking uses the Atlassian organization admin API.
+- People are `accountId`s. Identity linking uses the signed-in person's own verified email (`api.atlassian.com/me`).
 
 **How this connector implements the contract** ([architecture](../architecture/CONNECTORS_ARCHITECTURE.md)). Built today (`app/sync.py`, `confluence.py`): every 5 minutes, the space's pages (v2, with bodies and parents) in full, the deepest read restriction per page (groups expanded, cached per run; space permissions not applied: too wide, trimmed by the live check), and `can_read` as one CQL search `id in (...)` as the user. The table is the cursor-based design for when spaces outgrow that.
 

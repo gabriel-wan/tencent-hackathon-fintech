@@ -76,7 +76,8 @@ export function ChatPanel() {
 
   function send(question: string) {
     followNewest.current = true; // sending always brings the new question into view
-    const id = crypto.randomUUID();
+    // randomUUID exists only on https or localhost; a phone on http://<laptop-ip>:3000 has neither.
+    const id = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
     setExchanges((all) => [...all, { id, question, status: "pending" }]);
     void ask(id, question);
   }

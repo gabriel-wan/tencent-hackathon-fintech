@@ -3,8 +3,8 @@
 ## 1. Introduction
 
 Slack holds team chat: messages and threads inside public channels, private
-channels and DMs. Our connector uses a **bot** installed in our own workspace
-to read every thread's **text** and every channel's **members**, because in
+channels and DMs. Our connector uses each person's own Slack **user token**
+(no bot) to read every thread's **text** and every channel's **members**, because in
 Slack channel membership is the only permission. Removing someone from a
 channel is the clearest live-revocation case (challenge scenario 4), and the
 live check enforces it on the very next question.
@@ -23,8 +23,8 @@ live check enforces it on the very next question.
 | User ID | The permanent ID of a person in the workspace, e.g. `U024`. |
 | ts | A message's timestamp string (e.g. `1727741000.000100`), which is also its unique ID within the channel. |
 | Thread | A parent message plus its replies, linked by the parent's `ts` (`thread_ts`). |
-| Bot token | The `xoxb-...` secret our app uses for every call. |
-| Scope | One permission the bot is granted, e.g. `groups:history` to read private channels. |
+| User token | The `xoxp-...` secret that acts as one person; every call uses one (there is no bot token). |
+| Scope | One permission the token is granted, e.g. `groups:history` to read private channels. |
 | Internal app | An app installed only in the workspace that built it, which keeps normal rate limits and is allowed to store message data. |
 | Mention | How Slack encodes people and channels in text: `<@U024>` and `<#C456\|eng>`. |
 | Cursor | `response_metadata.next_cursor`: send it back as `cursor` until it's empty. |
@@ -35,13 +35,13 @@ live check enforces it on the very next question.
 ```
 Workspace (ourteam.slack.com)
 ├── #eng               public  → every full member (not guests)
-├── #payments-oncall   private → alice, sara (+ our bot)
+├── #payments-oncall   private → alice, sara
 └── DM alice ↔ ben             → alice, ben         (not indexed)
 ```
 
 - There are **no per-message permissions**. Access = channel membership.
 - Guests see only channels they were invited to, even public ones.
-- The **bot only reads channels it was invited to**. Workspace admins can't read private channels they aren't in either.
+- A user token reads only what that person can see: sync (the admin's token) needs the admin in every private channel it indexes. Workspace admins can't read private channels they aren't in either.
 
 **Rule:** you can read a message if you are a member of its channel, or the
 channel is public and you are a full member.
@@ -174,7 +174,7 @@ public one. Live check: `conversations.info` as the user; Slack answers
 |---|---|---|
 | `sync(cursor)` | 4.1 → 4.2 `oldest = cursor` per channel → 4.3 for threads → ACL (4.4 cached per channel). New cursor = newest `ts` seen | every 5 min |
 | `sweep()` | 4.1 → 4.2 over the retention window: every thread ID + ACL (4.4). Re-fetch (4.3) threads whose `latest_reply` is newer than the stored `updated_at`. 4.5 refreshes `slack:members` identities | every 30 min |
-| `can_read(user_id, channel_ids)` | 4.4 for each private channel in the final context. Public channel: any full member (4.5 flags), or a guest who joined it | each question, final context only |
+| `can_read(user_id, channel_ids)` | Built: `conversations.info` for each channel, **as the asking user**; Slack answers `channel_not_found` for a private channel they aren't in, or a public one a guest hasn't joined | each question, final context only |
 
 One module: `backend/app/connectors/slack.py`.
 
@@ -182,7 +182,7 @@ One module: `backend/app/connectors/slack.py`.
 
 1. After removing a user from a private channel, 4.4 no longer lists them (live check denies).
 2. A reply to an old thread raises its parent's `latest_reply` in 4.2.
-3. Time 5 calls to 4.2. Expect about 50/min for an internal app (see [TABLE.md](TABLE.md)).
+3. Time 5 calls to 4.2. Expect about 50/min for an internal app (Slack's Tier 3 rate limit).
 
 ## 7. Sources
 

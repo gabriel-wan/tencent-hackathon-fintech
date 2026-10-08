@@ -42,7 +42,7 @@ it genuinely fits the architecture (recorded in DECISIONS.md).
 | CodeBuddy | AI coding assistant in the IDE: completion, review, debugging, multi-file editing | Primary development tool (required proof) |
 | WorkBuddy | AI-native workspace to build, deploy and manage agents with LLMs, MCP connectors, skills and scheduling | Alternative primary tool; possibly for agent prototyping |
 | Miora | AI creative studio for images, video, 3D and UI from natural language | Cover image, demo visuals |
-| Tencent Cloud Agent Development Platform (ADP) | Model orchestration, sandboxed runtime, tool calling, RAG, guardrails, human-in-the-loop | Candidate for the agent / retrieval layer (undecided) |
-| Tencent Cloud Agent Runtime | Secure sandbox execution environment for agents | Candidate for deployment (undecided) |
-| Tencent Cloud services | Compute, database, storage, network, etc. | Candidate infrastructure (undecided) |
+| Tencent Cloud Agent Development Platform (ADP) | Model orchestration, sandboxed runtime, tool calling, RAG, guardrails, human-in-the-loop | Not used: retrieval, permission checks and grounding are built in-house (ADR-003 to ADR-006) |
+| Tencent Cloud Agent Runtime | Secure sandbox execution environment for agents | Not used: the live demo runs on one Lighthouse server (ADR-008) |
+| Tencent Cloud services | Compute, database, storage, network, etc. | Used: TokenHub for the LLM (hy3) and embeddings (ADR-006); Lighthouse for hosting (ADR-008, not deployed yet) |
 | Tencent Cloud TRTC ASR / TTS | Speech-to-text and text-to-speech | Not obviously relevant to this challenge |

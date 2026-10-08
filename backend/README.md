@@ -7,11 +7,14 @@ FastAPI service (ADR-001). Contracts and the query flow are described in
 |---|---|
 | `app/api/` | HTTP routes and dependencies. Development-only routes exist only when `APP_ENV=development` |
 | `app/auth/` | Sessions, principals and the live permission check. The security boundary lives here and in the search SQL |
-| `app/connectors/` | Connector sign-in (OAuth), stored connections and per-source API clients |
+| `app/connectors/` | Connector sign-in (OAuth), stored connections, per-source API clients and live checks, and the admin boundary API (`admin.py`) |
+| `app/companies.py` | Which company a sign-in belongs to; only a full Slack member can start one |
+| `app/sync.py` | Copies each company's boundary scopes into `documents` and `chunks` every 5 minutes, as its admin |
 | `app/retrieval/search.py` | Hybrid search, filtered by ACL and admin boundary before ranking |
 | `app/llm/` | TokenHub client (chat and the shared `embed()`), grounding rules |
 | `app/pipeline/query.py` | Question to answer, end to end, with one audit event |
-| `app/audit/log.py` | Audit event writes (hash chain not built yet) |
+| `app/audit/` | Tamper-evident audit log: per-company hash chain, verify and search (`log.py`), admin API (`api.py`) |
+| `app/db.py` | Database engines: the app logs in as `knowbuddy_app` (`APP_DB_PASSWORD`); `owner_engine()` is for migrations and tests only |
 | `app/seed.py` | Fictional development data. Not connector data |
 | `migrations/` | Alembic schema migrations |
 

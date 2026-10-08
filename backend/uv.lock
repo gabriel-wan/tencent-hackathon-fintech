@@ -548,7 +548,7 @@ wheels = [
 ]
 
 [[package]]
-name = "internal-brain-backend"
+name = "knowbuddy-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

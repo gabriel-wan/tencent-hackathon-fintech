@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 
+import { SlackTokenForm } from "@/components/connectors/slack-token-form";
 import { DevSignInList } from "@/components/dev-sign-in-list";
 import { PageContainer } from "@/components/page-container";
 import { ServerUnavailable } from "@/components/server-unavailable";
@@ -14,7 +15,7 @@ import { NotSignedInError } from "@/lib/api/errors";
 import { getMe, listDevUsers } from "@/lib/api/server";
 import { connectUrl, oauthErrorMessage } from "@/lib/connectors";
 
-export const metadata: Metadata = { title: "Sign in · Internal Brain" };
+export const metadata: Metadata = { title: "Sign in · KnowBuddy" };
 
 type Props = { searchParams: Promise<{ error?: string | string[] }> };
 
@@ -47,7 +48,7 @@ export default async function LoginPage({ searchParams }: Props) {
         <Card>
           <CardHeader>
             <CardTitle>
-              <h1 className="text-xl font-semibold tracking-tight">Sign in to Internal Brain</h1>
+              <h1 className="text-xl font-semibold tracking-tight">Sign in to KnowBuddy</h1>
             </CardTitle>
             <CardDescription>
               Answers from your company&apos;s Slack, Drive, Jira and Confluence, limited to what you can already see.
@@ -98,6 +99,11 @@ export default async function LoginPage({ searchParams }: Props) {
             <DevSignInList users={devUsers} />
           </section>
         ) : null}
+
+        {/* Development only (devUsers is null otherwise). Slack's sign-in needs https, so locally Slack is
+            connected with a pasted token, and connecting it is also how a new person signs in and how a
+            company starts. Signed-out visitors can't reach /connectors, so the form must be here too. */}
+        {devUsers !== null ? <SlackTokenForm /> : null}
       </div>
     </PageContainer>
   );

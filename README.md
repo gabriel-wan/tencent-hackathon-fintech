@@ -1,6 +1,6 @@
-# Internal Brain
+# KnowBuddy
 
-> Working name taken from the challenge title. Final product name: **TBD**.
+> Built for the Aspire challenge "The Internal Brain". Product name: **KnowBuddy**.
 
 A permission-aware enterprise knowledge system that answers natural-language
 questions across Confluence, Jira, Slack and Google Drive without ever showing
@@ -13,7 +13,7 @@ answered.
 | **Hackathon** | Tencent Cloud AI CAN DO IT Hackathon Singapore 2026 |
 | **Track** | FinTech – Aspire |
 | **Challenge** | The Internal Brain – Building a Context-Aware Enterprise Knowledge System with RBAC, Security Logging & Audit Trail |
-| **Team** | 3 students (TBD) |
+| **Team** | Gabriel Wan, Vincent Ong, Liew Ze Wei |
 | **Submission deadline** | **16 October 2026** |
 
 ## Problem
@@ -27,23 +27,28 @@ statement: [docs/hackathon/challenge.md](docs/hackathon/challenge.md).
 
 ## Current status
 
-**Architecture decided (ADR-000 to ADR-008). Backend query pipeline built; connectors and UI in progress.**
+**Architecture decided (ADR-000 to ADR-008). End to end working locally: sign-in, the four connectors, sync, permission-filtered chat with citations, and a tamper-evident audit log.**
 
-`docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector. The backend
-answers questions over permission-filtered, audited search
-([QUERY_PIPELINE.md](docs/architecture/QUERY_PIPELINE.md)). Many companies can
-share one deployment, each seeing only its own data. Users connect their own
-Google Drive, Slack, Jira and Confluence accounts; sync copies each company's
-chosen channels, folders, projects and spaces, with their permissions, and the
-live permission check asks each tool as the user
-([connectors/GUIDE.md](docs/connectors/GUIDE.md)). Fictional seed data is
-available for development. Not built yet: the audit hash chain and the frontend
-beyond the connectors test page.
+`docker compose up` runs Next.js, FastAPI and PostgreSQL/pgvector. People sign
+in by connecting their own Slack, Google Drive, Jira or Confluence account
+([connectors/GUIDE.md](docs/connectors/GUIDE.md)). Many companies can share one
+deployment, each seeing only its own data. Sync copies each company's chosen
+channels, folders, projects and spaces, with their permissions, every 5
+minutes. A question is answered only from documents the asker may see,
+confirmed live with each tool as that person, with citations
+([QUERY_PIPELINE.md](docs/architecture/QUERY_PIPELINE.md)). Every question and
+admin action goes into a per-company hash chain that admins can search and
+verify (ADR-007). Fictional seed data is available for development.
 
-## Planned architecture
+Not built yet: the admin Audit and Boundary pages (the APIs exist; the pages
+are previews with mock data), PII redaction, the prompt-injection test suite,
+and the hosted deployment ([ROADMAP.md](docs/ROADMAP.md)).
 
-Initial and subject to change; see [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md). The
-non-negotiable security boundary:
+## Architecture
+
+Built state: [CURRENT.md](docs/architecture/CURRENT.md). Original design and
+the questions the ADRs answered: [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md).
+The non-negotiable security boundary:
 
 ```
 USER → AUTHENTICATION → AUTHORIZATION → PERMISSION-AWARE RETRIEVAL
@@ -53,8 +58,9 @@ USER → AUTHENTICATION → AUTHORIZATION → PERMISSION-AWARE RETRIEVAL
 Authorization is evaluated by deterministic code that knows the user's
 identity, **before** anything reaches the LLM. The LLM never decides who may
 see what. Every stage emits audit events. Stack: Next.js, FastAPI,
-PostgreSQL + pgvector (ADR-001). LLM provider and cloud services are still open
-ADRs in [DECISIONS.md](docs/decisions/DECISIONS.md).
+PostgreSQL + pgvector (ADR-001); Tencent Cloud TokenHub for the LLM and
+embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
+(ADR-008). All decisions: [DECISIONS.md](docs/decisions/DECISIONS.md).
 
 ## Repository structure
 
@@ -67,11 +73,13 @@ ADRs in [DECISIONS.md](docs/decisions/DECISIONS.md).
 │   ├── PROJECT.md           problem, personas, scenarios, proposed MVP, open items
 │   ├── SECURITY.md          threat model and security invariants
 │   ├── DEVELOPMENT.md       setup, workflow, conventions, integrations, tests
+│   ├── ROADMAP.md           tasks by date, with progress
 │   ├── architecture/
 │   │   ├── ARCHITECTURE.md  planned architecture, security boundary, open questions
 │   │   ├── CURRENT.md       diagram of what is built right now
-│   │   ├── CONNECTORS_ARCHITECTURE.md  planned data flow from the 4 sources
-│   │   └── QUERY_PIPELINE.md  query flow, schema and API contracts (Task 3)
+│   │   ├── CONNECTORS_ARCHITECTURE.md  data flow from the 4 sources
+│   │   └── QUERY_PIPELINE.md  query flow, schema and API contracts
+│   ├── connectors/          GUIDE.md (setup and API) and one page per tool
 │   ├── decisions/
 │   │   ├── DECISIONS.md     decision log (ADR-000 to ADR-008 accepted)
 │   │   └── adr-template.md
@@ -82,7 +90,7 @@ ADRs in [DECISIONS.md](docs/decisions/DECISIONS.md).
 │       ├── submission.md    submission checklist with deadline
 │       ├── tool-usage.md    CodeBuddy/WorkBuddy usage log and checklist
 │       └── evidence/        real screenshots / recordings, captured during development
-├── docker-compose.yml       runs db + backend + frontend
+├── docker-compose.yml       runs db, migrate, backend, sync and frontend
 ├── frontend/                Next.js app (localhost:3000), config in .env.example
 ├── backend/                 FastAPI app (localhost:8000), config in .env.example, tests in tests/, Alembic migrations in migrations/
 └── scripts/                 helper scripts (empty)
@@ -124,5 +132,6 @@ model in [SECURITY.md](docs/SECURITY.md).
 
 ## For AI coding agents
 
-Read [AGENTS.md](AGENTS.md) first. Do not write product code until the team
-has reviewed ARCHITECTURE.md and recorded ADR-001.
+Read [AGENTS.md](AGENTS.md) first, and the ADRs in
+[DECISIONS.md](docs/decisions/DECISIONS.md) before touching authorization,
+retrieval, LLM or audit code.

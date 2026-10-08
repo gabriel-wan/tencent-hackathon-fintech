@@ -33,14 +33,14 @@ The team shares one workspace per tool, so everyone sees the same data. Each dev
    uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
    ```
 4. In `backend/.env`, set `TOKEN_ENCRYPTION_KEY=<the printed key>`, including its trailing `=`.
-5. From the repo root, run `docker compose up --build`. When it's running, open http://localhost:3000/connectors.
-   - ✅ The 4 tools are listed. **Connect** on a tool you haven't set up returns 503, naming the missing variable.
+5. From the repo root, run `docker compose up --build`. When it's running, open http://localhost:3000/login.
+   - ✅ The sign-in page lists Google, Slack and Atlassian, and (in development) a Slack token box. A tool you haven't set up returns 503, naming the missing variable. Once signed in, **Connections** (`/connectors`) lists all 4 tools.
 6. Nothing to register: the company is created by the first sign-in.
    - The first full member (not a guest) to connect **Slack** from a new workspace creates the company and becomes its admin. Everyone after them from that workspace joins it. Atlassian never creates a company (it can't tell a contractor from an employee): the admin adds the company's Atlassian site by connecting Jira, then everyone from that site joins.
    - Connect the tools in any order, with the same email. Google Drive names no company: until you connect Slack or Jira/Confluence, you are in no company and the app shows you nothing.
    - Slack guests and Atlassian sign-ins never become admin. Anyone from an unknown workspace or site, and Atlassian sign-ins granting several unknown sites, are refused with `?error=no_company`, and the page says what to do.
 
-Each tool row has **Connect**, **Test** and **Disconnect**. **Test** opens `{"ok": true, "as": "<your name or email>"}` when the connection works, or says `connect again` when it doesn't.
+On **Connections** (`/connectors`), each tool's card has **Connect**, **Test** and **Disconnect**. **Test** says "Works. The tool sees you as <your name or email>." when the connection works, or "Access expired or was revoked. Connect again." when it doesn't. (The backend route behind it, `GET /connectors/{id}/ping`, returns `{"ok": true, "as": "…"}`.)
 
 ## 3. Google Drive
 
@@ -82,8 +82,8 @@ Locally, you connect Slack by pasting a token from your own Slack app. The **Con
 2. Click **OAuth & Permissions** (left menu) and scroll to **Scopes**. Under **User Token Scopes** (not Bot Token Scopes), click **Add an OAuth Scope** once for each: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `users:read`, `users:read.email`. Leave **Required** unticked.
 3. Scroll back to the top of **OAuth & Permissions**. Click **Install to Workspace**, then **Allow**. (If the workspace requires admin approval, ask its admin to approve your app first.)
 4. Copy the **User OAuth Token** (`xoxp-…`) that now appears. It acts as you: never share it.
-5. Open http://localhost:3000/connectors. Paste your `xoxp-…` token into the Slack box and click **Connect with token**.
-   - ✅ The page says "Connected to slack", and Slack shows your email. **Test** shows your Slack name.
+5. Open http://localhost:3000/login (or **Connections**, if you're already signed in). Paste your `xoxp-…` token into the **Connect Slack with a token** box and click **Connect with token**.
+   - ✅ You're signed in, and on **Connections** the Slack card shows your email. **Test** shows your Slack name.
 
 ## 5. Jira and Confluence
 
@@ -124,7 +124,7 @@ Production uses its own apps and secrets, never the ones from your laptop. `<APP
    APP_URL=<APP_URL>
    FRONTEND_URL=<public frontend address>
    ```
-4. **Frontend variables:** `APP_ENV=production`, and `BACKEND_LOCAL_URL=<APP_URL>`. This replaces Slack's token box with the **Connect** button.
+4. **Frontend variables:** `BACKEND_LOCAL_URL=<APP_URL>`. The Slack token box disappears by itself, because the backend's development routes don't exist with `APP_ENV=production`.
 5. **Google.** Repeat section 3's set-up in a new project, with these changes:
    - **Audience:** **Internal** if the company uses Google Workspace (no review needed). Otherwise **External**, then publish the app, which requires Google's verification for Drive access.
    - **Authorized redirect URI:** `<APP_URL>/oauth/google/callback`
@@ -161,7 +161,7 @@ Auth is the `ib_session` cookie (HttpOnly, 12 hours), set on first connect. Rout
 |---|---|---|---|
 | `GET /connectors` | optional | `200` list (below). All `connected: false` if signed out. | none |
 | `GET /connectors/{id}/connect` | none | `302` to the tool's sign-in page | `503 "<provider> sign-in is not configured: set <VAR>"` |
-| `GET /oauth/{provider}/callback` | none (called by the tool) | `303` to `{FRONTEND_URL}/connectors?connected=<provider>` | `303` to `…?error=access_denied`, `provider_error`, `no_company`, `invalid_state` or `account_mismatch` |
+| `GET /oauth/{provider}/callback` | none (called by the tool) | `303` to `{FRONTEND_URL}/connectors?connected=<provider>` | `303` to `…?error=access_denied`, `provider_error`, `no_company`, `missing_permission` (Google sign-in without Drive ticked), `invalid_state` or `account_mismatch` |
 | `GET /connectors/{id}/ping` | user | `200 {"ok": true, "as": "<name or email>"}` | `404` not connected, `401` connect again, `502` tool API failed |
 | `DELETE /connectors/{id}` | user | `204`. Also revokes the grant at Google or Slack. Jira and Confluence share one sign-in, so this disconnects both. | none |
 | `DELETE /api/session` | optional | `204`, and clears the cookie (log out; `app/api/routes.py`) | none |
@@ -170,6 +170,8 @@ Auth is the `ib_session` cookie (HttpOnly, 12 hours), set on first connect. Rout
 | `PUT /api/admin/boundary/{id}/{scope_id}` | admin | `{"title": "<name>"}` → `204`. Audited. | `403`, `404` unknown tool |
 | `DELETE /api/admin/boundary/{id}/{scope_id}` | admin | `204`; its documents are hidden at once. Audited. | `403`, `404` |
 | `POST /api/admin/sync` | admin | `202`: syncs your company now, in the background | `403` |
+| `GET /api/admin/audit` | admin | `200 {"records": [...], "next_before_id"}`: your company's audit trail, newest first; filters `user`, `since`, `until`, `event_type`, `document`, `source`, `scope_id`, `before_id`, `limit` (ADR-007) | `403`, `422` bad filter |
+| `POST /api/admin/audit/verify` | admin | `200 {"ok", "checked", "first_broken_id", "reason", "head"}`: recomputes your company's hash chain | `403` |
 | `POST /api/dev/connectors/slack` | none. **Development only** | `{"token": "xoxp-…"}`: connects Slack like **Connect**, starts a session. `200 {"connected": "slack", "as": "<name>"}` | `400` token rejected, `403 no_company` workspace belongs to no company you can join, `409` account belongs to someone else, `503` not configured |
 
 `GET /connectors` response:
@@ -273,7 +275,7 @@ Field mappings per source are in §5 of [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md), [SLA
 
 ### 7.5 Sync: choose the boundary, then sync
 
-Sync reads as the company admin's own connections (the first person who connected, section 2 step 6), so it needs no extra credentials. It sees only what the admin can see: they must be in every private channel, and able to open every folder, project and space, that they add.
+Sync reads as the company admin's own connections (the first full member to connect Slack, section 2 step 6), so it needs no extra credentials. It sees only what the admin can see: they must be in every private channel, and able to open every folder, project and space, that they add.
 
 1. Connect the tools as the admin (sections 3 to 5).
 2. At http://localhost:8000/docs, run **`GET /api/admin/scopes/slack`** (or `drive`, `jira`, `confluence`) and pick IDs.

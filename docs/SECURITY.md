@@ -1,9 +1,9 @@
 # SECURITY.md
 
-> **Status: design principles.** Everything in this document describes what the
-> system is *meant* to guarantee. Nothing here is a claim that the
-> implementation already satisfies it. As invariants gain tests, link the tests
-> here.
+> **What this is:** the guarantees the system must give. The threat model and
+> invariants are design statements; the **Test status** column in section 2
+> says, for each invariant, what is built and which tests prove it. A guarantee
+> counts only once its status says so.
 
 Security is the core of this challenge, not a feature. The handbook's framing:
 an assistant that can read everything can leak everything, so every answer must
@@ -40,7 +40,7 @@ be scoped to what the asker is authorized to see, with a tamper-evident record.
 | T7 | Stale permission metadata | Index metadata lags the source platform | Freshness window applies to permissions as well as content; explicit staleness budget. Built: every sync (5 min) refreshes every stored ACL; syncs of one company never overlap; each citation carries `synced_at`, so a scope that stopped syncing is visibly stale |
 | T8 | Hallucinated information | Model invents facts, tickets, people or citations | Answer only from provided context; cite every claim; refuse or say "not found" when context is empty; verify citations exist |
 | T9 | Existence side-channel | System reveals that a restricted document exists (counts, "access denied to X", ranking effects) | Negative responses indistinguishable from "nothing found" beyond what the user's own permissions already imply |
-| T10 | Audit-log tampering | Entries modified or deleted to hide access | Tamper-evident structure (e.g. hash chaining or signing, exact mechanism TBD in ADR-007); append-only storage; separate write path |
+| T10 | Audit-log tampering | Entries modified or deleted to hide access | Tamper-evident structure; append-only storage; separate write path. Built (ADR-007): one hash chain per company, an app database role that can only read and add audit records, and triggers that stop even the owner (INV-7) |
 | T11 | Credential / API-key leakage | Secrets in code, logs, screenshots, chat logs, prompts | `.gitignore`, env-only secrets, redaction in logs and evidence screenshots, no secrets in prompts |
 | T12 | Malicious or untrusted enterprise content | Files with active content, oversized inputs, malformed data | Content is parsed defensively and never executed; size and type limits |
 | T13 | Over-privileged connectors | A connector credential can read more than any user should; a bug in our code becomes a leak | Least-privilege connector scopes; authorization is our layer's job regardless of what the connector can technically read |
@@ -57,7 +57,7 @@ least one automated test. Until then they are **principles, not guarantees**.
 | INV-3 | User identity must be available and verified at the moment authorization is evaluated. No anonymous or "system" retrieval on a user's behalf. | Tested: session-only identity ([test_api.py](../backend/tests/test_api.py)); connector sign-in joins only the company of its Slack workspace or Atlassian site ([test_connections_api.py](../backend/tests/test_connections_api.py)) |
 | INV-4 | Authorization decisions are deterministic and inspectable: given the same user, document and permission state, the decision is the same, and the reason is recorded. | Partly: per-document decision and reason recorded in the audit log ([test_query_pipeline.py](../backend/tests/test_query_pipeline.py)) |
 | INV-5 | The existence of restricted content is not unnecessarily revealed. A denied or filtered item must not change the response in a way that leaks beyond what the user's permissions already imply. | Partly: filter runs before ranking; same reply for nothing found and nothing permitted ([test_query_pipeline.py](../backend/tests/test_query_pipeline.py)) |
-| INV-6 | Audit events capture enough to reconstruct important access decisions: identity, timestamp, query, candidate and retrieved document IDs, per-document decision and reason, final answer (or a reference to it). | Partly: query events ([test_query_pipeline.py](../backend/tests/test_query_pipeline.py)) and boundary changes ([test_admin.py](../backend/tests/test_admin.py)) tested; connector connect/disconnect events only logged. The admin can search the trail by user, time, event type, document, tool and scope (`GET /api/admin/audit`, [test_audit.py](../backend/tests/test_audit.py)) |
+| INV-6 | Audit events capture enough to reconstruct important access decisions: identity, timestamp, query, candidate and retrieved document IDs, per-document decision and reason, final answer (or a reference to it). | Partly: query events ([test_query_pipeline.py](../backend/tests/test_query_pipeline.py)) and boundary changes ([test_admin.py](../backend/tests/test_admin.py)) tested, as are connector connect/disconnect events ([test_connections_api.py](../backend/tests/test_connections_api.py)), "sync now" ([test_admin.py](../backend/tests/test_admin.py)) and audit searches and verifications ([test_audit.py](../backend/tests/test_audit.py)). The admin can search the trail by user, time, event type, document, tool and scope (`GET /api/admin/audit`, [test_audit.py](../backend/tests/test_audit.py)) |
 | INV-7 | Audit records are tamper-evident: modification or deletion of any record is detectable by an auditor. | Built: one hash chain per company, recomputed by `POST /api/admin/audit/verify`, which reports the first changed, deleted or reordered record; the app logs in as its own database role, which can only read and add records and cannot switch to a more powerful role (`SET ROLE NONE` included); triggers stop even the owner ([test_audit.py](../backend/tests/test_audit.py)). Limitation: someone with the owner's login could rewrite every later record too, so note the chain's head (returned by verify) outside the system (ADR-007) |
 | INV-8 | A permission revocation in a source platform is reflected in query results within the stated freshness window, and never later than that. | Partly: the live check asks all 4 sources as the user on every question (unit-tested with fakes), so a revocation applies on the next question; Drive files in the trash are denied too ([test_drive.py](../backend/tests/test_drive.py)). Known limits: a deleted Slack message (its channel still readable) drops at the next sync (≤ 5 min); a revocation landing in the seconds between the live check and the answer applies to the next question. Not yet verified against real workspaces. Development personas without a connection still use the stored-ACL stub |
 | INV-9 | Retrieved content is treated as untrusted data. It is never executed and never allowed to change authorization, tool selection or audit behaviour. | Partly: retrieved text cannot break out of its source block ([test_grounding.py](../backend/tests/test_grounding.py)) |
@@ -73,7 +73,7 @@ least one automated test. Until then they are **principles, not guarantees**.
 
 ## 4. Handling denied access
 
-Design intent, to be validated with the team:
+Built this way (app/pipeline/query.py; INV-1, INV-5):
 - Filter silently at retrieval time; the answer is built only from allowed items.
 - If nothing allowed remains, respond as "no relevant information found for
   you", not "access denied to <title>".

@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Internal Brain",
+  title: "KnowBuddy",
 };
 
 // Route groups (folder names in brackets do not appear in URLs):

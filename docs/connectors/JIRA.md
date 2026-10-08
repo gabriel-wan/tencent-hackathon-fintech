@@ -4,12 +4,13 @@
 
 Jira holds tickets (bugs, incidents, customer support cases); since 2025
 the UI calls projects "spaces" and issues "work items", but the API still
-says `project` and `issue`. Our connector reads, as an Atlassian **admin**
-(same site and token as [Confluence](CONFLUENCE.md)), the **text** of every
-changed ticket and the **exact rules for who can see it**: the space's
-"Browse projects" grants plus the ticket's security level. Security levels
-hide single tickets (the security-team ticket), and support tickets are where
-customer data gets pasted (the Need-to-Know Shield), so both must be exact.
+says `project` and `issue`. Our connector reads, through one person's own
+Atlassian sign-in (shared with [Confluence](CONFLUENCE.md)), the **text** of
+every ticket and **who can see it**: everyone with the space's "Browse
+projects" permission. Ticket security levels are not stored yet; the live
+check, asked as the user, trims those tickets. Security levels hide single
+tickets (the security-team ticket), and support tickets are where customer data
+gets pasted (the Need-to-Know Shield), so the live check has the final say.
 
 ## 2. Glossary
 
@@ -220,7 +221,7 @@ One document per ticket:
 
 - **Free plan can't hide tickets**, and **team-managed spaces can't either**. Use a paid plan and a company-managed space.
 - UI says space / work item. **Code says `project` / `issue`.**
-- ACL = security-level holders, or "Browse projects" holders when there's no level. Reporter/assignee holders become per-ticket users.
+- Built ACL = "Browse projects" holders (security levels not applied; the live check trims). The fuller design: security-level holders, with reporter/assignee holders as per-ticket users.
 - A security-level change bumps `updated`, so `sync` catches it. Scheme and role changes are caught by `sweep`.
 - Always send `fields`. Descriptions and comments are ADF JSON, so flatten them by joining every `"text"`.
 - People are `accountId`s. Emails are usually `null`.

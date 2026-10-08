@@ -9,7 +9,7 @@ they are actually done and checked by a second team member.
 
 ## Required submission items
 
-- [ ] **Project title** decided (working name: Internal Brain; final name TBD)
+- [ ] **Project title** decided (chosen: **KnowBuddy**; tick once a second member confirms)
 - [ ] **Short blurb** – under 10 words, counted
 - [ ] **Project description** written, covering:
   - [ ] Target users / scenarios

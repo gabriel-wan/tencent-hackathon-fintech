@@ -7,7 +7,7 @@ import { NotBuiltYet } from "@/components/admin/not-built-yet";
 import { PageContainer } from "@/components/page-container";
 import { listDevUsers } from "@/lib/api/server";
 
-export const metadata: Metadata = { title: "Audit trail · Internal Brain" };
+export const metadata: Metadata = { title: "Audit trail · KnowBuddy" };
 
 // Scenario 5: "show me everything user X accessed ... in the last 30 days".
 export default async function AuditPage() {

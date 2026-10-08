@@ -24,7 +24,7 @@ def create_app(app_env: str | None = None) -> FastAPI:
     if app_env == "development" and app_url and urlparse(app_url).hostname not in ("localhost", "127.0.0.1"):
         # Dev routes let anyone sign in as anyone: only ever on this machine, never a server (http or https).
         raise RuntimeError(f"APP_ENV=development needs a localhost APP_URL, not {app_url}: set APP_ENV=production")
-    app = FastAPI(title="Internal Brain API")
+    app = FastAPI(title="KnowBuddy API")
     app.state.app_env = app_env
 
     @app.get("/health")

@@ -23,10 +23,10 @@ flowchart LR
         end
         SYNC["sync<br/>python -m app.sync --loop<br/>every company, every 5 min"]
         MIG["migrate<br/>alembic upgrade head<br/>runs once, then exits"]
-        DB[("db<br/>PostgreSQL 17 + pgvector<br/>companies, users, sessions, user_principals,<br/>boundary, documents, chunks, audit_events,<br/>connections (tokens encrypted)")]
+        DB[("db<br/>PostgreSQL 17 + pgvector<br/>companies, users, sessions, user_principals,<br/>boundary, documents, chunks, sync_state,<br/>audit_events (hash chain), connections (tokens encrypted)<br/>backend and sync connect as knowbuddy_app")]
     end
 
-    MIG -->|"migrations 0001 to 0006<br/>(as the database owner)"| DB
+    MIG -->|"migrations 0001 to 0007<br/>(as the database owner)"| DB
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
     FE -->|"/api/* proxy and server-side fetches,<br/>session cookie forwarded<br/>BACKEND_SERVER_URL: /api/*, /connectors, /health"| BE
@@ -37,7 +37,7 @@ flowchart LR
     PIPE --> AUD
     SEARCH --> DB
     AUTH --> DB
-    AUD -->|"logged in as knowbuddy_app:<br/>read and add audit records only"| DB
+    AUD -->|"audit_events: read and add only"| DB
     LLMC --> TH
     CONN -->|"connections, sessions,<br/>user_principals"| DB
 
@@ -52,7 +52,7 @@ flowchart LR
     CONN -->|"OAuth code exchange, token refresh;<br/>live checks as the asking user"| SRC
     AUTH -->|"can_read per source"| CONN
     SYNC -->|"fetch boundary scopes<br/>as the company admin"| SRC
-    SYNC -->|"documents, chunks"| DB
+    SYNC -->|"documents, chunks, sync_state"| DB
     SYNC -->|"embeddings"| TH
 ```
 

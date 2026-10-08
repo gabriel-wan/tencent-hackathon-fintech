@@ -6,8 +6,10 @@ Backend tests (pytest), mirroring `backend/app/`. How to run them:
 - Tests marked `security` cover a SECURITY.md invariant; run them alone with
   `pytest -m security`. SECURITY.md links each invariant to its tests.
 - Database tests run inside one transaction that is rolled back, against a
-  database whose name must end in `_test`. Connector API tests commit (as the
-  handlers do) and empty the tables they touch instead.
+  database whose name must end in `_test`. Connector API, admin and sync
+  tests commit (as the handlers do) and empty the tables they touch instead.
+  Audit records can't be removed (the log is append-only), so tests that
+  commit leave theirs behind, each in its own company's chain.
 - The LLM is always faked (`helpers.FakeLLM`), so tests never call TokenHub.
   Connector providers are faked at the HTTP layer, so tests never call Google,
   Slack or Atlassian.

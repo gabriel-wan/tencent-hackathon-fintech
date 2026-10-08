@@ -38,6 +38,7 @@ const SLACK_ONCALL: Citation = {
   url: "https://merlionpay.slack.example/archives/C_PAYONCALL/p1727741000000100",
   source: "slack",
   updated_at: "2026-10-02T09:14:00Z",
+  synced_at: null, // like seeded data: never synced from a real tool
 };
 const DRIVE_RUNBOOK: Citation = {
   id: "drive:D_RUNBOOK",
@@ -45,6 +46,7 @@ const DRIVE_RUNBOOK: Citation = {
   url: "https://docs.google.example/document/d/D_RUNBOOK",
   source: "drive",
   updated_at: "2026-10-02T13:00:00Z",
+  synced_at: null, // like seeded data: never synced from a real tool
 };
 const SLACK_ENG: Citation = {
   id: "slack:C_ENG:1727827400.000200",
@@ -52,6 +54,7 @@ const SLACK_ENG: Citation = {
   url: "https://merlionpay.slack.example/archives/C_ENG/p1727827400000200",
   source: "slack",
   updated_at: "2026-10-02T13:30:00Z",
+  synced_at: null, // like seeded data: never synced from a real tool
 };
 const JIRA_TICKET: Citation = {
   id: "jira:PAY-412",
@@ -59,6 +62,7 @@ const JIRA_TICKET: Citation = {
   url: "https://merlionpay.atlassian.example/browse/PAY-412",
   source: "jira",
   updated_at: "2026-09-30T08:00:00Z",
+  synced_at: null, // like seeded data: never synced from a real tool
 };
 const CONFLUENCE_DOC: Citation = {
   id: "confluence:98765",
@@ -66,6 +70,7 @@ const CONFLUENCE_DOC: Citation = {
   url: "https://merlionpay.atlassian.example/wiki/spaces/ENG/pages/98765",
   source: "confluence",
   updated_at: "2026-09-28T10:00:00Z",
+  synced_at: null, // like seeded data: never synced from a real tool
 };
 
 function reply(answer: string, citations: Citation[]): QueryResponse {

@@ -3,7 +3,7 @@ import { connection } from "next/server";
 
 import { PageContainer } from "@/components/page-container";
 
-export const metadata: Metadata = { title: "Status · Internal Brain" };
+export const metadata: Metadata = { title: "Status · KnowBuddy" };
 
 type Health = { db?: string; pgvector?: string | null };
 
