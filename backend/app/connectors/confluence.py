@@ -62,7 +62,9 @@ def fetch(http: httpx.Client, space: str, changed: Callable[[str, str], bool] = 
             "source_id": page["id"],
             "scope_id": space,
             "title": page["title"],
-            "url": page["_links"]["base"] + page["_links"]["webui"],
+            # Without the title Confluence adds after the page ID: a title can hold a customer's details,
+            # and the link opens the page by its ID alone.
+            "url": page["_links"]["base"] + re.sub(r"(/pages/\d+)/[^?#]*", r"\1", page["_links"]["webui"]),
             "updated_at": updated_at,
             "acl": acl,
             "text": storage_text(page["body"]["storage"]["value"]) if changed(page["id"], updated_at) else None,

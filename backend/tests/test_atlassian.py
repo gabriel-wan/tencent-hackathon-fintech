@@ -140,7 +140,8 @@ def restricted(users=(), groups=()):
 def confluence_site(restrictions):
     """Space S1: page 1 (Runbook) and its child page 2, under a folder F that is not a page."""
     pages = [{"id": "1", "parentId": "F", "title": "Runbook", "ownerId": "A1", "authorId": "A2", "version": {"createdAt": "2026-10-01T13:05:00Z"},
-              "body": {"storage": {"value": "<p>Fail over</p>"}}, "_links": {"webui": "/pages/1"}},
+              "body": {"storage": {"value": "<p>Fail over</p>"}},
+              "_links": {"webui": "/spaces/ENG/pages/1/Runbook+for+S1234567D"}},  # title in the link
              {"id": "2", "parentId": "1", "title": "Child", "version": {"createdAt": "2026-10-01T13:05:00Z"},
               "body": {"storage": {"value": "<p>Secret</p>"}}, "_links": {"webui": "/pages/2"}}]
     routes = {
@@ -161,6 +162,7 @@ def test_confluence_fetch_downloads_text_only_for_changed_pages(atlassian_api):
     docs = {d["source_id"]: d for d in confluence.fetch(http, "S1", lambda source_id, _updated: source_id == "2")}
     assert docs["1"]["text"] is None and docs["2"]["text"] == "Secret"
     assert docs["2"]["url"] == "https://corp.atlassian.net/wiki/pages/2"
+    assert docs["1"]["url"] == "https://corp.atlassian.net/wiki/spaces/ENG/pages/1"  # no title: it can hold PII
     assert len(sent) == 3  # the listing, then one restriction check per page: nothing else per page
 
 
