@@ -20,6 +20,17 @@ def test_chunks_are_packed_and_never_too_long():
     assert all(len(c) <= EMBEDDING_MAX_CHARS for c in sync.chunk(("y" * 1500 + "\n") * 5))
 
 
+@pytest.mark.security
+@pytest.mark.parametrize("identifier", ["card 4111 1111 1111 1111", "Account no.:\n123-45678-9",
+                                        "Customer: Jane Lee"])
+def test_a_chunk_never_splits_an_identifier_or_a_label_from_its_value(identifier):
+    # The limit falls inside the identifier: a cut there would put half of it, unmasked, in each chunk.
+    body = "word " * ((EMBEDDING_MAX_CHARS - 10) // 5) + identifier + " end"
+    chunks = sync.chunk(body)
+    assert len(chunks) == 2 and all(len(c) <= EMBEDDING_MAX_CHARS for c in chunks)
+    assert any(identifier in c for c in chunks)
+
+
 def doc(source_id="C1:1", body="gateway migration blocked", acl=("slack:members",)):
     return {"source": "slack", "source_id": source_id, "scope_id": "C1", "title": "#eng", "url": "https://x",
             "updated_at": "2026-10-01T00:00:00Z", "acl": list(acl), "text": body}

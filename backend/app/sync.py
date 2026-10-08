@@ -28,7 +28,7 @@ from sqlalchemy import Engine, text
 from app.connectors import store
 from app.db import engine as default_engine
 from app.llm.client import EMBEDDING_MAX_CHARS, LLMClient
-from app.redaction import for_embedding
+from app.redaction import for_embedding, protected_spans
 from app.retrieval.search import vector_literal
 
 log = logging.getLogger(__name__)
@@ -37,17 +37,28 @@ INTERVAL_S = 300  # ADR-005: every 5 minutes
 EMBED_BATCH = 512
 
 
+def _cut(text: str) -> int:
+    """Where the next chunk of `text` (longer than EMBEDDING_MAX_CHARS) ends: the last line break, else the
+    last space, that is not inside anything the Need-to-Know Shield detects (ADR-010); else the start of the
+    identifier the limit falls in; else the limit. Half a card number, or a label without its value, in
+    another chunk would escape masking."""
+    spans = protected_spans(text[:EMBEDDING_MAX_CHARS + 200])
+    for sep in ("\n", " "):
+        for i in range(EMBEDDING_MAX_CHARS, 0, -1):
+            if text[i - 1] == sep and not any(start < i < end for start, end in spans):
+                return i
+    inside = [start for start, end in spans if 0 < start < EMBEDDING_MAX_CHARS < end]
+    return min(inside) if inside else EMBEDDING_MAX_CHARS
+
+
 def chunk(body: str) -> list[str]:
-    """Lines packed into pieces of at most EMBEDDING_MAX_CHARS; a longer line is cut."""
-    pieces = [line[i:i + EMBEDDING_MAX_CHARS] for line in body.splitlines() if line.strip()
-              for i in range(0, len(line), EMBEDDING_MAX_CHARS)]
-    chunks: list[str] = []
-    for piece in pieces:
-        if chunks and len(chunks[-1]) + 1 + len(piece) <= EMBEDDING_MAX_CHARS:
-            chunks[-1] += "\n" + piece
-        else:
-            chunks.append(piece)
-    return chunks
+    """Non-blank lines packed into pieces of at most EMBEDDING_MAX_CHARS, cut where `_cut` says."""
+    text, chunks = "\n".join(line for line in body.splitlines() if line.strip()), []
+    while len(text) > EMBEDDING_MAX_CHARS:
+        cut = _cut(text)
+        chunks.append(text[:cut].rstrip())
+        text = text[cut:]
+    return [c for c in [*chunks, text] if c.strip()]
 
 
 def upsert(conn, company_id: int, doc: dict) -> None:
