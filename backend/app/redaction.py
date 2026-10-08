@@ -24,6 +24,8 @@ _LAST_SHOWN = 4  # characters a tag keeps: last 4 of a card (PCI DSS), last 3 di
 _CHAR_CACHE_SIZE = 1 << 16  # bounded: hostile text can hold every code point
 _SENTENCE_END = ",;."  # after normalisation, also the Chinese ，；
 _MIN_NAME_PART = 2  # letters a first or last name needs to be masked on its own
+_VARIATION_SELECTORS = (("\N{VARIATION SELECTOR-1}", "\N{VARIATION SELECTOR-16}"),
+                        ("\N{VARIATION SELECTOR-17}", "\N{VARIATION SELECTOR-256}"))
 _CARD_WORD = re.compile(r"(?i)\b(?:card|visa|master ?card|amex|pan|cc|credit|debit)\b|卡")
 
 
@@ -66,7 +68,9 @@ def _iban(m: re.Match) -> int:
 
 def _random(m: re.Match) -> int:  # a long run mixing upper case, lower case and digits: a key or token
     v = m["v"]
-    return len(v) if any(c.isupper() for c in v) and any(c.islower() for c in v) and any(c.isdigit() for c in v) else 0
+    word = m.string[max(m.string.rfind(c, 0, m.start("v")) for c in " \t\n") + 1:m.start("v")]
+    mixed = any(c.isupper() for c in v) and any(c.islower() for c in v) and any(c.isdigit() for c in v)
+    return len(v) if mixed and "://" not in word else 0
 
 
 def _at_least(n: int, most: float = float("inf")) -> Callable[[re.Match], int]:
@@ -83,6 +87,15 @@ _COLON = r"[:：]"  # ASCII and full-width
 _NUMBER_WORD = rf"(?:\s*(?:no\.?|number|num|#|号码|号))?(?:\s+(?:is|was))?\s*(?:{_COLON}|#)?\s*"  # "account no. is"
 _NAME = r"[A-Z][a-zA-Z'’-]+(?:[ \t]+[A-Z][a-zA-Z'’-]+){0,3}"  # capitalised words on one line
 _LETTER = rf"[^\W{_CJK}]"  # a letter or digit of any script except CJK (emails may be non-ASCII)
+
+# A person's name: after an honorific or a label only a person carries. A Shield masks every other
+# mention of these too (`names_in`).
+_PERSON_NAMES = [
+    re.compile(r"(?<![A-Za-z])(?:Mr|Mrs|Ms|Mdm|Miss|Madam|Dr|Mx)\.?[ \t]+(?P<v>" + _NAME + ")"),
+    re.compile(r"(?i:" + _B + r"(?:customer|customer name|cardholder|card holder|account holder|full name))[ \t]*"
+               + _COLON + r"[ \t]*(?P<v>" + _NAME + ")"),
+    re.compile(r"(?:姓名|持卡人|客户姓名|客户)[ \t]*" + _COLON + r"[ \t]*(?P<v>[一-鿿]{2,4})"),
+]
 
 # (kind, pattern with the sensitive value in group "v", check), applied in this order to the text as the
 # model reads it (`_plain_map`); a value one detector masks is blanked for the later ones. Patterns that
@@ -103,13 +116,17 @@ DETECTORS: list[tuple[str, re.Pattern, Callable[[re.Match], int]]] = [
                           r"(?:api|access|private|encryption|signing)[ _-]?key)(?![a-z0-9])|密码|口令|密钥|令牌)"
                           rf"[\"']?\s*(?:=(?!=)|{_COLON})\s*"  # an assignment, not a comparison (==)
                           rf"(?P<v>(?!\[secret\])(?:\"[^\"\n]*\"|'[^'\n]*'|[^\s{_CJK}]+))"), _credential),
+    # Signed-link and OAuth query parameters with no credential word in their name (token= is above).
+    ("secret", re.compile(r"(?i)[?&](?:sig|signature|x-amz-signature|x-amz-credential|code)=(?P<v>[^&#\s]+)"),
+     _whole),
     # user:pass@ in a URL. The scheme is bounded: unbounded, every word start rescans the rest (quadratic).
     ("secret", re.compile(r"(?i)" + _B + r"[a-z][a-z0-9+.-]{0,30}://[^\s/:@]+:(?P<v>[^\s/@]+)@"), _whole),
     # A whole line of base64 (key material, e.g. the body of a private key whose BEGIN line is elsewhere).
     # Before the next pattern, which would mask only the part of the line before a "/".
     ("secret", re.compile(r"(?m)^[ \t]*(?P<v>[A-Za-z0-9+/]{40,76}={0,2})[ \t]*$"), _random),
-    # Any other key or token: 32+ characters mixing cases and digits. Not after "/": IDs in link paths.
-    ("secret", re.compile(r"(?<![A-Za-z0-9_+=/-])(?P<v>[A-Za-z0-9_+=-]{32,})"), _random),
+    # Any other key or token: 32+ characters mixing cases and digits, then any base64 padding. Not in a
+    # link (`_random`): IDs in paths and query strings keep the link working.
+    ("secret", re.compile(r"(?<![A-Za-z0-9_+/-])(?P<v>[A-Za-z0-9_+-]{32,}={0,2})"), _random),
     ("iban", re.compile(_B + r"(?P<v>[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30})" + _E), _iban),
     ("card", re.compile(_B + r"(?<!\d)(?P<v>\d(?:[ -]?\d){12,18})(?!\d)"), _card),
     ("card", re.compile(_B + r"(?<!\d)(?P<v>\d{4}\.\d{4,6}\.\d{4,5}(?:\.\d{1,4})?)(?![\d.])"), _card),  # dotted
@@ -133,12 +150,12 @@ DETECTORS: list[tuple[str, re.Pattern, Callable[[re.Match], int]]] = [
                          r"(?:\s*(?:no\.?|number|#))?|电话|手机|联系电话)"
                          rf"\s*{_COLON}?\s*(?P<v>\+?\(?\d[\d ()./-]{{5,18}}\d)"), _at_least(7, 15)),
     # Names: only where the text says it is a name (label or honorific). Bare names need NER (rejected).
-    ("name", re.compile(r"(?<![A-Za-z])(?:Mr|Mrs|Ms|Mdm|Miss|Madam|Dr|Mx)\.?[ \t]+(?P<v>" + _NAME + ")"), _whole),
-    ("name", re.compile(r"(?i:" + _B + r"(?:customer|client|cardholder|card holder|account holder|applicant"
-                        r"|beneficiary|payee|payer|recipient|full name|customer name|name))[ \t]*"
+    *(("name", pattern, _whole) for pattern in _PERSON_NAMES),
+    # A generic label may name an organisation or project ("Client: DBS Bank", "Project Name: Gateway"):
+    # masked where it stands, never propagated.
+    ("name", re.compile(r"(?i:" + _B + r"(?:client|applicant|beneficiary|payee|payer|recipient|name))[ \t]*"
                         + _COLON + r"[ \t]*(?P<v>" + _NAME + ")"), _whole),
-    ("name", re.compile(r"(?:姓名|户名|持卡人|客户姓名|客户)[ \t]*" + _COLON + r"[ \t]*(?P<v>[一-鿿]{2,4})"),
-     _whole),
+    ("name", re.compile(r"户名[ \t]*" + _COLON + r"[ \t]*(?P<v>[一-鿿]{2,4})"), _whole),
     # Singapore addresses: postal code, unit number, block number.
     ("address", re.compile(r"(?i)(?:" + _B + r"(?:singapore|s'pore|spore)|新加坡)[ \t,]*\(?(?P<v>\d{6})(?!\d)"),
      _whole),
@@ -149,10 +166,13 @@ DETECTORS: list[tuple[str, re.Pattern, Callable[[re.Match], int]]] = [
 
 @lru_cache(maxsize=_CHAR_CACHE_SIZE)
 def _plain_char(c: str) -> str:
-    """A character as the model reads it: format characters (zero-width spaces and joiners) dropped, every
-    dash a hyphen, everything else in NFKC form (full-width, mathematical, no-break spaces)."""
+    """A character as the model reads it: format characters (zero-width spaces and joiners) and variation
+    selectors (invisible, category Mn, also dropped by the prompt fence) removed, every dash a hyphen,
+    everything else in NFKC form (full-width, mathematical, no-break spaces)."""
     category = unicodedata.category(c)
-    return "" if category == "Cf" else "-" if category == "Pd" else unicodedata.normalize("NFKC", c)
+    if category == "Cf" or any(low <= c <= high for low, high in _VARIATION_SELECTORS):
+        return ""
+    return "-" if category == "Pd" else unicodedata.normalize("NFKC", c)
 
 
 def _plain_map(text: str) -> tuple[str, Callable[[int, int], tuple[int, int]]]:
@@ -186,21 +206,9 @@ def _name_parts(name: str) -> list[str]:
 
 
 def names_in(texts: Iterable[str]) -> dict[str, str]:
-    """Every name the detectors find in `texts` (after a label or honorific), and every name an email
-    address spells (jane.lee@ -> "Jane Lee") that the texts also contain: each, and each of its parts,
-    mapped to the full name. A Shield that knows them masks every other mention, labelled or not."""
-    plain = [_plain_map(t)[0] for t in texts]
-    found, spelled = [], []
-    for kind, pattern, check in DETECTORS:
-        for text in plain if kind in ("name", "email") else ():
-            for m in pattern.finditer(text):
-                if length := check(m):
-                    value = m["v"][:length]
-                    if kind == "name":
-                        found.append(value)
-                    elif len(words := re.split(r"[._-]", value.split("@")[0])) > 1 and all(map(str.isalpha, words)):
-                        spelled.append(" ".join(w.capitalize() for w in words))
-    found += [n for n in spelled if any(re.search(_B + re.escape(n) + _E, t) for t in plain)]
+    """Every person's name in `texts` (after an honorific or a person label), and each of its parts, mapped
+    to the full name. A Shield that knows them masks every other mention, labelled or not."""
+    found = [m["v"] for text in texts for pattern in _PERSON_NAMES for m in pattern.finditer(_plain_map(text)[0])]
     names: dict[str, str] = {}
     for name in found:
         names.setdefault(name, name)

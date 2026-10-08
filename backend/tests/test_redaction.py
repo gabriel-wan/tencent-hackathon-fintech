@@ -41,6 +41,7 @@ POSITIVES = [
     ("card 4111\u200b1111\u200b1111\u200b1111", "card [card ending 1111]"),
     ("NRIC Ｓ１２３４５６７Ｄ", "NRIC [NRIC *****567D]"),
     ("card 4111\u00a01111\u00a01111\u00a01111", "card [card ending 1111]"),  # no-break spaces
+    ("card 4111\ufe0f1111\ufe0f1111\U000e01001111", "card [card ending 1111]"),  # variation selectors
     ("mail jane＠gmail．com", "mail [email 1]"),
     ("card 4111\u20131111\u20131111\u20131111", "card [card ending 1111]"),  # en dashes
     ("DOB: 12\u201303\u20131990", "DOB: [date of birth]"),  # any detector reads any dash as a hyphen
@@ -90,6 +91,7 @@ def test_sensitive_identifiers_are_masked(raw, expected):
     "The secrets: none here. Tokens are rotated monthly.",
     "if password == '' or token != expected: raise",  # comparisons in code are not assignments
     "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit",  # an ID in a link path
+    "https://drive.google.com/open?id=1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",  # an ID in a query string
     "git sha 4b825dc642cb6eb9a060e54bf8d69288fbee4904",  # lower-case hex is not a random secret
     "Deploy block 3 of the migration; PR #123 merged.",
     "The customer called twice about the refund.",
@@ -104,6 +106,8 @@ SECRETS = [
     ("token xoxb-1234567890-abcdefghij", "token [secret]"),
     ("password: hunter2", "password: [secret]"),
     ("password: hunter2, then log in.", "password: [secret], then log in."),  # the comma is not the password
+    ("STRIPE_LIVE=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789==", "STRIPE_LIVE=[secret]"),  # the name stays
+    ("https://x.blob.example/f.pdf?sv=2024&sig=AbC%2Fdef123&se=2026", "https://x.blob.example/f.pdf?sv=2024&sig=[secret]&se=2026"),
     ("密码：abc123，然后登录", "密码：[secret]，然后登录"),
     ('"password": "hunter2,"', '"password": [secret]'),  # quoted: all of it, punctuation included
     ("DB_PASS\u200dWORD=hunter2hunter2", "DB_PASS\u200dWORD=[secret]"),  # zero-width joiner inside the name
@@ -219,12 +223,20 @@ def test_a_name_found_anywhere_is_masked_everywhere_with_one_tag():
     assert counts == {"name": 3}
 
 
-@pytest.mark.security
-def test_a_name_an_email_address_spells_is_masked_where_the_text_uses_it():
-    shield = shield_knowing("from jane.lee@example.com", "Jane Lee called, Jane wants a refund", "no-reply@example.com")
+@pytest.mark.parametrize("labelled, elsewhere", [
+    ("Project Name: Gateway Migration", "The Payment Gateway Migration (PAY-412) is blocked"),
+    ("Client: DBS Bank", "DBS transfer to DBS Bank pending"),
+    ("Payee: Singapore Power", "The Singapore office pays Singapore Power monthly"),
+    ("Name: Payments Runbook", "Payments on-call runbook"),
+    ("户名：新加坡电力", "新加坡电力的账单"),
+    ("from jane.lee@example.com", "Jane Lee called"),  # an address is no label: it may be a team's
+])
+def test_a_generic_label_masks_its_value_in_place_only(labelled, elsewhere):
+    # Organisations and projects carry these labels too: propagating them would mask ordinary words.
+    shield = shield_knowing(labelled, elsewhere)
 
-    assert shield.redact("Jane Lee called, Jane wants a refund. No reply yet.", cleared=False)[0] == (
-        "[name 1] called, [name 1] wants a refund. No reply yet.")  # "No Reply" is never written: not a name
+    assert shield.redact(elsewhere, cleared=False)[0] == elsewhere
+    assert shield.redact(labelled, cleared=False)[0] != labelled  # still masked where it is labelled
 
 
 def test_colleague_names_and_their_parts_stay_visible():
