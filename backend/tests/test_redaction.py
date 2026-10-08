@@ -7,7 +7,14 @@ import time
 import pytest
 
 from app.llm.client import EMBEDDING_MAX_CHARS
-from app.redaction import Shield, for_embedding, has_need_to_know, mask_secrets
+from app.redaction import (
+    Shield,
+    for_embedding,
+    has_need_to_know,
+    mask_secrets,
+    names_in,
+    protected_spans,
+)
 
 CARD = "4111 1111 1111 1111"  # Luhn-valid test card number
 
@@ -29,7 +36,16 @@ POSITIVES = [
     ("call +65 9123 4567 today", "call [phone 1] today"),
     ("call 9123 4567.", "call [phone 1]."),
     ("mail jane.doe@gmail.com", "mail [email 1]"),
-    ("Card ４１１１ １１１１ １１１１ １１１１", "Card [card ending １１１１]"),  # full-width digits
+    ("Card ４１１１ １１１１ １１１１ １１１１", "Card [card ending 1111]"),  # full-width digits
+    # Hidden and full-width characters the model reads past (normalised before detection).
+    ("card 4111\u200b1111\u200b1111\u200b1111", "card [card ending 1111]"),
+    ("NRIC Ｓ１２３４５６７Ｄ", "NRIC [NRIC *****567D]"),
+    ("card 4111\u00a01111\u00a01111\u00a01111", "card [card ending 1111]"),  # no-break spaces
+    ("mail jane＠gmail．com", "mail [email 1]"),
+    ("card 4111\u20131111\u20131111\u20131111", "card [card ending 1111]"),  # en dashes
+    ("DOB: 12\u201303\u20131990", "DOB: [date of birth]"),  # any detector reads any dash as a hyphen
+    # Only masked values change: Chinese punctuation and full-width spaces around them stay as written.
+    ("\u59d3\u540d\uff1a\u5f20\u4f1f\uff0c\u7535\u8bdd\uff08\u624b\u673a\uff09\uff01\u3000\u597d\u7684", "\u59d3\u540d\uff1a[name 1]\uff0c\u7535\u8bdd\uff08\u624b\u673a\uff09\uff01\u3000\u597d\u7684"),
     ("my dob is 1990-03-12", "my dob is [date of birth]"),  # the way people write it
     ("her account number is 123-45678-9", "her account number is [account ending 6789]"),
     ("passport no. was E1234567", "passport no. was [passport 1]"),
@@ -87,6 +103,10 @@ SECRETS = [
     ("密钥AKIAIOSFODNN7EXAMPLE", "密钥[secret]"),
     ("token xoxb-1234567890-abcdefghij", "token [secret]"),
     ("password: hunter2", "password: [secret]"),
+    ("password: hunter2, then log in.", "password: [secret], then log in."),  # the comma is not the password
+    ("密码：abc123，然后登录", "密码：[secret]，然后登录"),
+    ('"password": "hunter2,"', '"password": [secret]'),  # quoted: all of it, punctuation included
+    ("DB_PASS\u200dWORD=hunter2hunter2", "DB_PASS\u200dWORD=[secret]"),  # zero-width joiner inside the name
     ("API_KEY=sk-abcdefghijklmnopqrstuvwx", "API_KEY=[secret]"),
     ("Authorization: Bearer abcdefghijklmnop1234", "Authorization: Bearer [secret]"),
     ("jwt eyJhbGciOi.eyJzdWIiOi.c2lnbmF0dXJl", "jwt [secret]"),
@@ -173,6 +193,65 @@ def test_answer_guard_masks_values_the_user_was_not_shown():
 
     assert text == f"Card {CARD} and card [card ending 4444], phone 9123 4567 [S1]."
     assert counts == {"card": 1}
+
+
+@pytest.mark.security
+def test_the_audit_masks_what_the_handler_was_shown_even_without_a_label():
+    shield = Shield()
+    shield.redact("Customer: Jane Lee, Blk 1", cleared=True)  # a handler sees both
+
+    assert shield.mask_all("customer Jane Lee, Mr Tan, Blk 1") == "customer [name 2], Mr [name 1], Blk [address]"
+
+
+def shield_knowing(*texts: str, **kwargs) -> Shield:
+    shield = Shield(**kwargs)
+    shield.know(names_in(texts))
+    return shield
+
+
+@pytest.mark.security
+def test_a_name_found_anywhere_is_masked_everywhere_with_one_tag():
+    shield = shield_knowing("Customer: Jane Lee disputes a charge", "Jane called back; Lee is upset")
+
+    text, counts = shield.redact("Jane called back; Lee is upset. Jane Lee again.", cleared=False)
+
+    assert text == "[name 1] called back; [name 1] is upset. [name 1] again."
+    assert counts == {"name": 3}
+
+
+@pytest.mark.security
+def test_a_name_an_email_address_spells_is_masked_where_the_text_uses_it():
+    shield = shield_knowing("from jane.lee@example.com", "Jane Lee called, Jane wants a refund", "no-reply@example.com")
+
+    assert shield.redact("Jane Lee called, Jane wants a refund. No reply yet.", cleared=False)[0] == (
+        "[name 1] called, [name 1] wants a refund. No reply yet.")  # "No Reply" is never written: not a name
+
+
+def test_colleague_names_and_their_parts_stay_visible():
+    shield = shield_knowing("Customer: Alice Wong", "Mr Ben Lim", colleague_names=["Alice Tan (payments engineer)",
+                                                                                    "Ben Lim"])
+
+    assert shield.redact("Alice Wong asked Alice and Ben Lim", cleared=False)[0] == "[name 1] asked Alice and Ben Lim"
+
+
+@pytest.mark.security
+def test_the_guard_keeps_a_first_name_only_for_a_reader_shown_the_full_name():
+    source = "Customer: Jane Lee"
+    handler, other = shield_knowing(source), shield_knowing(source)
+    handler.redact(source, cleared=True)
+    other.redact(source, cleared=False)
+
+    assert handler.guard("Jane is waiting", question="any update?")[0] == "Jane is waiting"
+    assert other.guard("Jane is waiting", question="any update?")[0] == "[name 1] is waiting"
+    assert other.guard("Jane is waiting", question="is Jane waiting?")[0] == "Jane is waiting"  # typed by the user
+
+
+@pytest.mark.security
+def test_chunks_are_not_cut_inside_an_identifier_split_by_hidden_characters():
+    raw = "pay card 4111\u200b1111\u200b1111\u200b1111 now"
+    start, end = raw.index("4111"), raw.index(" now")
+
+    assert any(s <= start and e >= end for s, e in protected_spans(raw))
 
 
 @pytest.mark.security
