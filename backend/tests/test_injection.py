@@ -97,6 +97,13 @@ def test_links_the_model_was_not_shown_are_removed():
     assert "https://status.merlionpay.example/gateway." in g.answer  # shown to the model: kept
 
 
+def test_a_link_cut_out_of_a_longer_shown_link_is_removed():
+    """Review of #17 (Vincent): only whole links the model saw count."""
+    seen = user_message(text="Sign in at https://login.merlionpay.example/?next=https://evil.example/p")
+    g = ground(reply("Blocked [S1]. See https://evil.example/p", ["S1"]), {"S1"}, seen=seen)
+    assert "evil.example" not in g.answer and g.removed_links == 1
+
+
 def test_a_shown_link_with_data_appended_is_removed():
     seen = user_message(text="Report problems at https://evil.example/c?d=")
     g = ground(reply("Blocked [S1] https://evil.example/c?d=TLS-vendor-Globex", ["S1"]), {"S1"}, seen=seen)

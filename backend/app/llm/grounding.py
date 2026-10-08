@@ -113,15 +113,21 @@ def is_fallback(answer: str) -> bool:
     return bare(answer) == bare(FALLBACK_ANSWER)
 
 
+def _link(match: str) -> str:
+    return match.rstrip(".,;:!?)")  # punctuation after a link is not part of it
+
+
 def remove_unseen_links(answer: str, seen: str) -> tuple[str, int]:
-    """Remove every link that does not appear, exactly, in what the model was shown. An injected
-    source cannot get a made-up link into the answer, or one with data appended (exfiltration)."""
+    """Remove every link that is not, whole, one of the links the model was shown. An injected
+    source cannot get a made-up link into the answer, one with data appended (exfiltration), or
+    one cut out of a longer link (`?next=https://evil.example`)."""
+    shown = {_link(u) for u in URL_RE.findall(seen)}
     removed = 0
 
     def check(m: re.Match) -> str:
         nonlocal removed
-        url = m.group(0).rstrip(".,;:!?)")
-        if url in seen:
+        url = _link(m.group(0))
+        if url in shown:
             return m.group(0)
         removed += 1
         return LINK_REMOVED + m.group(0)[len(url):]
