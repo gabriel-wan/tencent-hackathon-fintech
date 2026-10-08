@@ -37,7 +37,7 @@ flowchart LR
     PIPE --> AUD
     SEARCH --> DB
     AUTH --> DB
-    AUD -->|"as knowbuddy_app:<br/>read and add audit records only"| DB
+    AUD -->|"logged in as knowbuddy_app:<br/>read and add audit records only"| DB
     LLMC --> TH
     CONN -->|"connections, sessions,<br/>user_principals"| DB
 
