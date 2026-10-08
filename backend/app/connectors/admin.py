@@ -29,7 +29,8 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 SCOPE_TYPE = {"slack": "channel", "drive": "folder", "jira": "project", "confluence": "space"}
 # Channel, folder and space IDs and project keys are all plain IDs. They end up inside JQL and Drive
 # queries, so nothing else is accepted.
-ScopeId = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{1,128}$")]
+SCOPE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
+ScopeId = Annotated[str, Path(pattern=SCOPE_ID_PATTERN)]
 
 
 def require_admin(user: User = Depends(current_user)) -> User:

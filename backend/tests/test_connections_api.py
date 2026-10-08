@@ -17,6 +17,7 @@ from slack_sdk.errors import SlackApiError
 from app.auth.principals import principals_for
 from app.connectors import atlassian, drive, oauth, slack, store
 from app.db import engine as db_engine
+from app.db import owner_engine
 from app.main import app, create_app
 
 GOOGLE_TOKEN = "POST https://oauth2.googleapis.com/token"
@@ -91,7 +92,7 @@ def providers(monkeypatch, engine):
 
 
 def empty_tables():
-    with db_engine.begin() as conn:  # also empties connections, sessions and user_principals
+    with owner_engine().begin() as conn:  # the app may not empty tables; also empties connections, sessions, user_principals
         conn.execute(sa.text("TRUNCATE users, companies CASCADE"))
 
 

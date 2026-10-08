@@ -363,6 +363,44 @@ Data flow and per-source check calls are described in
   never reach the user or the LLM. Only keyword matches count, because
   semantic search always returns the nearest documents, relevant or not, and
   would wrongly record users as reaching unrelated restricted documents.
+- **One chain per company** (added 2026-10-08, Gabriel): companies (ADR-002
+  addendum, migration 0005) came after this ADR. Each record now carries its
+  user's company, and links to the previous record of the same company, so an
+  admin verifies only their own company's records and a fault in one company
+  never shows up in another. Records of people not yet in a company (e.g.
+  Drive connected first) form their own chain. The hash is computed by a
+  database function (`audit_event_hash`, migration 0006) over the record's id,
+  UTC time, company, user, event type and canonical JSON payload, so writing
+  and verifying always hash the same text. Writes to one chain are serialised
+  with an advisory lock, so two records can never share a predecessor.
+- **The app's database login** (added 2026-10-08, Gabriel; corrected the same
+  day after review of PR #11 by Vincent and Zewei): migrations run as the
+  database owner; the app logs in as `knowbuddy_app` itself, with its own
+  password (`APP_DB_PASSWORD`, set on the database by the `migrate` service on
+  every start). It can read and add audit records but not update, delete or
+  truncate them, empty any table, or alter a table to switch the triggers off.
+  The first version logged in as the owner and switched role on connect, and
+  `SET ROLE NONE` switched back to the owner, a superuser in Docker; with its
+  own login there is nothing more powerful to return to (tested). The owner's
+  password is only needed by migrations and tests; a production server can
+  leave it out of the backend's environment.
+- **The chain lock** (added 2026-10-08, review of PR #11): `record_event` holds
+  its company's lock until the caller's transaction ends, so it is the last
+  statement of a short transaction (every caller today). Lock keys are 32-bit,
+  so company ids are folded in; two companies sharing a key only wait for each
+  other.
+- **Records from before someone joined a company** (added 2026-10-08, review of
+  PR #11): they stay in the no-company chain (the log can't be rewritten), and
+  the company's admin can search them once the person has joined. Only the
+  no-company chain as a whole can verify them, and no admin API does.
+- **Search and verify** (added 2026-10-08, Gabriel): `GET /api/admin/audit`
+  filters by user, time range, event type, document, and tool plus scope (the
+  challenge's "everything jdoe accessed in the payment-gateway space");
+  `POST /api/admin/audit/verify` reports the first broken record and the
+  chain's head. The head can be noted outside the system, because someone with
+  full database access could otherwise rewrite every later record. Results
+  show document keys only; whether to show restricted documents' titles is
+  still open (frontend question log, Q15).
 
 ### Consequences
 

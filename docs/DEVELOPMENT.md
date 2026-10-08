@@ -54,6 +54,7 @@ seeded users and `POST /api/dev/session` signs in as one of them; see
 - Write a numbered migration in `backend/migrations/versions/`, with `down_revision` set to the previous one.
 - If two branches add the same migration number, whoever merges second renumbers theirs.
 - If your local database was migrated by a migration that was later renumbered, reset it: `docker compose down -v`.
+- Migrations run as the database owner; the app logs in as `knowbuddy_app` (`app/db.py`, password `APP_DB_PASSWORD`). New tables get the app's usual rights automatically (default privileges, migrations 0006 and 0007), but not TRUNCATE: tests that empty tables use `owner_engine()`. `audit_events` is read-and-add only for the app: never write code that updates or deletes audit records, and make `record_event` the last statement of a short transaction (it holds the company's chain lock until commit).
 
 **Git:** work on a branch, then open a pull request to `main`.
 
@@ -78,7 +79,8 @@ The frontend has no development flag of its own: it asks the backend. The develo
 | Variable | Value |
 |---|---|
 | `APP_ENV`, `LOG_LEVEL` | `development`, `info`. Development-only routes and the seed need `development` |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Any local values; the database is created with them |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Any local values; the database is created with them. The owner: only migrations and tests use it |
+| `APP_DB_PASSWORD` | Required. Any local value, different from `POSTGRES_PASSWORD`: the app's own database login (`knowbuddy_app`). The `migrate` service sets it on the database on every start |
 | `APP_URL` | `http://localhost:8000` |
 | `TOKEN_ENCRYPTION_KEY` | In `backend/`, run `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `FRONTEND_URL` | Optional. Default `http://localhost:3000` |

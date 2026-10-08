@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app import sync
 from app.connectors import live, store
-from app.db import engine
+from app.db import engine, owner_engine
 from app.llm.client import EMBEDDING_MAX_CHARS
 from tests.helpers import FakeLLM
 
@@ -43,7 +43,7 @@ def test_upsert_rewrites_chunks_only_when_the_text_changes(conn, company):
 # ---- sync_company: a company with an admin and one Slack channel in its boundary ----
 
 def empty():
-    with engine.begin() as c:
+    with owner_engine().begin() as c:  # the app may not empty tables
         c.execute(text("TRUNCATE companies, users CASCADE"))
 
 

@@ -7,12 +7,12 @@ from sqlalchemy import text
 
 from app import sync
 from app.connectors import store
-from app.db import engine
+from app.db import engine, owner_engine
 from app.main import create_app
 
 
 def empty():
-    with engine.begin() as c:
+    with owner_engine().begin() as c:  # the app may not empty tables
         c.execute(text("TRUNCATE companies, users CASCADE"))
 
 
