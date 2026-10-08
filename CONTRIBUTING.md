@@ -11,7 +11,7 @@
 3. Open a pull request and fill in **all six sections** of the template.
 4. Anything under "Security changes" needs a **second teammate's approval**.
 5. Merge with **Create a merge commit**, never squash.
-6. Update the docs **in the same PR** as the behaviour they describe.
+6. Update the docs **in the same PR** as the behaviour they describe; §9 says which page.
 
 ## 1. Branches
 
@@ -160,14 +160,52 @@ that seeds or resets data must say so in its name and refuse to run against anyt
 
 ## 9. Docs
 
-- Docs are part of the change: a PR that changes behaviour or architecture updates the matching doc in the same PR.
-- Each topic is written in one place; other docs link to it instead of repeating it. The map of which page holds
-  what is [docs/README.md](docs/README.md).
-- Stale docs are bugs. If you find one, fix it or open a `documentation` issue.
-- Before opening a PR that touches docs, check every link still works:
-  ```bash
-  python3 scripts/check_doc_links.py
-  ```
+Docs are part of the change: a pull request that changes behaviour, setup or architecture updates the matching doc in
+the same pull request. Stale docs are bugs; if you find one, fix it or open a `documentation` issue.
+
+**When you change something, update its one home.** Each topic is written in one place, and other pages link to it.
+The full map is [docs/README.md](docs/README.md).
+
+| When you change… | Update… |
+|---|---|
+| A setting (`.env` variable) | `backend/.env.example` or `frontend/.env.example`, and [RUNNING.md](docs/RUNNING.md)'s appendix. If everyone must set it, also RUNNING.md §2 and the PR's "Setup changes" |
+| An API route or its response | [QUERY_PIPELINE.md](docs/architecture/QUERY_PIPELINE.md) §2 (the app's API) or [CONNECTORS.md](docs/architecture/CONNECTORS.md) §3 (sign-in and admin routes). Then regenerate the frontend's types: `npm run gen:api-types` |
+| The database (a migration) | [ARCHITECTURE.md](docs/ARCHITECTURE.md) §7 (the data-model diagram and its table) |
+| A container, a backend module, or what talks to what | [ARCHITECTURE.md](docs/ARCHITECTURE.md) §3 and, for a module, [backend/README.md](backend/README.md) |
+| Who may see what (authorization, filtering, audit, what the LLM receives) | [SECURITY.md](docs/SECURITY.md) §2, with a link to the test that guards it; an ADR if the design changed (§7 above) |
+| A decision | [DECISIONS.md](docs/decisions/DECISIONS.md): a new ADR or a dated amendment (§7 above) |
+| A page or how the website behaves | [architecture/FRONTEND.md](docs/architecture/FRONTEND.md); for commands or styling rules, [frontend/README.md](frontend/README.md) |
+| How a connector signs in, syncs or checks access | [architecture/CONNECTORS.md](docs/architecture/CONNECTORS.md); a tool's sign-in set-up steps, [connectors/SETUP.md](docs/connectors/SETUP.md) |
+| What a user sees in one of the five scenarios | [FEATURES.md](docs/FEATURES.md): re-run its "Try it" and update "You'll see" with the real output |
+| How to run it, or a problem you hit and solved | [RUNNING.md](docs/RUNNING.md); a new problem gets a row in §8, "When something goes wrong" |
+| A test file, a test command or a manual check | [TESTING.md](docs/TESTING.md) |
+| Deploying | [DEPLOYMENT.md](docs/DEPLOYMENT.md), with what was actually done |
+| A task's progress, or a new open question | [PROJECT.md](docs/PROJECT.md): the roadmap's status column, or "Open items" |
+| A new doc page | Add it to [docs/README.md](docs/README.md)'s map; if it is one of the main guides, to the README's table too |
+
+**How a page is written:**
+- Every guide opens with three lines: **For:** who it's for, **You'll:** what they'll get, **Not here:** where to go
+  instead. Copy them from any existing guide.
+- Write about what is built. Planned work goes in [PROJECT.md](docs/PROJECT.md), clearly labelled; never describe
+  something planned as if it works. Mark guesses `ASSUMPTION:` and undecided items `TBD`.
+- A how-to step ends with how you know it worked: "✅ …".
+- Plain language, short sentences. Name the file or command a reader needs (`app/sync.py`, `docker compose logs sync`).
+- Link to a topic's one home rather than repeating it. When you move or rename a section, update every link to it.
+
+**Diagrams** are Mermaid, so GitHub draws them and they show up in diffs:
+- In flowcharts, don't put boxes inside group boxes (`subgraph`): GitHub draws arrows straight through the group's
+  title. Colour boxes by role with `classDef` instead, as ARCHITECTURE.md §2 does.
+- In sequence diagrams, never use a semicolon in a message: it ends the line and breaks the diagram.
+- Add `%%{init: {"flowchart": {"wrappingWidth": 360}}}%%` as a flowchart's first line, so labels aren't wrapped
+  mid-phrase.
+- Check it renders before you commit: paste it into https://mermaid.live, or look at the file on GitHub on your
+  pushed branch.
+
+**Before opening a pull request that touches docs,** check every link still works:
+
+```bash
+python3 scripts/check_doc_links.py
+```
 
 ## 10. Hackathon evidence
 

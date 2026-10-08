@@ -89,8 +89,10 @@ While working:
   filtering, audit logging or what the LLM receives must be called out
   explicitly in the change description and, where it is a design change,
   recorded in [DECISIONS.md](docs/decisions/DECISIONS.md).
-- Update documentation in the same change when architecture or important
-  behaviour changes. Stale docs are treated as bugs.
+- Update documentation in the same change when behaviour, setup or architecture
+  changes, following [CONTRIBUTING.md](CONTRIBUTING.md) §9: which page is each
+  topic's one home, how pages are written, and the Mermaid rules. Run
+  `python3 scripts/check_doc_links.py` before finishing. Stale docs are bugs.
 - Clearly distinguish **assumptions** from **confirmed requirements**. Mark
   assumptions as `ASSUMPTION:` in docs and comments.
 - When a product or security decision is genuinely ambiguous, ask the team

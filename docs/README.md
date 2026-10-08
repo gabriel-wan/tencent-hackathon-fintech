@@ -17,6 +17,7 @@
 | know the project's goals, scope and progress | [PROJECT.md](PROJECT.md) |
 | know why something was decided | [decisions/DECISIONS.md](decisions/DECISIONS.md) |
 | change code, open a pull request, or propose a decision | [CONTRIBUTING.md](../CONTRIBUTING.md) |
+| update the docs after a change: which page to edit, and how pages are written | [CONTRIBUTING.md](../CONTRIBUTING.md) §9 |
 | check what the hackathon requires | [hackathon/requirements.md](hackathon/requirements.md), [hackathon/submission.md](hackathon/submission.md) |
 
 ## Where things are
