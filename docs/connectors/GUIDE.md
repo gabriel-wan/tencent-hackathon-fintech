@@ -22,23 +22,12 @@ The team shares one workspace per tool, so everyone sees the same data. Each dev
 
 ## 2. Basics (each developer)
 
-**Setting a variable:** most variables in `backend/.env` start commented out (`# NAME=`). To set one, delete the `# ` and put the value after `=`.
-
-**Restarting:** in the terminal running Docker, press Ctrl+C, then run `docker compose up`. A `.env` change applies only after a restart.
-
-1. Install the prerequisites in [DEVELOPMENT.md §1](../DEVELOPMENT.md#1-get-started-locally).
-2. From the repo root, copy `backend/.env.example` to `backend/.env`, and `frontend/.env.example` to `frontend/.env`. The frontend file needs no changes.
-3. From `backend/`, generate your encryption key (it encrypts stored tokens):
-   ```
-   uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-   ```
-4. In `backend/.env`, set `TOKEN_ENCRYPTION_KEY=<the printed key>`, including its trailing `=`.
-5. From the repo root, run `docker compose up --build`. When it's running, open http://localhost:3000/login.
-   - ✅ The sign-in page lists Google, Slack and Atlassian, and (in development) a Slack token box. A tool you haven't set up returns 503, naming the missing variable. Once signed in, **Connections** (`/connectors`) lists all 4 tools.
-6. Nothing to register: the company is created by the first sign-in.
-   - The first full member (not a guest) to connect **Slack** from a new workspace creates the company and becomes its admin. Everyone after them from that workspace joins it. Atlassian never creates a company (it can't tell a contractor from an employee): the admin adds the company's Atlassian site by connecting Jira, then everyone from that site joins.
-   - Connect the tools in any order, with the same email. Google Drive names no company: until you connect Slack or Jira/Confluence, you are in no company and the app shows you nothing.
-   - Slack guests and Atlassian sign-ins never become admin. Anyone from an unknown workspace or site, and Atlassian sign-ins granting several unknown sites, are refused with `?error=no_company`, and the page says what to do.
+1. Set up and start KnowBuddy: [RUNNING.md](../RUNNING.md) sections 1 to 3 (settings, encryption key, start).
+2. Then set up each tool you need, below. Connect **Slack first**: a company starts from a Slack workspace, and the
+   first full member to connect it becomes the admin. Who joins which company, and why Atlassian never starts one:
+   [RUNNING.md](../RUNNING.md) section 5.
+3. Once tools are connected, the admin chooses what KnowBuddy may read and syncs it:
+   [RUNNING.md](../RUNNING.md) section 5, step 3.
 
 On **Connections** (`/connectors`), each tool's card has **Connect**, **Test** and **Disconnect**. **Test** says "Works. The tool sees you as <your name or email>." when the connection works, or "Access expired or was revoked. Connect again." when it doesn't. (The backend route behind it, `GET /connectors/{id}/ping`, returns `{"ok": true, "as": "…"}`.)
 
@@ -64,7 +53,7 @@ On **Connections** (`/connectors`), each tool's card has **Connect**, **Test** a
    GOOGLE_CLIENT_ID=<Client ID>
    GOOGLE_CLIENT_SECRET=<Client secret>
    ```
-   Use the same email as on Slack and Jira/Confluence (section 2, step 6).
+   Use the same email as on Slack and Jira/Confluence ([RUNNING.md](../RUNNING.md) section 5).
 3. Restart. Open http://localhost:3000/connectors, click **Connect** on Google Drive, and sign in with that Google account. At "Google hasn't verified this app", click **Continue**, then allow access.
    - ✅ Drive shows your email, and **Test** shows it too.
 
@@ -117,7 +106,7 @@ One Atlassian sign-in connects both. The team shares one Atlassian site. Each de
 Production uses its own apps and secrets, never the ones from your laptop. `<APP_URL>` below is the public `https://` address of the backend.
 
 1. **Host.** Serve the frontend and backend on one `https://` domain (e.g. behind a reverse proxy), so the session cookie reaches both.
-2. **Secrets.** Generate a new `TOKEN_ENCRYPTION_KEY` (section 2, step 3). Keep it and every client secret below in the host's secret store.
+2. **Secrets.** Generate a new `TOKEN_ENCRYPTION_KEY` ([RUNNING.md](../RUNNING.md) section 2). Keep it and every client secret below in the host's secret store.
 3. **Backend variables:**
    ```
    APP_ENV=production
@@ -135,7 +124,7 @@ Production uses its own apps and secrets, never the ones from your laptop. `<APP
    - **Manage Distribution:** activate public distribution, so other companies' workspaces can install it.
    - Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`.
 7. **Jira and Confluence: blocked.** Every user signing in to one company app needs **Distribution → Sharing**. Sharing asks whether the app stores personal data: it does (Atlassian account IDs), so Atlassian requires the [Personal Data Reporting API](https://developer.atlassian.com/cloud/jira/platform/user-privacy-developer-guide/) (report stored account IDs every 7 days, erase data for closed accounts). Build it first, and never tick its confirmation box before then.
-8. **Companies** sign themselves up: the first full member to connect Slack from a new workspace creates the company and becomes its admin (section 2, step 6).
+8. **Companies** sign themselves up: the first full member to connect Slack from a new workspace creates the company and becomes its admin ([RUNNING.md](../RUNNING.md) section 5).
 9. Deploy. The `sync` service (`docker-compose.yml`) syncs every company every 5 minutes. Open `<public frontend address>/connectors`, and click **Connect** on each tool.
    - ✅ **Test** shows your account on each.
 
@@ -275,18 +264,11 @@ Field mappings per source are in §5 of [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md), [SLA
 
 ### 7.5 Sync: choose the boundary, then sync
 
-Sync reads as the company admin's own connections (the first full member to connect Slack, section 2 step 6), so it needs no extra credentials. It sees only what the admin can see: they must be in every private channel, and able to open every folder, project and space, that they add.
-
-1. Connect the tools as the admin (sections 3 to 5).
-2. At http://localhost:8000/docs, run **`GET /api/admin/scopes/slack`** (or `drive`, `jira`, `confluence`) and pick IDs.
-3. For each, run **`PUT /api/admin/boundary/{id}/{scope_id}`** with `{"title": "<name>"}`.
-4. Run **`POST /api/admin/sync`**, or from the repo root:
-   ```
-   docker compose run --rm backend python -m app.sync
-   ```
-   - ✅ The log shows `slack C… synced, N items`. Questions in the app now answer from that content.
-
-`docker compose up` also starts the `sync` service, which repeats this every 5 minutes for every company. Chunks are embedded after each run; if the LLM key is missing or TokenHub is down, keyword search still works and the vectors are filled on a later run.
+How an admin chooses the boundary and runs a sync: [RUNNING.md](../RUNNING.md) section 5, step 3. Under the
+hood, `docker compose up` starts the `sync` service, which repeats it every 5 minutes for every company; you can
+also run one sync by hand with `docker compose run --rm backend python -m app.sync`. Chunks are embedded after each
+run; if the LLM key is missing or TokenHub is down, keyword search still works and the vectors are filled in on a
+later run.
 
 ### 7.6 Check it works
 
