@@ -42,7 +42,7 @@ verify (ADR-007). Fictional seed data is available for development.
 
 Not built yet: the admin Audit and Boundary pages (the APIs exist; the pages
 are previews with mock data), PII redaction, the prompt-injection test suite,
-and the hosted deployment ([ROADMAP.md](docs/ROADMAP.md)).
+and the hosted deployment ([roadmap](docs/PROJECT.md#roadmap-and-status)).
 
 ## Architecture
 
@@ -72,10 +72,11 @@ embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
 ├── CONTRIBUTING.md          how the team works: branches, commits, PRs, reviews, decisions
 ├── .github/                 pull request template
 ├── docs/
-│   ├── PROJECT.md           problem, personas, scenarios, proposed MVP, open items
+│   ├── PROJECT.md           problem, users, scenarios, scope, roadmap and status
 │   ├── SECURITY.md          threat model and security invariants
-│   ├── DEVELOPMENT.md       setup, environment variables, tests
-│   ├── ROADMAP.md           tasks by date, with progress
+│   ├── README.md            map of the docs, and a glossary
+│   ├── RUNNING.md           run and use it: settings, demo personas, your own tools, troubleshooting
+│   ├── TESTING.md           backend, frontend, manual and accessibility checks
 │   ├── architecture/
 │   │   ├── ARCHITECTURE.md  planned architecture, security boundary, open questions
 │   │   ├── CURRENT.md       diagram of what is built right now
@@ -103,8 +104,8 @@ embeddings (ADR-006); one Tencent Cloud Lighthouse server for the live demo
 Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to
 `frontend/.env`, then `docker compose up --build`. Frontend at
 http://localhost:3000, backend at http://localhost:8000/health. `.env` is
-git-ignored and must never be committed. Details in
-[DEVELOPMENT.md](docs/DEVELOPMENT.md).
+git-ignored and must never be committed. Step by step, with demo personas:
+[RUNNING.md](docs/RUNNING.md). Testing: [TESTING.md](docs/TESTING.md). Every doc: [docs/README.md](docs/README.md).
 
 ## Security principles
 
