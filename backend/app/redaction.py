@@ -55,39 +55,49 @@ def _at_least(n: int, most: int = 99) -> Callable[[re.Match], int]:
 
 _NUMBER_WORD = r"(?:\s*(?:no\.?|number|num|#))?(?:\s+(?:is|was))?\s*[:#]?\s*"  # "account number is 123..."
 
+# ASCII-only word boundaries. Python's \b and \w count Chinese characters as letters, so "身份证S1234567D"
+# would have no boundary before the NRIC and escape. These still keep identifiers glued to ASCII IDs and
+# links apart (Slack's /p1727...), and \d still matches any Unicode digit.
+_B = r"(?<![A-Za-z0-9_])"
+_E = r"(?![A-Za-z0-9_])"
+_CJK = "⺀-鿿豈-﫿　-〿＀-￯"  # an unquoted value ends at Chinese text
+
 # (kind, pattern with the sensitive value in group "v", check), applied in this order. Tags left by an
 # earlier detector hold at most 4 digits, so later ones never match them. Patterns that scan runs of
 # characters start with a look-behind, so a long run without a match costs linear time, not quadratic.
 DETECTORS: list[tuple[str, re.Pattern, Callable[[re.Match], int]]] = [
     ("secret", re.compile(r"(?P<v>-----BEGIN[A-Z ]*PRIVATE KEY-----.*?(?:-----END[A-Z ]*PRIVATE KEY-----|\Z))",
                           re.S), _whole),
-    ("secret", re.compile(r"\b(?P<v>(?:AKIA|ASIA)[A-Z0-9]{16})\b"), _whole),
-    ("secret", re.compile(r"\b(?P<v>xox[abposr]-[A-Za-z0-9-]{10,})"), _whole),
-    ("secret", re.compile(r"\b(?P<v>gh[pousr]_[A-Za-z0-9]{30,})"), _whole),
-    ("secret", re.compile(r"\b(?P<v>AIza[0-9A-Za-z_-]{35})"), _whole),
-    ("secret", re.compile(r"\b(?P<v>sk-[A-Za-z0-9_-]{20,})"), _whole),
-    ("secret", re.compile(r"\b(?P<v>eyJ[\w-]{5,}\.eyJ[\w-]{5,}\.[\w-]+)"), _whole),
-    ("secret", re.compile(r"(?i)\bbearer\s+(?P<v>[\w.~+/-]{16,}=*)"), _whole),
+    ("secret", re.compile(_B + r"(?P<v>(?:AKIA|ASIA)[A-Z0-9]{16})" + _E), _whole),
+    ("secret", re.compile(_B + r"(?P<v>xox[abposr]-[A-Za-z0-9-]{10,})"), _whole),
+    ("secret", re.compile(_B + r"(?P<v>gh[pousr]_[A-Za-z0-9]{30,})"), _whole),
+    ("secret", re.compile(_B + r"(?P<v>AIza[0-9A-Za-z_-]{35})"), _whole),
+    ("secret", re.compile(_B + r"(?P<v>sk-[A-Za-z0-9_-]{20,})"), _whole),
+    ("secret", re.compile(_B + r"(?P<v>eyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]+)"), _whole),
+    ("secret", re.compile(r"(?i)" + _B + r"bearer\s+(?P<v>[A-Za-z0-9_.~+/-]{16,}=*)"), _whole),
     # A credential word, alone or ending a name (DB_PASSWORD=, "api_key":), then its value. A value that is
     # already a tag is skipped, so a token masked above is not counted twice.
     ("secret", re.compile(r"(?i)(?<![a-z0-9])(?:password|passwd|pwd|passcode|secret|token|"
                           r"(?:api|access|private|encryption|signing)[ _-]?key)(?![a-z0-9])[\"']?\s*"
                           r"(?:=(?!=)|:)\s*"  # an assignment, not a comparison (==)
-                          r"(?P<v>(?!\[secret\])(?:\"[^\"\n]*\"|'[^'\n]*'|\S+))"), _whole),
+                          rf"(?P<v>(?!\[secret\])(?:\"[^\"\n]*\"|'[^'\n]*'|[^\s{_CJK}]+))"), _whole),
     # user:pass@ in a URL. The scheme is bounded: unbounded, every word start rescans the rest (quadratic).
-    ("secret", re.compile(r"(?i)\b[a-z][a-z0-9+.-]{0,30}://[^\s/:@]+:(?P<v>[^\s/@]+)@"), _whole),
-    ("iban", re.compile(r"\b(?P<v>[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30})\b"), _iban),
-    # Not glued to a letter: digits inside IDs and links (Slack's /p1727...) are not cards.
-    ("card", re.compile(r"(?<!\w)(?P<v>\d(?:[ -]?\d){12,18})(?!\d)"), _card),
-    ("account", re.compile(rf"(?i)\b(?:account|acct|a/c){_NUMBER_WORD}(?P<v>\d[\d -]{{4,24}}\d)"), _at_least(6)),
-    ("nric", re.compile(r"(?i)\b(?P<v>[STFGM]\d{7}[A-Z])\b"), _whole),
-    ("passport", re.compile(rf"(?i)\bpassport{_NUMBER_WORD}(?P<v>[A-Z]{{1,2}}\d{{6,8}}[A-Z]?)\b"), _whole),
-    ("dob", re.compile(r"(?i)\b(?:dob|d\.o\.b\.?|date\s+of\s+birth|born(?:\s+on)?)(?:\s+(?:is|was))?\s*[:-]?\s*"
-                       r"(?P<v>\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4}"
-                       r"|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})"), _whole),
-    ("email", re.compile(r"(?<![\w.+-])(?P<v>[\w.+-]{1,64}@[\w-]+(?:\.[\w-]+)+)"), _whole),
-    ("phone", re.compile(r"(?<![\w+])(?P<v>\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,5})"), _at_least(8, 15)),
-    ("phone", re.compile(r"(?<![\w.+/-])(?P<v>(?:\(?65\)?[ -]?)?[3689]\d{3}[ -]?\d{4})(?![\w]|[.-]\d)"), _whole),
+    ("secret", re.compile(r"(?i)" + _B + r"[a-z][a-z0-9+.-]{0,30}://[^\s/:@]+:(?P<v>[^\s/@]+)@"), _whole),
+    ("iban", re.compile(_B + r"(?P<v>[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30})" + _E), _iban),
+    ("card", re.compile(_B + r"(?<!\d)(?P<v>\d(?:[ -]?\d){12,18})(?!\d)"), _card),
+    ("account", re.compile(r"(?i)" + _B + r"(?:account|acct|a/c)" + _NUMBER_WORD + r"(?P<v>\d[\d -]{4,24}\d)"),
+     _at_least(6)),
+    ("nric", re.compile(r"(?i)" + _B + r"(?P<v>[STFGM]\d{7}[A-Z])" + _E), _whole),
+    ("passport", re.compile(r"(?i)" + _B + r"passport" + _NUMBER_WORD + r"(?P<v>[A-Z]{1,2}\d{6,8}[A-Z]?)" + _E),
+     _whole),
+    ("dob", re.compile(r"(?i)" + _B + r"(?:dob|d\.o\.b\.?|date\s+of\s+birth|born(?:\s+on)?)(?:\s+(?:is|was))?"
+                       r"\s*[:-]?\s*(?P<v>\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2}"
+                       r"|\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4}|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})"), _whole),
+    ("email", re.compile(r"(?<![A-Za-z0-9_.%+-])(?P<v>[A-Za-z0-9_.%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)"),
+     _whole),
+    ("phone", re.compile(r"(?<![A-Za-z0-9_+])(?P<v>\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,5})"), _at_least(8, 15)),
+    ("phone", re.compile(r"(?<![A-Za-z\d_.+/-])(?P<v>(?:\(?65\)?[ -]?)?[3689]\d{3}[ -]?\d{4})"
+                         r"(?![A-Za-z\d_]|[.-]\d)"), _whole),
 ]
 
 

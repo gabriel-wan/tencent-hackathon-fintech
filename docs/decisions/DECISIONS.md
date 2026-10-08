@@ -557,6 +557,8 @@ of answers people copy and share.
   200,000 characters are tested); well under the LLM's latency.
 - `ASSUMPTION:` limits accepted for the prototype:
   - names and postal addresses are not detected;
+  - emails with a non-ASCII address or domain are not detected (so that an
+    address written inside Chinese text never swallows the words around it);
   - a value split across a 2,000-character chunk cut (only lines longer than
     that are cut) can escape detection;
   - `need_to_know` is up to one sync (5 minutes) stale after a reassignment,

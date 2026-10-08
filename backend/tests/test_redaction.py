@@ -33,6 +33,13 @@ POSITIVES = [
     ("my dob is 1990-03-12", "my dob is [date of birth]"),  # the way people write it
     ("her account number is 123-45678-9", "her account number is [account ending 6789]"),
     ("passport no. was E1234567", "passport no. was [passport 1]"),
+    # Written straight after Chinese text: no ASCII word boundary, and the Chinese words around stay.
+    ("信用卡4111 1111 1111 1111已退款", "信用卡[card ending 1111]已退款"),
+    ("身份证S1234567D", "身份证[NRIC *****567D]"),
+    ("电话91234567", "电话[phone 1]"),
+    ("电话+65 9123 4567", "电话[phone 1]"),
+    ("邮箱jane.lee@gmail.com的", "邮箱[email 1]的"),
+    ("护照passport no. E1234567", "护照passport no. [passport 1]"),
 ]
 
 
@@ -59,6 +66,7 @@ def test_ordinary_text_is_left_alone(raw):
 
 SECRETS = [
     ("key AKIAIOSFODNN7EXAMPLE here", "key [secret] here"),
+    ("密钥AKIAIOSFODNN7EXAMPLE", "密钥[secret]"),
     ("token xoxb-1234567890-abcdefghij", "token [secret]"),
     ("password: hunter2", "password: [secret]"),
     ("API_KEY=sk-abcdefghijklmnopqrstuvwx", "API_KEY=[secret]"),
