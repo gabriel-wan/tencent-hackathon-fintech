@@ -19,6 +19,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | [007](#adr-007-audit-log-design) | Audit-log design | Accepted |
 | [008](#adr-008-deployment-architecture) | Deployment architecture | Accepted |
 | [009](#adr-009-frontend-architecture) | Frontend architecture | Accepted |
+| [010](#adr-010-pii-redaction-need-to-know-shield) | PII redaction (Need-to-Know Shield) | Accepted |
 
 ---
 
@@ -274,7 +275,8 @@ Data flow and per-source check calls are described in
   (2,560 dimensions) would not, without extra work.
 - The embedding model receives the text of every in-boundary document at
   ingestion. TokenHub states data is not used for training and stays in the
-  Singapore region.
+  Singapore region. *Amended 2026-10-08 (ADR-010):* that text is masked first,
+  so sensitive identifiers never reach the embedding model.
 - Webhooks would need a public HTTPS endpoint and signature checks. They are
   not used.
 
@@ -484,3 +486,113 @@ the existing Docker Compose setup, with the database on the same server.
 - Retrieved text can't inject HTML or scripts into the page (T12).
 - Details: [docs/architecture/FRONTEND.md](../architecture/FRONTEND.md).
 
+---
+
+## ADR-010: PII redaction (Need-to-Know Shield)
+
+- **Status:** Accepted (2026-10-08, after review of PR #16)
+- **Date:** 2026-10-08
+- **Proposed by:** v1-nce
+- **Scope:** which sensitive identifiers are masked, where, and who sees them
+  unmasked. Relates to INV-1, INV-11, T5, T11.
+
+### Context
+
+Authorization (ADR-003) decides *which* documents a user may read. Inside a
+readable support ticket or dispute log there are still card numbers, NRICs and
+phone numbers that most readers do not need. Without masking, the assistant
+hands them to the third-party LLM and can collect them across hundreds of
+documents in one answer. The asker can still open the source item itself, so
+the Shield is **data minimisation**, not access control: it stops aggregation
+through the assistant, keeps identifiers away from TokenHub, and keeps them out
+of answers people copy and share.
+
+### Decision
+
+- **Deterministic detectors, no ML** (`backend/app/redaction.py`): regular
+  expressions with checksums where the format has one, tuned for recall over
+  precision. Secrets (private keys and base64 key lines, cloud and Slack
+  tokens, JWTs, bearer tokens, credential names in config and env files such
+  as `password: ...`, `DB_PASSWORD=...`, `"api_key": "..."` or `密码：...`,
+  `user:pass@` in URLs, and any 32+ character run mixing cases and digits),
+  IBAN (mod-97), payment card (Luhn, or a card word such as `card` or `卡`
+  just before it; spaced, dashed or dotted), bank account, passport and date of
+  birth (after an English or Chinese label), NRIC/FIN, email (any script),
+  phone (`+` international, Singapore, or any format after a label), names
+  after a label or honorific (`Customer:`, `Mdm`, `姓名：`), and Singapore
+  address markers (postal code, `#12-345`, `Blk 123`). Word boundaries are
+  ASCII-only, so identifiers written inside Chinese text are caught.
+  A **person's** name (after an honorific or a person label: customer,
+  cardholder, account holder, full name, `姓名`, `持卡人`, `客户`) is also
+  masked in every other mention, with its first and last name, anywhere in
+  the question's sources (for embeddings, the same document), under the same
+  tag ("Jane called" is `[name 1] called`). A generic label (name, client,
+  payee, recipient, applicant, `户名`) can name an organisation or project
+  ("Client: DBS Bank", "Project Name: Gateway"), so its value is masked
+  where it stands only.
+  Detection runs on a copy of the text as the model reads it: zero-width and
+  other format characters dropped, every dash read as a hyphen, everything
+  else in NFKC form, so `4111<U+200B>1111…` or `Ｓ１２３４５６７Ｄ` cannot slip
+  past. Only the masked spans are replaced in the original; all other text,
+  such as Chinese punctuation, stays as written.
+- **Mask where text leaves our system**, never in storage: the LLM prompt and
+  the citation title and link (per source; Confluence links also drop the page
+  title at sync), the answer (any value the model was not
+  shown unmasked and the user did not type), the question (secrets only), and
+  embeddings (everything). Stored chunks stay raw, so keyword search and
+  need-to-know readers keep full fidelity. Chunks are never cut inside a
+  detected identifier or between a label and its value.
+- **Need-to-know comes from the source**, not from a new role: Jira assignee and
+  reporter, Drive owners and editors (named users only), Confluence page owner
+  and author, written by each connector as `metadata.need_to_know`. A user
+  holding one of those identities sees that document unmasked. Slack names no
+  handler, so Slack is masked for everyone. Admins get no exemption.
+  Only identity principals count: `public`, `slack:members` or a domain never
+  clear anyone, whatever a connector writes.
+- **Secrets are masked for everyone, always.**
+- **Colleagues stay visible:** emails and names (and first or last names) of
+  users registered in the asker's company are not masked; all others are.
+- **Tags keep documents usable:** `[card ending 4242]` and `[account ending
+  6789]` (PCI DSS allows the last 4), `[NRIC *****567D]` (PDPC's partial-NRIC
+  guidance), otherwise `[phone 1]`, `[email 2]` numbered per question so the
+  model can tell people apart, `[date of birth]`, `[secret]`.
+- **Audit:** each query records, per source sent, whether the user had
+  need-to-know and how many identifiers of each kind were masked, plus what the
+  answer guard masked. Counts only, never values. Each citation returns the
+  same counts as `redacted` for the UI.
+
+### Rejected
+
+- **Microsoft Presidio / NER models:** a model-dependent result is not
+  deterministic, a spaCy model adds hundreds of MB, and per-question latency
+  rises. Names are the main thing NER adds, and names are needed for useful
+  answers.
+- **Masking at ingestion:** one masked copy for everyone would deny the people
+  the source says handle the item; masking at the exit is per reader.
+- **An admin-granted clearance role:** a new permission our app invents, which
+  AGENTS.md 2.3 warns against when the source already says who handles what.
+
+### Consequences
+
+- Performance: precompiled patterns, linear in text length (hostile inputs of
+  200,000 characters are tested); well under the LLM's latency.
+- `ASSUMPTION:` limits accepted for the prototype:
+  - a person's name that no person label or honorific marks anywhere in the
+    question's sources, and a street name, are not detected (that needs NER, rejected
+    above);
+  - a first or last name of a detected person is masked wherever it appears,
+    so a capitalised word that is also their name ("May", "Will") is masked
+    too;
+  - masking favours recall: some ordinary text is masked too, e.g. a bare
+    8-digit number starting 3/6/8/9 (read as a phone) or a 32+ character
+    identifier mixing cases and digits (read as a token);
+  - `need_to_know` is up to one sync (5 minutes) stale after a reassignment,
+    the same window as ACLs (T7);
+  - embeddings written before this change came from raw text (they are never
+    returned, so they were not recomputed).
+- The audit log (ADR-007) stores the question and answer fully masked, even
+  for a need-to-know user: every detected identifier, and every value the
+  Shield showed that user unmasked wherever it appears again (an answer can
+  repeat a name without its label). Reason: it is append-only, so PII in it
+  could never be erased (PDPA), and the administrator must not read there what
+  the Shield hides from them in chat.

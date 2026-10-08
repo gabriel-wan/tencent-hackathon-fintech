@@ -35,8 +35,8 @@ def fetch(http: httpx.Client, project: str, changed: Callable[[str, str], bool] 
     # may be too wide for restricted tickets; the live check trims it.
     acl = [f"atlassian:user:{u['accountId']}" for u in pages(
         http, "/rest/api/3/user/permission/search", None, permissions="BROWSE_PROJECTS", projectKey=project)]
-    body = {"jql": f'project = "{project}"', "fields": ["summary", "description", "comment", "updated"],
-            "maxResults": 100}
+    body = {"jql": f'project = "{project}"',
+            "fields": ["summary", "description", "comment", "updated", "assignee", "reporter"], "maxResults": 100}
     while True:
         resp = request("POST", "/rest/api/3/search/jql", http=http, json=body).json()
         for issue in resp["issues"]:
@@ -54,6 +54,10 @@ def fetch(http: httpx.Client, project: str, changed: Callable[[str, str], bool] 
                 "updated_at": f["updated"],
                 "acl": acl,
                 "text": text,
+                # Need-to-Know Shield (ADR-010): whoever handles the ticket sees its identifiers unmasked.
+                "metadata": {"need_to_know": sorted({f"atlassian:user:{p['accountId']}"
+                                                     for p in (f.get("assignee"), f.get("reporter"))
+                                                     if p and p.get("accountId")})},
             }
         if not (token := resp.get("nextPageToken")):
             return

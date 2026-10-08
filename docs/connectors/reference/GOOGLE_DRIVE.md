@@ -191,7 +191,8 @@ One document per file:
   "text": "Revenue target for Q3 is ...",                // export (4.3) or download (4.4)
   "url": "https://docs.google.com/document/d/1AbC/edit", // file.webViewLink
   "updated_at": "2026-10-01T05:00:00Z",                  // file.modifiedTime
-  "metadata": { "overshared": true },                    // any type: anyone
+  "metadata": { "overshared": true,                      // any type: anyone
+                "need_to_know": ["google:user:alice@company.com"] },  // owners/editors (type user): ADR-010
   "acl": ["google:user:sara@company.com", "google:user:alice@company.com", "public"]
 }
 ```

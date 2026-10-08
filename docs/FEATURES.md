@@ -187,6 +187,28 @@ model has no tools to call, and the website shows answers as plain text, with on
 Tested by `test_grounding.py`, including `test_untrusted_text_cannot_close_its_source_block`.
 Limits: no dedicated prompt-injection test suite yet (roadmap).
 
+### Need-to-Know Shield: personal data only for the people handling it
+
+Being allowed to open a document is not the same as needing the customer's card number in it. Before any text
+leaves for the LLM, the Shield masks sensitive identifiers: cards, NRIC/FIN, bank accounts, IBANs, passports, dates
+of birth, phones, emails of people outside the company, names (labelled; a person's name in every mention) and Singapore addresses. Only the people the
+source names as handling that item (Jira assignee and reporter, Drive owners and editors, Confluence owner and
+author) see them in full. Credentials are masked for everyone, admins included. The masking is a fixed set of
+checked patterns (Luhn for cards, mod-97 for IBANs), so the same text always gives the same result.
+
+**Try it:** ask *"What happened in dispute 118?"* as **Alice**, then as **Priya** (the dispute log's owner).
+
+**You'll see:** Alice's sources reach the LLM as *"customer: [name 1] ([email 1], [phone 1], NRIC [NRIC *****567D])
+… card [card ending 1111] … account no. [account ending 6789]"*, so her answer can only repeat those tags; Priya's
+answer can give the full details. Each source in the API response says how many identifiers were masked
+(`redacted`, e.g. `{"card": 1, "nric": 1}`). The answer is checked again before it is returned: an identifier the
+model was not shown and the user did not type is masked (challenge §2.5). The audit stores the question and
+answer fully masked, even for Priya, because it can never be edited or erased.
+
+Tested by `test_redaction.py`, the Shield tests in `test_query_pipeline.py`, and `test_sync.py` (embeddings only
+ever receive masked text). Limits: a name that nothing labels anywhere in the sources, and street names, are not detected; a bare 8-digit
+number starting 3, 6, 8 or 9 is masked as a phone (ADR-010).
+
 ### Development aids, clearly labelled
 
 The persona switcher, the Slack token form, the admin design previews and mock mode exist only in development, and
@@ -194,7 +216,6 @@ each is labelled on screen (amber, "DEVELOPMENT ONLY" or "MOCK DATA"), so none c
 
 ### Planned
 
-- **Need-to-Know Shield:** redacting personal data in answers.
 - Showing "synced N minutes ago" under answers, and wiring the Audit and Boundary pages to their APIs.
 
 ## Part 3: running the demo

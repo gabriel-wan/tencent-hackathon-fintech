@@ -37,6 +37,7 @@ class CitationOut(BaseModel):
     source: str
     updated_at: datetime
     synced_at: datetime | None
+    redacted: dict[str, int]  # identifiers masked in this source for you, by kind (ADR-010)
 
 
 class QueryResponse(BaseModel):

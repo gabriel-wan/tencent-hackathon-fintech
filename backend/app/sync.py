@@ -20,33 +20,50 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import time
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import Engine, text
 
 from app.connectors import store
 from app.db import engine as default_engine
 from app.llm.client import EMBEDDING_MAX_CHARS, LLMClient
+from app.redaction import for_embedding, names_in, protected_spans
 from app.retrieval.search import vector_literal
 
 log = logging.getLogger(__name__)
 
 INTERVAL_S = 300  # ADR-005: every 5 minutes
 EMBED_BATCH = 512
+CUT_LOOKAHEAD = 200  # characters past the limit scanned, to see an identifier the limit falls inside
+HEARTBEAT = Path(tempfile.gettempdir()) / "sync-heartbeat"  # touched while the loop makes progress
+HEALTHY_WITHIN_S = 3 * INTERVAL_S  # the container is unhealthy when the heartbeat is older
+
+
+def _cut(text: str) -> int:
+    """Where the next chunk of `text` (longer than EMBEDDING_MAX_CHARS) ends: the last line break, else the
+    last space, that is not inside anything the Need-to-Know Shield detects (ADR-010); else the start of the
+    identifier the limit falls in; else the limit. Half a card number, or a label without its value, in
+    another chunk would escape masking."""
+    spans = protected_spans(text[:EMBEDDING_MAX_CHARS + CUT_LOOKAHEAD])
+    for sep in ("\n", " "):
+        for i in range(EMBEDDING_MAX_CHARS, 0, -1):
+            if text[i - 1] == sep and not any(start < i < end for start, end in spans):
+                return i
+    inside = [start for start, end in spans if 0 < start < EMBEDDING_MAX_CHARS < end]
+    return min(inside) if inside else EMBEDDING_MAX_CHARS
 
 
 def chunk(body: str) -> list[str]:
-    """Lines packed into pieces of at most EMBEDDING_MAX_CHARS; a longer line is cut."""
-    pieces = [line[i:i + EMBEDDING_MAX_CHARS] for line in body.splitlines() if line.strip()
-              for i in range(0, len(line), EMBEDDING_MAX_CHARS)]
-    chunks: list[str] = []
-    for piece in pieces:
-        if chunks and len(chunks[-1]) + 1 + len(piece) <= EMBEDDING_MAX_CHARS:
-            chunks[-1] += "\n" + piece
-        else:
-            chunks.append(piece)
-    return chunks
+    """Non-blank lines packed into pieces of at most EMBEDDING_MAX_CHARS, cut where `_cut` says."""
+    text, chunks = "\n".join(line for line in body.splitlines() if line.strip()), []
+    while len(text) > EMBEDDING_MAX_CHARS:
+        cut = _cut(text)
+        chunks.append(text[:cut].rstrip())
+        text = text[cut:]
+    return [c for c in [*chunks, text] if c.strip()]
 
 
 def upsert(conn, company_id: int, doc: dict) -> None:
@@ -79,13 +96,23 @@ def upsert(conn, company_id: int, doc: dict) -> None:
 def embed_missing(engine: Engine, llm) -> int:
     """Embed one batch of chunks that have no vector yet (new, or the LLM was down). Returns how many."""
     with engine.begin() as conn:
-        rows = conn.execute(text("SELECT id, text FROM chunks WHERE embedding IS NULL ORDER BY id LIMIT :n"),
-                            {"n": EMBED_BATCH}).all()
+        rows = conn.execute(text("SELECT id, document_id, text FROM chunks WHERE embedding IS NULL "
+                                 "ORDER BY id LIMIT :n"), {"n": EMBED_BATCH}).all()
         if rows:
-            for row, vec in zip(rows, llm.embed([r.text for r in rows]), strict=True):
+            for row, vec in zip(rows, llm.embed(masked_for_embedding(conn, rows)), strict=True):
                 conn.execute(text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
                              {"v": vector_literal(vec), "id": row.id})
     return len(rows)
+
+
+def masked_for_embedding(conn, rows) -> list[str]:
+    """Each chunk's text masked for the embedding model (ADR-010). Names are collected from the whole
+    document, so a name labelled in one chunk is masked in every other chunk too."""
+    docs = conn.execute(text("SELECT d.id, d.title, string_agg(c.text, E'\n' ORDER BY c.ordinal) "
+                             "FROM documents d JOIN chunks c ON c.document_id = d.id WHERE d.id = ANY(:ids) "
+                             "GROUP BY d.id, d.title"), {"ids": list({r.document_id for r in rows})}).all()
+    names = {doc_id: names_in([title, body]) for doc_id, title, body in docs}
+    return [for_embedding(r.text, names[r.document_id]) for r in rows]
 
 
 def sync_company(engine: Engine, company_id: int, sources: list[str] | None = None, llm=None) -> None:
@@ -114,6 +141,7 @@ def _sync_company(engine: Engine, company_id: int, sources: list[str] | None, ll
         log.warning("company %s has no admin: nothing synced", company_id)
         return
     for source, scope_id in scopes:
+        HEARTBEAT.touch()
         try:
             with engine.connect() as db:  # what is stored, to download only new or edited items
                 known = dict(db.execute(text("SELECT source_id, updated_at FROM documents WHERE company_id = :c "
@@ -148,7 +176,7 @@ def _sync_company(engine: Engine, company_id: int, sources: list[str] | None, ll
     try:
         llm = llm or LLMClient.from_env()
         while embed_missing(engine, llm):
-            pass
+            HEARTBEAT.touch()
     except Exception as e:  # keyword search still works; vectors are filled on a later run
         log.warning("embedding skipped: %s", type(e).__name__)
 
@@ -165,10 +193,15 @@ def main(argv: list[str]) -> int:
     parser.add_argument("sources", nargs="*", help=f"any of {', '.join(store.SOURCES)} (default: all)")
     parser.add_argument("--company", type=int, help="one company ID (default: all)")
     parser.add_argument("--loop", action="store_true", help=f"repeat every {INTERVAL_S} seconds")
+    parser.add_argument("--health", action="store_true",
+                        help=f"exit 0 if the loop made progress in the last {HEALTHY_WITHIN_S} seconds")
     args = parser.parse_args(argv)
+    if args.health:
+        return 0 if HEARTBEAT.exists() and time.time() - HEARTBEAT.stat().st_mtime < HEALTHY_WITHIN_S else 1
     if unknown := set(args.sources) - store.SOURCES.keys():
         parser.error(f"unknown source(s): {', '.join(sorted(unknown))}")
     while True:
+        HEARTBEAT.touch()
         with default_engine.connect() as db:
             companies = [args.company] if args.company else db.execute(text("SELECT id FROM companies")).scalars().all()
         for company in companies:
@@ -178,6 +211,7 @@ def main(argv: list[str]) -> int:
                 log.exception("company %s: sync failed", company)
         if not args.loop:
             return 0
+        HEARTBEAT.touch()
         time.sleep(INTERVAL_S)
 
 

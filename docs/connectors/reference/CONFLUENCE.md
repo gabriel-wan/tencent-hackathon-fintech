@@ -196,8 +196,9 @@ One document per page:
   "source_id": "77777",                                           // page.id ("Pricing")
   "title": "Pricing",                                             // page.title
   "text": "Discount bands for 2027 ...",                          // body.storage.value, tags stripped
-  "url": "https://yourteam.atlassian.net/wiki/spaces/ENG/pages/77777/Pricing", // _links.base + webui
+  "url": "https://yourteam.atlassian.net/wiki/spaces/ENG/pages/77777",         // _links.base + webui, title dropped: ADR-010
   "updated_at": "2026-10-01T13:05:00Z",                           // version.createdAt
+  "metadata": { "need_to_know": ["atlassian:user:5b10-sara"] },  // ownerId + authorId: ADR-010
   "acl": ["atlassian:user:5b10-sara"]
 }
 ```

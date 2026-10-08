@@ -59,7 +59,8 @@ def test_query_returns_answer_citations_and_audit_id(conn, fake_llm, alice, add_
 
     assert body["answer"] == "Blocked [S1]."
     assert body["citations"][0]["id"] == "slack:C1:1"
-    assert set(body["citations"][0]) == {"id", "title", "url", "source", "updated_at", "synced_at"}
+    assert set(body["citations"][0]) == {"id", "title", "url", "source", "updated_at", "synced_at", "redacted"}
+    assert body["citations"][0]["redacted"] == {}
     assert isinstance(body["audit_id"], int)
 
 

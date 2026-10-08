@@ -1,6 +1,7 @@
 """Sync engine and live checks, with a fake source in place of the APIs. The database is real: sync commits
 its own transactions, so companies (and everything under them) are emptied around each test."""
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,17 @@ def test_chunks_are_packed_and_never_too_long():
     assert sync.chunk("a\n\nb") == ["a\nb"]  # blank lines dropped, short lines packed together
     assert [len(c) for c in sync.chunk(long_line)] == [EMBEDDING_MAX_CHARS, 10]
     assert all(len(c) <= EMBEDDING_MAX_CHARS for c in sync.chunk(("y" * 1500 + "\n") * 5))
+
+
+@pytest.mark.security
+@pytest.mark.parametrize("identifier", ["card 4111 1111 1111 1111", "Account no.:\n123-45678-9",
+                                        "Customer: Jane Lee"])
+def test_a_chunk_never_splits_an_identifier_or_a_label_from_its_value(identifier):
+    # The limit falls inside the identifier: a cut there would put half of it, unmasked, in each chunk.
+    body = "word " * ((EMBEDDING_MAX_CHARS - 10) // 5) + identifier + " end"
+    chunks = sync.chunk(body)
+    assert len(chunks) == 2 and all(len(c) <= EMBEDDING_MAX_CHARS for c in chunks)
+    assert any(identifier in c for c in chunks)
 
 
 def doc(source_id="C1:1", body="gateway migration blocked", acl=("slack:members",)):
@@ -159,6 +171,35 @@ def test_embeddings_missed_during_an_outage_are_filled_later(setup):
         assert c.execute(text("SELECT count(*) FROM chunks WHERE embedding IS NULL")).scalar() == 2
     assert sync.embed_missing(engine, FakeLLM()) == 2
     assert sync.embed_missing(engine, FakeLLM()) == 0
+
+
+@pytest.mark.security
+def test_the_embedding_model_only_receives_masked_text(setup):
+    # A chunk at the limit whose tags are longer than the emails they replace: still sent within the limit.
+    setup.source.docs = [doc(body="card 4111 1111 1111 1111 " + "a@b.co " * 280)]
+    llm = FakeLLM()
+    sync.sync_company(engine, setup.company, llm=llm)
+    [[sent]] = llm.embed_calls
+    assert "4111" not in sent and "@" not in sent and len(sent) <= EMBEDDING_MAX_CHARS
+
+
+@pytest.mark.security
+def test_a_name_labelled_in_one_chunk_is_masked_in_every_chunk(setup):
+    setup.source.docs = [doc(body="Customer: Jane Lee\n" + "word " * EMBEDDING_MAX_CHARS + "\nJane called back")]
+    llm = FakeLLM()
+    sync.sync_company(engine, setup.company, llm=llm)
+    sent = [t for call in llm.embed_calls for t in call]
+    assert len(sent) > 1 and not any("Jane" in t or "Lee" in t for t in sent)
+
+
+def test_the_health_check_follows_the_loops_heartbeat(monkeypatch, tmp_path):
+    monkeypatch.setattr(sync, "HEARTBEAT", tmp_path / "beat")
+    assert sync.main(["--health"]) == 1  # never ran
+    sync.HEARTBEAT.touch()
+    assert sync.main(["--health"]) == 0
+    stale = sync.HEARTBEAT.stat().st_mtime - sync.HEALTHY_WITHIN_S - 1
+    os.utime(sync.HEARTBEAT, (stale, stale))
+    assert sync.main(["--health"]) == 1  # stuck
 
 
 # ---- Live checks: as the asking user's own connection ----

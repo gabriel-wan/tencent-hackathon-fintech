@@ -10,6 +10,8 @@ Each document exercises one permission case:
   Q3 incident report Drive, shared with Priya only
   Contractor guide   Drive, shared with the domain and with Charlie
   Salary bands       Drive, company-wide BUT in a folder outside the admin boundary
+  Dispute log        Drive, company-wide; its customer data is unmasked for Priya only (ADR-010)
+  Card in Slack      #payments-oncall thread: card and phone masked for everyone (Slack names no handler)
 
 A second company, Kopi Labs, shares the database. Its #general thread is open to
 every Slack member, which Alice also is in her own company: she must never see it
@@ -20,6 +22,7 @@ Run:  docker compose run --rm backend python -m app.seed [--embed]
 API key allowed to use the embedding model).
 """
 import hashlib
+import json
 import os
 import sys
 
@@ -85,6 +88,17 @@ DOCUMENTS = [
      [f"google:domain:{DOMAIN}", "google:user:charlie@contractor.example"],
      "Contractor onboarding guide. Contractors get access to the Engineering Drive folder and the "
      "#contractors Slack channel only. Raise access requests with Priya."),
+    ("slack", "C_PAYONCALL:1727845000.000400", "C_PAYONCALL", "#payments-oncall",
+     "https://merlionpay.slack.example/archives/C_PAYONCALL/p1727845000000400", "2026-10-02T15:10:00Z",
+     ["slack:user:U001", "slack:user:U004"],
+     "Alice: Customer called about a failed top-up on card 5555 5555 5555 4444, wants a callback on "
+     "8123 4567.\nPriya: Raise it in the dispute log, I will handle the refund."),
+    ("drive", "D_DISPUTES", "F_ENG", "Customer dispute log",
+     "https://docs.google.example/document/d/D_DISPUTES", "2026-10-03T09:30:00Z",
+     [f"google:domain:{DOMAIN}"],
+     "Customer dispute log, owned by Priya.\nDispute 118, customer: Jane Lee (jane.lee@example.com, +65 9123 4567, "
+     "NRIC S1234567D) was double-charged S$42.50 on card 4111 1111 1111 1111 for a top-up. "
+     "Refund approved to account no. 123-45678-9."),
     ("drive", "D_SALARY", "F_HR", "Salary bands 2026",
      "https://docs.google.example/document/d/D_SALARY", "2026-09-01T10:00:00Z",
      [f"google:domain:{DOMAIN}"],
@@ -92,6 +106,7 @@ DOCUMENTS = [
      "never appear in an answer."),
 ]
 
+NEED_TO_KNOW = {"D_DISPUTES": ["google:user:priya@merlionpay.example"]}
 
 KOPI = "kopilabs.example"
 
@@ -158,11 +173,13 @@ def seed_company(conn, team, company_name, users, boundary, documents) -> None:
                 "CAST(:meta AS jsonb), :h) "
                 "ON CONFLICT (company_id, source, source_id) DO UPDATE SET scope_id = EXCLUDED.scope_id, "
                 "title = EXCLUDED.title, url = EXCLUDED.url, updated_at = EXCLUDED.updated_at, "
-                "acl = EXCLUDED.acl, content_hash = EXCLUDED.content_hash, deleted_at = NULL "
+                "acl = EXCLUDED.acl, metadata = EXCLUDED.metadata, content_hash = EXCLUDED.content_hash, "
+                "deleted_at = NULL "
                 "RETURNING id"
             ),
             {"c": company, "s": source, "sid": source_id, "scope": scope_id, "t": title, "url": url,
-             "u": updated_at, "acl": acl, "meta": '{"seed": true}',
+             "u": updated_at, "acl": acl,
+             "meta": json.dumps({"seed": True, "need_to_know": NEED_TO_KNOW.get(source_id, [])}),
              "h": hashlib.sha256(body.encode()).hexdigest()},
         ).scalar_one()
         conn.execute(text("DELETE FROM chunks WHERE document_id = :d"), {"d": doc_id})
@@ -184,9 +201,10 @@ def main() -> None:
         if embed:
             from app.llm.client import LLMClient
             from app.retrieval.search import vector_literal
+            from app.sync import masked_for_embedding
 
-            rows = conn.execute(text("SELECT id, text FROM chunks ORDER BY id")).all()
-            vectors = LLMClient.from_env().embed([r.text for r in rows])
+            rows = conn.execute(text("SELECT id, document_id, text FROM chunks ORDER BY id")).all()
+            vectors = LLMClient.from_env().embed(masked_for_embedding(conn, rows))  # masked (ADR-010)
             for row, vec in zip(rows, vectors):
                 conn.execute(
                     text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),

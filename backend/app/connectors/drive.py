@@ -19,7 +19,9 @@ EXPORT = {  # Google-native type -> plain-text export
     "application/vnd.google-apps.presentation": "text/plain",
     "application/vnd.google-apps.spreadsheet": "text/csv",
 }
-FILE_FIELDS = "nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, permissions(type, emailAddress, domain))"
+FILE_FIELDS = ("nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, "
+               "permissions(type, emailAddress, domain, role))")
+HANDLER_ROLES = {"owner", "organizer", "fileOrganizer", "writer"}  # may change the file, not only read it
 
 
 def service(credentials):
@@ -58,6 +60,13 @@ def acl(permissions: list[dict]) -> list[str]:
         elif p["type"] == "anyone":
             held.add("public")
     return sorted(held)
+
+
+def handlers(permissions: list[dict]) -> list[str]:
+    """Need-to-Know Shield (ADR-010): people who own or edit the file see its identifiers unmasked.
+    Named people only: an edit share to a group, domain or "anyone" never clears anyone."""
+    return sorted({f"google:user:{p['emailAddress'].lower()}" for p in permissions
+                   if p["type"] == "user" and p.get("role") in HANDLER_ROLES and p.get("emailAddress")})
 
 
 def _text(drive, f: dict) -> str | None:
@@ -102,7 +111,7 @@ def fetch(drive, folder: str, changed: Callable[[str, str], bool] = lambda *_: T
             "updated_at": f["modifiedTime"],
             "acl": principals,
             "text": text,
-            "metadata": {"overshared": "public" in principals},
+            "metadata": {"overshared": "public" in principals, "need_to_know": handlers(f["permissions"])},
         }
 
 

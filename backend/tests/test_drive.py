@@ -43,7 +43,7 @@ class FakeDrive:
                {"id": "hidden", "name": "Secret", "mimeType": "text/plain"},
                {"id": "F2", "name": "Sub", "mimeType": drive.FOLDER}],
         "F2": [{"id": "txt", "name": "Notes", "mimeType": "text/plain", "modifiedTime": "2026-10-02T05:00:00.000Z",
-                "webViewLink": "https://docs/txt", "permissions": [{"type": "user", "emailAddress": "ben@corp.com"}]}],
+                "webViewLink": "https://docs/txt", "permissions": [{"type": "user", "emailAddress": "ben@corp.com", "role": "writer"}]}],
     }
 
     def files(self):
@@ -59,14 +59,27 @@ class FakeDrive:
         return Call(b"Notes text")
 
 
+@pytest.mark.security
+def test_only_named_owners_and_editors_have_need_to_know():
+    assert drive.handlers([
+        {"type": "user", "emailAddress": "Ann@corp.com", "role": "owner"},
+        {"type": "user", "emailAddress": "ben@corp.com", "role": "writer"},
+        {"type": "user", "emailAddress": "cat@corp.com", "role": "reader"},
+        {"type": "user", "emailAddress": "dan@corp.com", "role": "commenter"},
+        {"type": "domain", "domain": "corp.com", "role": "writer"},
+        {"type": "anyone", "role": "writer"},
+        {"type": "group", "emailAddress": "eng@corp.com", "role": "writer"},
+    ]) == ["google:user:ann@corp.com", "google:user:ben@corp.com"]
+
+
 def test_fetch_walks_subfolders_and_skips_what_it_cannot_index():
     docs = {d["source_id"]: d for d in drive.fetch(FakeDrive(), "F1")}
     assert set(docs) == {"doc", "txt"}  # PDF has no text extraction; hidden sharing is never guessed
-    assert docs["doc"]["acl"] == ["public"] and docs["doc"]["metadata"] == {"overshared": True}
+    assert docs["doc"]["acl"] == ["public"] and docs["doc"]["metadata"] == {"overshared": True, "need_to_know": []}
     assert docs["txt"] == {
         "source": "drive", "source_id": "txt", "scope_id": "F1", "title": "Notes", "url": "https://docs/txt",
         "updated_at": "2026-10-02T05:00:00.000Z", "acl": ["google:user:ben@corp.com"], "text": "Notes text",
-        "metadata": {"overshared": False},
+        "metadata": {"overshared": False, "need_to_know": ["google:user:ben@corp.com"]},
     }  # scope is the boundary folder, not the subfolder
 
 
