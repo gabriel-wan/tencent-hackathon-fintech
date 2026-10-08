@@ -13,7 +13,7 @@ and [uv](https://docs.astral.sh/uv/getting-started/installation/) (uv is for tes
 2. Create the `.env` files ([section 2](#2-environment-variables)).
 3. Start everything: `docker compose up --build`
 4. Open:
-   - http://localhost:3000 for the frontend (http://localhost:3000/connectors to connect your tools)
+   - http://localhost:3000 for the frontend (sign in at `/login`; `/connectors` to connect your tools; `/status` shows the backend health result)
    - http://localhost:8000/health for the backend; it returns `{"db": "ok", ...}`
    - http://localhost:8000/docs for every API route, each with "Try it out"
 
@@ -67,9 +67,11 @@ After editing, restart with `docker compose up`. If a setting needed to connect 
 
 | Variable | Value |
 |---|---|
-| `BACKEND_SERVER_URL` | `http://localhost:8000` (Docker overrides it) |
-| `BACKEND_LOCAL_URL` | `http://localhost:8000`: the backend address your browser uses |
-| `APP_ENV` | `development`: Slack connects with a pasted token on `/connectors` (GUIDE §4) |
+| `BACKEND_SERVER_URL` | `http://localhost:8000` (Docker overrides it). Where the frontend's server reaches the backend: the `/api` proxy, server components, `/status` |
+| `BACKEND_LOCAL_URL` | `http://localhost:8000`: the backend address your browser uses (the Connect / Test links) |
+| `NEXT_PUBLIC_API_MOCK` | Optional, development only: `1` fakes the answers of `POST /api/query` (labelled MOCK DATA). See `frontend/README.md` |
+
+The frontend has no development flag of its own: it asks the backend. The development sign-in and the Slack token form appear only while the backend runs with `APP_ENV=development`.
 
 ### Backend: basics (required)
 
