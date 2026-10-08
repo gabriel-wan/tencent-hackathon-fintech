@@ -322,3 +322,27 @@ def test_a_masked_secret_cannot_push_the_question_past_the_embedding_limit(conn,
 
     assert all(len(t) <= EMBEDDING_MAX_CHARS for t in llm.embed_calls[0])
     assert audit_payload(conn, result.audit_id)["search_mode"] == "hybrid"
+
+
+@pytest.mark.security
+def test_a_citation_link_is_masked_like_its_title(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
+    conn.execute(text("UPDATE documents SET url = 'https://x.example/pages/1/Refund+for+S1234567D'"))
+    llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
+
+    [citation] = answer_question(within(conn), alice, "gateway migration", llm).citations
+
+    assert "S1234567D" not in citation.url and citation.redacted == {"nric": 1}
+
+
+def test_colleague_names_stay_visible_others_are_masked(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    make_user("priya@co.example", PRIYA, name="Priya Nair")
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration. Customer: Priya Nair. Customer: Jane Lee")
+    llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
+
+    answer_question(within(conn), alice, "gateway migration", llm)
+
+    prompt = llm.all_prompt_text()
+    assert "Priya Nair" in prompt and "Jane Lee" not in prompt

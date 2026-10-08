@@ -112,8 +112,8 @@ def answer_question(
         # 2. Search only documents the user's stored ACL and the boundary allow.
         principals = audit["principals"] = principals_for(conn, user.id)
         candidates = hybrid_search(conn, user.company_id, principals, question, embedding)
-        colleagues = conn.execute(text("SELECT email FROM users WHERE company_id = :c"),
-                                  {"c": user.company_id}).scalars().all()
+        colleagues = conn.execute(text("SELECT email, name FROM users WHERE company_id = :c"),
+                                  {"c": user.company_id}).all()
 
         # AUDIT ONLY (ADR-007): restricted documents this question would have reached.
         # Runs in a savepoint so a failure here cannot lose the audit event itself.
@@ -142,15 +142,17 @@ def answer_question(
     else:
         by_label = {f"S{i}": c for i, (c, _) in enumerate(sources, start=1)}
         # 4. Need-to-Know Shield (ADR-010): mask identifiers unless the user is a handler of the source.
-        shield = Shield(colleagues)
-        blocks, titles = [], {}
+        shield = Shield([u.email for u in colleagues], [u.name for u in colleagues])
+        blocks, titles, urls = [], {}, {}
         redactions = audit["redactions"] = {}
         for label, (c, chunks) in zip(by_label, sources):
             cleared = has_need_to_know(principals, c.need_to_know)
             titles[c.key], in_title = shield.redact(c.title, cleared)
+            urls[c.key], in_url = shield.redact(c.url, cleared)  # a link can carry the title or a token
             body, in_body = shield.redact(
                 "\n...\n".join(ch.text for ch in sorted(chunks, key=lambda ch: ch.ordinal)), cleared)
-            redactions[c.key] = {"need_to_know": cleared, "masked": dict(in_title + in_body)}  # counts, never values
+            masked = in_title + in_url + in_body
+            redactions[c.key] = {"need_to_know": cleared, "masked": dict(masked)}  # counts, never values
             blocks.append(SourceBlock(
                 label=label,
                 platform=c.source,
@@ -170,7 +172,7 @@ def answer_question(
             answer, answer_masked = shield.guard(grounded.answer, question)
             audit["answer_masked"] = dict(answer_masked)
             citations = [
-                Citation(c.key, titles[c.key], c.url, c.source, c.updated_at, c.synced_at,
+                Citation(c.key, titles[c.key], urls[c.key], c.source, c.updated_at, c.synced_at,
                          redactions[c.key]["masked"])
                 for c in (by_label[label] for label in grounded.labels)
             ]
