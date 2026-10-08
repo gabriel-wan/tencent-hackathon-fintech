@@ -78,8 +78,8 @@ isn't checked). Personas have no real connections, so their questions are checke
 
 | Persona | Company | Can see | Can't see |
 |---|---|---|---|
-| Alice, payments engineer | MerlionPay | `#payments-oncall`, `#eng`, the on-call runbook, the contractor guide | `#security-incidents`, the Q3 incident report |
-| Ben, backend engineer | MerlionPay | `#eng`, the runbook, the contractor guide | `#payments-oncall`, the security channel and report |
+| Alice, payments engineer | MerlionPay | `#payments-oncall`, `#eng`, the on-call runbook, the contractor guide, the dispute log (customer data masked) | `#security-incidents`, the Q3 incident report |
+| Ben, backend engineer | MerlionPay | `#eng`, the runbook, the contractor guide, the dispute log (customer data masked) | `#payments-oncall`, the security channel and report |
 | Charlie, external contractor | MerlionPay | Only the contractor onboarding guide | Everything else |
 | Priya, admin and compliance | MerlionPay | Everything in MerlionPay's boundary; the admin pages | Nothing in the boundary is hidden from her |
 | Dana, engineer | Kopi Labs | Kopi Labs' `#general` | Anything of MerlionPay |
@@ -93,6 +93,7 @@ Try these:
 | Alice | What's blocking the payment gateway migration? | An answer citing `#payments-oncall` |
 | Charlie | What happened in the Q3 security incident? | "I could not find this in the sources you have access to." |
 | Dana | How did the payment gateway migration go? | Kopi Labs' own answer ("finished last week with no blockers"), never MerlionPay's |
+| Alice, then Priya | What happened in dispute 118? | Alice: the customer's details as tags (`[card ending 1111]`, `[NRIC *****567D]`); Priya, who owns the dispute log, sees them in full (ADR-010) |
 
 ✅ Alice gets an answer with sources, Charlie gets "not found", and Dana never sees MerlionPay content.
 More cases: [TESTING.md](TESTING.md) §4.

@@ -144,7 +144,7 @@ sequenceDiagram
         API-->>API: Drop citations to anything not sent; mask identifiers the model was not shown
     end
     API->>DB: Add one hash-chained audit record (committed before replying)
-    API-->>FE: Answer, sources (with synced_at), audit id
+    API-->>FE: Answer, sources (with synced_at, redacted), audit id
     FE-->>P: Answer, Sources list, Ref #
 ```
 
@@ -297,7 +297,7 @@ Before building, the team listed the questions the design had to answer. Each is
 | 11 | How is failed authorization handled? | Silently filtered for the asker ("not found", same as no result); recorded with its reason in the audit log | ADR-003, ADR-007 |
 | 12 | What freshness window do we commit to? | About 5 minutes for content; the next question for revocations | ADR-005 |
 | 13 | What if a tool is unavailable? | Its live checks fail, so its documents are dropped: a less complete answer, never a leak | ADR-003 |
-| 14 | How are citations shown? | A Sources list under each answer: title, tool, link (http/https only) and when it was last updated. The API also returns when it was last synced (`synced_at`); showing that is planned | ADR-006, ADR-009 |
+| 14 | How are citations shown? | A Sources list under each answer: title, tool, link (http/https only) and when it was last updated. The API also returns when it was last synced (`synced_at`) and how many identifiers were masked in it (`redacted`); showing them is planned | ADR-006, ADR-009 |
 | 15 | What must the LLM never see? | Anything the asker may not see, credentials, other users' questions or answers, raw ACLs, audit internals | SECURITY.md §3 |
 
 ## 10. Deep dives
