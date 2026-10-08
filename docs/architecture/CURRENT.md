@@ -26,7 +26,7 @@ flowchart LR
         DB[("db<br/>PostgreSQL 17 + pgvector<br/>companies, users, sessions, user_principals,<br/>boundary, documents, chunks, sync_state,<br/>audit_events (hash chain), connections (tokens encrypted)<br/>backend and sync connect as knowbuddy_app")]
     end
 
-    MIG -->|"migrations 0001 to 0006<br/>(as the database owner)"| DB
+    MIG -->|"migrations 0001 to 0007<br/>(as the database owner)"| DB
     USER -->|"HTTP :3000"| FE
     USER -.->|"HTTP :8000 (direct)"| BE
     FE -->|"/api/* proxy and server-side fetches,<br/>session cookie forwarded<br/>BACKEND_SERVER_URL: /api/*, /connectors, /health"| BE

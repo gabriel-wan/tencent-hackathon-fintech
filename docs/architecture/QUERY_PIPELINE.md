@@ -9,8 +9,9 @@ Decisions behind it: ADR-002, ADR-003, ADR-005, ADR-006, ADR-007 in
 Schema: [0002_core_schema.py](../../backend/migrations/versions/0002_core_schema.py),
 an HNSW vector index in [0003](../../backend/migrations/versions/0003_chunks_embedding_hnsw.py),
 connections in [0004](../../backend/migrations/versions/0004_connections.py), companies in
-[0005](../../backend/migrations/versions/0005_companies.py) and the audit hash chain and app role in
-[0006](../../backend/migrations/versions/0006_audit_hash_chain.py).
+[0005](../../backend/migrations/versions/0005_companies.py), the audit hash chain and app role in
+[0006](../../backend/migrations/versions/0006_audit_hash_chain.py), and the app's own login in
+[0007](../../backend/migrations/versions/0007_app_role_login.py).
 
 | Table | Written by | Notes |
 |---|---|---|

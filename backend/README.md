@@ -14,7 +14,7 @@ FastAPI service (ADR-001). Contracts and the query flow are described in
 | `app/llm/` | TokenHub client (chat and the shared `embed()`), grounding rules |
 | `app/pipeline/query.py` | Question to answer, end to end, with one audit event |
 | `app/audit/` | Tamper-evident audit log: per-company hash chain, verify and search (`log.py`), admin API (`api.py`) |
-| `app/db.py` | Database engines: the app runs as `knowbuddy_app`, migrations as the owner |
+| `app/db.py` | Database engines: the app logs in as `knowbuddy_app` (`APP_DB_PASSWORD`); `owner_engine()` is for migrations and tests only |
 | `app/seed.py` | Fictional development data. Not connector data |
 | `migrations/` | Alembic schema migrations |
 
