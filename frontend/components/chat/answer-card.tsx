@@ -1,8 +1,8 @@
-import { CircleAlert, RotateCcw, TriangleAlert } from "lucide-react";
+import { CircleAlert, RotateCcw, ShieldCheck, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 
 import { useMe } from "@/components/me-provider";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isMockResponse } from "@/lib/api/mock";
@@ -47,6 +47,26 @@ function Reference({ response }: { response: QueryResponse }) {
   );
 }
 
+/**
+ * Lines written to the AI in the sources were removed before it answered (ADR-011, `instructions_removed`).
+ * Only on a real answer: a "not found" reply must look the same whatever was sent (INV-5). Not which
+ * source or what text: the API deliberately doesn't say; admins see it in the audit record.
+ */
+function InjectionNotice({ removed }: { removed: number }) {
+  if (removed <= 0) return null;
+  return (
+    <Alert>
+      <ShieldCheck aria-hidden="true" />
+      <AlertTitle>KnowBuddy ignored instructions hidden in the sources</AlertTitle>
+      <AlertDescription>
+        {removed === 1 ? "A line" : `${removed} lines`} written to the AI rather than to people{" "}
+        {removed === 1 ? "was" : "were"} removed before the answer was written. The answer above doesn&apos;t
+        follow {removed === 1 ? "it" : "them"}.
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function RetryButton({ onRetry, disabled }: { onRetry: () => void; disabled: boolean }) {
   return (
     <Button variant="outline" size="sm" onClick={onRetry} disabled={disabled} className="justify-self-start">
@@ -74,6 +94,7 @@ export function AnswerCard({ exchange, onRetry, retryDisabled }: Props) {
       return (
         <article aria-label="Answer" className="grid gap-4 rounded-xl border bg-card p-4">
           <AnswerText text={exchange.response.answer} />
+          <InjectionNotice removed={exchange.response.instructions_removed} />
           {exchange.response.citations.length > 0 ? (
             <CitationList citations={exchange.response.citations} />
           ) : (

@@ -116,6 +116,23 @@ const FIXTURES: Record<string, Fixture> = {
       { ...DRIVE_RUNBOOK, title: "Source with a javascript: URL", url: "javascript:alert('mock')" },
       SLACK_ENG,
     ]),
+  // The Need-to-Know Shield (ADR-010): identifiers masked in a source for this reader, recently synced.
+  shield: () =>
+    reply("Dispute 118: customer [name 1] was double-charged on card [card ending 1111] [S1].", [
+      {
+        ...DRIVE_RUNBOOK,
+        id: "drive:D_DISPUTES",
+        title: "Customer dispute log",
+        url: "https://docs.google.example/document/d/D_DISPUTES",
+        synced_at: new Date(Date.now() - 3 * 60_000).toISOString(),
+        redacted: { card: 1, name: 1, phone: 2 },
+      },
+    ]),
+  // Prompt-injection defences (ADR-011): a line written to the AI was removed from a source.
+  injection: () => ({
+    ...reply("The migration is blocked on the vendor's TLS certificate; sandbox tests are on Friday [S1].", [SLACK_ENG]),
+    instructions_removed: 1,
+  }),
   "no-citations": () => reply("This answer arrived without citations (should not happen).", []),
   "not-found": () => reply(NOT_FOUND_ANSWER, []),
   unavailable: () => reply(UNAVAILABLE_ANSWER, []),

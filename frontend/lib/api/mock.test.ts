@@ -34,6 +34,19 @@ describe("mockAnswer", () => {
     expect((await mockAnswer("mock:unavailable mock:fast")).answer).toBe(UNAVAILABLE_ANSWER);
   });
 
+  it("mock:shield has a source with masked identifiers, recently synced", async () => {
+    const [source] = (await mockAnswer("mock:shield mock:fast")).citations;
+    expect(source.redacted).toEqual({ card: 1, name: 1, phone: 2 });
+    expect(source.synced_at).not.toBeNull();
+  });
+
+  it("mock:injection reports a removed instruction, on a real answer", async () => {
+    const reply = await mockAnswer("mock:injection mock:fast");
+    expect(reply.instructions_removed).toBe(1);
+    expect(reply.citations.length).toBeGreaterThan(0);
+    expect(reply.audit_id).toBe(MOCK_AUDIT_ID); // still marked as mock
+  });
+
   it("mock:no-citations is not read as a shorter keyword", async () => {
     expect((await mockAnswer("mock:no-citations mock:fast")).citations).toEqual([]);
   });

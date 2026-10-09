@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { safeHttpUrl, stripCitationMarkers } from "./citations";
+import { freshness, maskedSummary, safeHttpUrl, stripCitationMarkers } from "./citations";
 
 describe("safeHttpUrl", () => {
   it.each([
@@ -48,5 +48,33 @@ describe("stripCitationMarkers", () => {
 
   it("square brackets that are not citation labels are kept", () => {
     expect(stripCitationMarkers("See ticket [PAY-412] and step [2].")).toBe("See ticket [PAY-412] and step [2].");
+  });
+});
+
+describe("maskedSummary", () => {
+  it("is null when nothing was masked (or the reader is a handler)", () => {
+    expect(maskedSummary({})).toBeNull();
+    expect(maskedSummary(undefined)).toBeNull();
+    expect(maskedSummary({ card: 0 })).toBeNull();
+  });
+
+  it("totals the kinds and lists them in a stable order", () => {
+    expect(maskedSummary({ phone: 2, card: 1, nric: 1 })).toEqual({ total: 4, text: "card 1, nric 1, phone 2" });
+  });
+});
+
+describe("freshness", () => {
+  const now = Date.parse("2026-10-09T10:00:00Z");
+
+  it("is null for a source that never synced, e.g. seeded data", () => {
+    expect(freshness(null, now)).toBeNull();
+    expect(freshness(undefined, now)).toBeNull();
+    expect(freshness("not a date", now)).toBeNull();
+  });
+
+  it("is fresh within 15 minutes, stale after", () => {
+    expect(freshness("2026-10-09T09:57:00Z", now)).toEqual({ stale: false });
+    expect(freshness("2026-10-09T09:45:00Z", now)).toEqual({ stale: false });
+    expect(freshness("2026-10-09T09:44:59Z", now)).toEqual({ stale: true });
   });
 });
