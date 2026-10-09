@@ -18,7 +18,7 @@ from app.llm.grounding import (
 from app.llm.injection import REMOVED, find, strip, strip_blocks
 from app.pipeline.query import answer_question
 from app.redaction import Shield
-from tests.helpers import within
+from tests.helpers import FakeLLM, within
 
 pytestmark = pytest.mark.security
 
@@ -275,6 +275,44 @@ def test_a_fixed_reply_reports_no_removed_instructions_but_the_audit_does(conn, 
 
     assert result.answer == FALLBACK_ANSWER and result.instructions_removed == 0
     assert audit_payload(conn, result.audit_id)["injection"]["sources"][0]["removed"] == 1
+
+
+class CitesOneSource(FakeLLM):
+    """A fake model that cites the one source whose text contains `marker`, whatever label it got."""
+
+    def __init__(self, marker: str):
+        super().__init__()
+        self.marker = marker
+
+    def chat(self, messages):
+        blocks = re.findall(r'<source id="(S\d+)">(.*?)</source>', messages[1]["content"], re.S)
+        label = next((label for label, body in blocks if self.marker in body), None)
+        assert label, f"{self.marker} not in any source: {[(lab, body[:120]) for lab, body in blocks]}"
+        self.reply = reply(f"From that source [{label}].", [label])
+        return super().chat(messages)
+
+
+def test_a_line_removed_from_an_uncited_source_is_not_reported(conn, make_user, add_doc):
+    """Review of #21: the notice is about this answer, so it counts only the sources the answer cites."""
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:members"], f"gateway migration status\n{POISON}")
+    add_doc("slack", "C2:1", ["slack:members"], "gateway migration runbook CLEAN-SOURCE")
+
+    result = answer_question(within(conn), alice, "gateway migration", CitesOneSource("CLEAN-SOURCE"))
+
+    assert [c.id for c in result.citations] == ["slack:C2:1"] and result.instructions_removed == 0
+    audited = audit_payload(conn, result.audit_id)["injection"]["sources"]
+    assert audited == [{"document": "slack:C1:1", "rules": ["addressed_to_ai", "override"], "removed": 1}]
+
+
+def test_a_line_removed_from_a_cited_source_is_reported(conn, make_user, add_doc):
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:members"], f"gateway migration status POISONED-SOURCE\n{POISON}")
+    add_doc("slack", "C2:1", ["slack:members"], "gateway migration runbook")
+
+    result = answer_question(within(conn), alice, "gateway migration", CitesOneSource("POISONED-SOURCE"))
+
+    assert [c.id for c in result.citations] == ["slack:C1:1"] and result.instructions_removed == 1
 
 
 def test_the_api_reports_removed_instructions(conn, alice_client, add_doc, fake_llm):

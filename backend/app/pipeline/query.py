@@ -60,7 +60,7 @@ class QueryResult:
     answer: str
     citations: list[Citation]
     audit_id: int
-    instructions_removed: int = 0  # lines speaking to the assistant, removed from the sources sent (ADR-011)
+    instructions_removed: int = 0  # lines speaking to the assistant, removed from the cited sources (ADR-011)
 
 
 def _fit(candidates: list[Candidate]) -> list[tuple[Candidate, list[ChunkHit]]]:
@@ -175,7 +175,6 @@ def answer_question(
         audit["injection"]["sources"] = [
             {"document": by_label[label].key, "rules": f.rules, "removed": f.removed} for label, f in found.items()
         ]
-        instructions_removed = sum(f.removed for f in found.values())
         messages = build_messages(question, blocks)
         audit["llm_called"] = True
         try:
@@ -186,6 +185,9 @@ def answer_question(
             audit["llm_error"] = type(exc).__name__
         else:
             grounded = ground(result.content, set(by_label), seen=messages[1]["content"])
+            # Reported to the user only for the sources the answer cites: a line removed from a source the
+            # answer didn't use says nothing about this answer. The audit keeps every removal (above).
+            instructions_removed = sum(found[label].removed for label in grounded.labels if label in found)
             answer, answer_masked = shield.guard(grounded.answer, question)
             audit["answer_masked"] = dict(answer_masked)
             citations = [
