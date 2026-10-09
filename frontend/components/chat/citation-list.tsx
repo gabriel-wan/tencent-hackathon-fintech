@@ -1,10 +1,11 @@
 import { BookOpen, ExternalLink, EyeOff, FileText, Link2, MessageSquare, SquareKanban, type LucideIcon } from "lucide-react";
 
+import { PlatformLogo } from "@/components/platform-logo";
 import type { Citation } from "@/lib/api/types";
 import { freshness, maskedSummary, safeHttpUrl } from "@/lib/citations";
 import { formatExact, formatRelative } from "@/lib/format";
 
-// Generic icons only, never brand logos; the text label carries the meaning.
+// Each tool's logo, with a generic icon if it can't load; the text label always carries the meaning.
 const SOURCES: Record<string, { label: string; Icon: LucideIcon }> = {
   slack: { label: "Slack", Icon: MessageSquare },
   drive: { label: "Drive", Icon: FileText },
@@ -16,7 +17,7 @@ function SourceBadge({ source }: { source: string }) {
   const { label, Icon } = SOURCES[source] ?? { label: source, Icon: Link2 };
   return (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
-      <Icon aria-hidden="true" className="size-3" />
+      <PlatformLogo source={source} size={12} fallback={<Icon aria-hidden="true" className="size-3" />} />
       {label}
     </span>
   );

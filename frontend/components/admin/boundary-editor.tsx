@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PlatformLogo } from "@/components/platform-logo";
 import { addScope, listBoundary, listScopes, removeScope, syncNow } from "@/lib/api/client";
 import { ApiError, BackendUnreachableError, NotSignedInError } from "@/lib/api/errors";
 import type { SourceName } from "@/lib/api/types";
@@ -237,7 +238,8 @@ function ToolSection({
   return (
     <section aria-labelledby={headingId} className="grid gap-3 rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id={headingId} className="font-medium">
+        <h2 id={headingId} className="flex items-center gap-2 font-medium">
+          <PlatformLogo source={tool.source} size={18} />
           {tool.label}
         </h2>
         <p className="text-xs text-muted-foreground">
