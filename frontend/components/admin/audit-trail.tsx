@@ -1,11 +1,11 @@
 "use client";
 
-import { Check, Copy, Eye, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Check, Copy, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RecordDetail } from "@/components/admin/audit-record";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,12 +19,9 @@ import {
   type AuditRecord,
   EVENT_TYPES,
   NO_FILTERS,
-  type QueryPayload,
   SOURCES,
   type VerifyResult,
-  isStubCheck,
   pageUrl,
-  timingsLine,
   summarise,
   toApiQuery,
 } from "@/lib/audit";
@@ -256,243 +253,6 @@ function VerifyPanel({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
   );
 }
 
-/** Allowed in green with ✓, denied in red with ✗. The words stay: colour and icons alone don't carry it. */
-function Decision({ allowed }: { allowed: boolean }) {
-  return allowed ? (
-    <Badge variant="success">
-      <Check aria-hidden="true" />
-      allowed
-    </Badge>
-  ) : (
-    <Badge variant="destructive">
-      <X aria-hidden="true" />
-      denied
-    </Badge>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-1.5 border-t pt-4">
-      <h3 className="text-xs font-semibold tracking-wide text-foreground uppercase">{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-function Items({ items }: { items: React.ReactNode[] }) {
-  return items.length ? (
-    <ul className="grid gap-1.5 text-sm">{items}</ul>
-  ) : (
-    <p className="text-sm text-muted-foreground">None</p>
-  );
-}
-
-function counts(masked: Record<string, number> | undefined): string {
-  return Object.entries(masked ?? {})
-    .map(([kind, n]) => `${kind} ${n}`)
-    .join(", ");
-}
-
-function QueryDetail({ p }: { p: QueryPayload }) {
-  const masking = Object.entries(p.redactions ?? {}).filter(([, r]) => r.need_to_know || counts(r.masked));
-  const injected = p.injection?.sources ?? [];
-  return (
-    <>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">Role</dt>
-        <dd>{p.role ?? "unknown"}</dd>
-        <dt className="text-muted-foreground">Search</dt>
-        <dd>{p.search_mode ?? "unknown"}</dd>
-        <dt className="text-muted-foreground">Live check</dt>
-        <dd className="flex flex-wrap items-center gap-2">
-          {p.live_check_mode ?? "unknown"}
-          {isStubCheck(p) ? (
-            <Badge
-              variant="warning"
-              title="A seeded demo user with no connections: checked against stored permissions, not with each tool"
-            >
-              Development: not live-checked
-            </Badge>
-          ) : null}
-        </dd>
-        <dt className="text-muted-foreground">LLM</dt>
-        <dd>{p.llm_error ? `failed (${p.llm_error})` : p.llm_called ? (p.model ?? "called") : "not called"}</dd>
-        {timingsLine(p.timings_ms) ? (
-          <>
-            <dt className="text-muted-foreground">Timings</dt>
-            <dd className="tabular-nums">{timingsLine(p.timings_ms)}</dd>
-          </>
-        ) : null}
-      </dl>
-      <Section title="Question (as stored, masked)">
-        <p className="text-sm whitespace-pre-wrap">{p.question}</p>
-      </Section>
-      <Section title="Candidates and decisions">
-        <Items
-          items={(p.candidates ?? []).map((c) => (
-            <li key={c.document} className="flex flex-wrap items-center gap-2">
-              <Decision allowed={c.allowed} />
-              <code className="text-xs">{c.document}</code>
-              <span className="text-xs text-muted-foreground">{c.reason}</span>
-            </li>
-          ))}
-        />
-      </Section>
-      <Section title="Restricted matches (attempted access)">
-        <Items
-          items={(p.restricted_matches ?? []).map((m) => (
-            <li key={m.document} className="flex flex-wrap items-center gap-2">
-              <Decision allowed={false} />
-              <code className="text-xs">{m.document}</code>
-              <span className="text-xs text-muted-foreground">{m.reason}</span>
-            </li>
-          ))}
-        />
-      </Section>
-      <Section title="Sent to the LLM (as S1, S2… in the answer)">
-        <Items
-          // Stored in label order (backend/app/pipeline/query.py: sent_to_llm and the S1, S2… labels both
-          // follow `sources`), so the position is the label.
-          items={(p.sent_to_llm ?? []).map((d, i) => (
-            <li key={d} className="flex flex-wrap items-baseline gap-2">
-              <span className="w-7 shrink-0 text-xs font-semibold tabular-nums">S{i + 1}</span>
-              <code className="text-xs">{d}</code>
-              {p.citations?.includes(d) ? <span className="text-xs text-muted-foreground">cited</span> : null}
-            </li>
-          ))}
-        />
-      </Section>
-      <Section title="Answer (as stored, masked)">
-        <p className="text-sm whitespace-pre-wrap">{p.answer}</p>
-      </Section>
-      {p.redactions !== undefined ? (
-        <Section title="Need-to-Know Shield (counts, never values)">
-          <Items
-            items={[
-              ...masking.map(([doc, r]) => (
-                <li key={doc} className="flex flex-wrap items-center gap-2">
-                  {/* Not amber: a handler seeing their own item is the design, and amber marks development aids. */}
-                  {r.need_to_know ? (
-                    <Badge variant="outline">
-                      <Eye aria-hidden="true" />
-                      handler: shown unmasked
-                    </Badge>
-                  ) : (
-                    <Badge variant="success">masked: {counts(r.masked)}</Badge>
-                  )}
-                  <code className="text-xs">{doc}</code>
-                </li>
-              )),
-              ...(counts(p.answer_masked)
-                ? [
-                    <li key="answer" className="text-xs text-muted-foreground">
-                      Answer guard masked: {counts(p.answer_masked)}
-                    </li>,
-                  ]
-                : []),
-            ]}
-          />
-        </Section>
-      ) : null}
-      {p.injection !== undefined ? (
-        <Section title="Prompt injection (rules, never text)">
-          <Items
-            items={[
-              ...(p.injection.question.length
-                ? [
-                    <li key="question" className="text-xs">
-                      In the question: <span className="text-muted-foreground">{p.injection.question.join(", ")}</span>
-                    </li>,
-                  ]
-                : []),
-              ...injected.map((s) => (
-                <li key={s.document} className="flex flex-wrap items-center gap-2">
-                  <code className="text-xs">{s.document}</code>
-                  <span className="text-xs text-muted-foreground">
-                    {s.removed} {s.removed === 1 ? "line" : "lines"} removed: {s.rules.join(", ")}
-                  </span>
-                </li>
-              )),
-              ...(p.removed_links
-                ? [
-                    <li key="links" className="text-xs text-muted-foreground">
-                      {p.removed_links} {p.removed_links === 1 ? "link" : "links"} removed from the answer
-                    </li>,
-                  ]
-                : []),
-            ]}
-          />
-        </Section>
-      ) : null}
-      {p.removed_citations?.length || p.grounding_note ? (
-        <Section title="Answer checks">
-          <p className="text-xs text-muted-foreground">
-            {[
-              p.removed_citations?.length ? `Invented citations removed: ${p.removed_citations.join(", ")}` : "",
-              p.grounding_note ?? "",
-            ]
-              .filter(Boolean)
-              .join(". ")}
-          </p>
-        </Section>
-      ) : null}
-    </>
-  );
-}
-
-function OtherDetail({ payload }: { payload: Record<string, unknown> }) {
-  const entries = Object.entries(payload);
-  return entries.length ? (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-      {entries.map(([key, value]) => (
-        <div key={key} className="contents">
-          <dt className="text-muted-foreground">{key}</dt>
-          <dd className="break-all">{typeof value === "string" ? value : JSON.stringify(value)}</dd>
-        </div>
-      ))}
-    </dl>
-  ) : null;
-}
-
-function RecordDetail({ record }: { record: AuditRecord }) {
-  return (
-    <div className="grid gap-5">
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">Who</dt>
-        <dd className="break-all">{record.user_email ?? "no user"}</dd>
-        <dt className="text-muted-foreground">When</dt>
-        <dd className="tabular-nums">{formatExact(record.ts)}</dd>
-        <dt className="text-muted-foreground">Event</dt>
-        <dd>
-          <code className="text-xs">{record.event_type}</code>
-        </dd>
-      </dl>
-      {record.event_type === "query" ? (
-        <QueryDetail p={record.payload as QueryPayload} />
-      ) : (
-        <OtherDetail payload={record.payload} />
-      )}
-      <Section title="Hash chain">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-          <dt className="text-muted-foreground">Previous</dt>
-          <dd>
-            <code className="break-all">{record.prev_hash}</code>
-          </dd>
-          <dt className="text-muted-foreground">This</dt>
-          <dd>
-            <code className="break-all">{record.hash}</code>
-          </dd>
-        </dl>
-      </Section>
-      <details className="text-sm">
-        <summary className="cursor-pointer text-muted-foreground">Raw record</summary>
-        <pre className="mt-2 overflow-x-auto rounded bg-muted p-3 text-xs">{JSON.stringify(record, null, 2)}</pre>
-      </details>
-    </div>
-  );
-}
-
 type Results =
   | { status: "loading" }
   | { status: "failed"; message: string }
@@ -714,8 +474,9 @@ export function AuditTrail({
           }}
         >
           <DialogHeader className="pr-8">
-            <DialogTitle>Audit record #{selected?.id}</DialogTitle>
-            <DialogDescription>{selected ? summarise(selected) : null}</DialogDescription>
+            <DialogTitle className="text-xl font-semibold">Audit record #{selected?.id}</DialogTitle>
+            {/* For screen readers only: a dialog needs a description, the content says the rest. */}
+            <DialogDescription className="sr-only">{selected ? summarise(selected) : null}</DialogDescription>
           </DialogHeader>
           {selected ? <RecordDetail record={selected} /> : null}
         </DialogContent>
