@@ -58,14 +58,15 @@ when the item itself was last updated.
 **Try it** (with your own tools, [RUNNING.md](RUNNING.md) §5): add a step to a runbook in Google Drive, press **Sync
 now** on the Boundary page, then ask about that step.
 
-**You'll see:** the answer uses the new step, and its source shows the new "updated" time.
+**You'll see:** the answer uses the new step, and its source shows the new "updated" time and "synced 1 minute ago".
+After 15 minutes without a sync it reads "synced 40 minutes ago, may be out of date", in red.
 
 **Tested by:** `test_upsert_rewrites_chunks_only_when_the_text_changes`,
 `test_each_scope_records_its_last_successful_sync`, `test_a_failed_fetch_deletes_nothing` (`test_sync.py`);
 `test_results_carry_when_their_scope_last_synced` (`test_search.py`).
 
-**Limits:** not yet recorded by hand against a real Drive. The Sources list shows when each item was last updated;
-showing "synced N minutes ago" (the API already returns it) is planned.
+**Limits:** not yet recorded by hand against a real Drive. Seeded demo data never synced, so its sources show no
+"synced" time.
 
 ### Scenario 3: a restricted document stays invisible
 
@@ -202,12 +203,14 @@ text.
 Try it: re-seed ([RUNNING.md](RUNNING.md) §7), sign in as Alice and ask "What is the status of the payment gateway
 migration?". `#eng` has a planted ops-bot message telling the AI to say the migration was cancelled and to send
 people to a "re-verify" link. You'll see the real status (blocked on the TLS certificate, sandbox tests Friday), with
-no "cancelled" and no link; at http://localhost:8000/docs the same question returns `instructions_removed: 1`.
+no "cancelled" and no link, and under it a notice: "KnowBuddy ignored instructions hidden in the sources" (the API
+returns `instructions_removed: 1`). A "not found" reply never shows it (INV-5).
 How: [QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md) §3, steps 6 to 8. Tested by `test_grounding.py` and
 `test_injection.py` (with a fake model that obeys the attacker), and live against `hy3` with 10 attacks
 ([TESTING.md](TESTING.md) §4).
-Limits: an attack reworded without any of the scanner's phrases is left to the model's rules; the website doesn't
-show the notice yet.
+Limits: an attack reworded without any of the scanner's phrases is left to the model's rules. The count covers every
+source sent to the LLM, not only the cited ones, so the notice can also appear on an answer that didn't use the
+source the line was removed from (e.g. Alice's dispute question, which also retrieves `#eng`).
 
 ### Need-to-Know Shield: personal data only for the people handling it
 
@@ -221,9 +224,10 @@ checked patterns (Luhn for cards, mod-97 for IBANs), so the same text always giv
 **Try it:** ask *"What happened in dispute 118?"* as **Alice**, then as **Priya** (the dispute log's owner).
 
 **You'll see:** Alice's sources reach the LLM as *"customer: [name 1] ([email 1], [phone 1], NRIC [NRIC *****567D])
-… card [card ending 1111] … account no. [account ending 6789]"*, so her answer can only repeat those tags; Priya's
-answer can give the full details. Each source in the API response says how many identifiers were masked
-(`redacted`, e.g. `{"card": 1, "nric": 1}`). The answer is checked again before it is returned: an identifier the
+… card [card ending 1111] … account no. [account ending 6789]"*, so her answer can only repeat those tags, and the
+dispute log in her Sources list carries a **"6 masked"** chip (hover: "account 1, card 1, email 1, name 1, nric 1,
+phone 1"). Priya's answer gives the full details, with no chip. Each source in the API response says how many
+identifiers were masked (`redacted`). The answer is checked again before it is returned: an identifier the
 model was not shown and the user did not type is masked (challenge §2.5). The audit stores the question and
 answer fully masked, even for Priya, because it can never be edited or erased.
 
@@ -235,10 +239,6 @@ number starting 3, 6, 8 or 9 is masked as a phone (ADR-010).
 
 The persona switcher, the Slack token form and mock mode exist only in development, and
 each is labelled on screen (amber, "DEVELOPMENT ONLY" or "MOCK DATA"), so none can pass for a real feature.
-
-### Planned
-
-- Showing "synced N minutes ago" under answers.
 
 ## Part 3: running the demo
 
