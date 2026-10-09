@@ -88,8 +88,16 @@ def sign_out(request: Request, response: Response, conn: Connection = Depends(ge
 # the persona switcher signs in as a seeded user. Registered only when
 # APP_ENV=development (see app/main.py); in any other environment these routes
 # do not exist.
+#
+# Only seeded users: their emails use the reserved `.example` domain (RFC 2606),
+# which no real account can have. Someone who signed in for real holds real Slack
+# or Google tokens, so these routes never list them or sign in as them.
 
 dev_router = APIRouter(prefix="/api/dev", tags=["development only"])
+
+
+def is_seeded(email: str) -> bool:
+    return email.lower().endswith(".example")
 
 
 class DevUser(BaseModel):
@@ -106,7 +114,7 @@ class DevSessionRequest(BaseModel):
 @dev_router.get("/users", response_model=list[DevUser])
 def dev_users(conn: Connection = Depends(get_conn)) -> list[DevUser]:
     rows = conn.execute(text("SELECT id, email, name, is_admin FROM users ORDER BY id")).all()
-    return [DevUser(**r._asdict()) for r in rows]
+    return [DevUser(**r._asdict()) for r in rows if is_seeded(r.email)]
 
 
 @dev_router.post("/session", response_model=MeResponse)
@@ -114,7 +122,7 @@ def dev_sign_in(
     body: DevSessionRequest, request: Request, response: Response, conn: Connection = Depends(get_conn)
 ) -> MeResponse:
     user = get_user(conn, body.user_id)
-    if user is None:
+    if user is None or not is_seeded(user.email):  # a real account looks the same as none
         raise HTTPException(status_code=404, detail="No such user")
     token = create_session(conn, user.id)
     response.set_cookie(
