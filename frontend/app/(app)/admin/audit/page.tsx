@@ -1,39 +1,27 @@
 import type { Metadata } from "next";
-import { connection } from "next/server";
 
-import { AuditPreview } from "@/components/admin/audit-preview";
-import { DesignPreview } from "@/components/admin/design-preview";
-import { NotBuiltYet } from "@/components/admin/not-built-yet";
+import { AuditTrail } from "@/components/admin/audit-trail";
 import { PageContainer } from "@/components/page-container";
-import { listDevUsers } from "@/lib/api/server";
+import { filtersFromParams } from "@/lib/audit";
 
 export const metadata: Metadata = { title: "Audit trail · KnowBuddy" };
 
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+
 // Scenario 5: "show me everything user X accessed ... in the last 30 days".
-export default async function AuditPage() {
-  await connection(); // per request: it asks the backend, which is unreachable during `next build`
-  // The design preview exists only while the backend is in development mode.
-  const devMode = (await listDevUsers()) !== null;
+// The filters live in the URL (/admin/audit?user=…&from=…), so a view can be bookmarked or shared.
+export default async function AuditPage({ searchParams }: Props) {
+  const filters = filtersFromParams(await searchParams);
   return (
     <PageContainer className="grid max-w-5xl content-start gap-6">
       <div className="grid gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Audit trail</h1>
         <p className="text-muted-foreground">
-          Who asked what, which documents were allowed or denied and why, and what was answered.
+          Who asked what, which documents were allowed or denied and why, what was answered, and every admin change.
+          The &quot;Ref #&quot; under each chat answer is its record number.
         </p>
       </div>
-      <NotBuiltYet>
-        <p>
-          This page waits for the audit API: <code>GET /api/admin/audit</code> (search) and{" "}
-          <code>POST /api/admin/audit/verify</code> (hash chain), roadmap Task 3, 5–6 Oct.
-        </p>
-        <p>Every question is already recorded; the &quot;Ref #&quot; under each chat answer is its record number.</p>
-      </NotBuiltYet>
-      {devMode ? (
-        <DesignPreview>
-          <AuditPreview />
-        </DesignPreview>
-      ) : null}
+      <AuditTrail initialFilters={filters} />
     </PageContainer>
   );
 }

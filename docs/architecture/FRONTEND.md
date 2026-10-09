@@ -19,7 +19,7 @@ are ADR-009 in [DECISIONS.md](../decisions/DECISIONS.md).
 | `/` | Signed in only. The chat (see below) |
 | `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box and Slack token form when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
-| `/admin/audit` | Admins only. Stub: the audit API now exists; this page is next (see "Admin pages") |
+| `/admin/audit` | Admins only. Search the audit trail, read each record, verify the hash chain (see "Admin pages") |
 | `/admin/boundary` | Admins only. Stub: the boundary API now exists; this page is next |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
@@ -158,7 +158,7 @@ Rules:
 The persona-by-persona checks with expected answers, and the states that can only be triggered in mock mode:
 [docs/TESTING.md](../TESTING.md) sections 4 and 6.
 
-## Admin pages (stubs)
+## Admin pages
 
 `app/(app)/admin/`. ADR-007: one admin role, which also does compliance.
 
@@ -166,24 +166,38 @@ The persona-by-persona checks with expected answers, and the states that can onl
   the header shows Chat and Connections for everyone and Audit / Boundary for
   admins (in the user menu below 640 px). Both are UX only: every admin API
   route checks `is_admin` itself and returns 403.
-- **Not built yet.** Each page says so in a "Not built yet" panel:
-  - `/admin/audit`: the API exists since PR #11 (`backend/app/audit/api.py`):
-    `GET /api/admin/audit` (search: `user`, `since`, `until`, `event_type`,
-    `document`, `source`, `scope_id`, `before_id`, `limit`; returns
-    `{records, next_before_id}`) and `POST /api/admin/audit/verify` (hash
-    chain). This page is next.
+- **Audit trail** (`/admin/audit`, `components/admin/audit-trail.tsx`). Calls
+  `GET /api/admin/audit` and `POST /api/admin/audit/verify`
+  (`backend/app/audit/api.py`) through the `/api` proxy.
+  - **Filters:** user, from and to (whole days in the viewer's time zone; "to"
+    is inclusive), event type, tool (+ channel, folder, project or space ID)
+    and document. They are kept in the URL (`/admin/audit?user=…&from=…`), so a
+    view can be bookmarked or shared.
+  - **Table:** one row per record, newest first, 50 at a time with **Load
+    older** (`before_id`). Each event type gets a one-line summary
+    (`summarise` in `lib/audit.ts`); a type the page doesn't know shows its name.
+  - **Record panel:** for a question: candidates with their decision and
+    reason, restricted matches, what was sent to the LLM, the stored (masked)
+    question and answer, the Need-to-Know Shield's counts and the
+    prompt-injection rules that matched (never values or text). Other events:
+    their fields. Every record: its hash and the previous one, and the raw JSON.
+  - **Verify chain:** "intact" with the number checked and the latest record's
+    hash (**Copy hash**, to note it outside KnowBuddy, ADR-007), or the first
+    broken record with **Open record #N**.
+  - The API declares no response model, so the types are written by hand in
+    `lib/audit.ts`; keep them in step with the payloads the backend writes.
+    Every search and verification is itself recorded in the trail.
+- **Not built yet:**
   - `/admin/boundary`: the API exists since PR #4
     (`backend/app/connectors/admin.py`): `GET /api/admin/scopes/{source}`,
     `GET /api/admin/boundary`, `PUT` and `DELETE
     /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync` (202,
     nothing to poll). This page is next; until then an admin uses
     http://localhost:8000/docs ([RUNNING.md](../RUNNING.md) §5).
-- **Design preview (development only).** "Show design preview" reveals the
-  planned layout inside a dashed **MOCK DATA** frame. Filters, Verify chain
-  and Sync now are disabled, and confirming a boundary removal does nothing.
-  It only appears while the backend is in development mode. Fixtures live in
-  `lib/mock/`; the audit ones copy the payload keys the backend writes today
-  (`backend/app/pipeline/query.py`), so the real wiring should be a swap.
+- **Design preview (development only).** On the Boundary page, "Show design
+  preview" reveals the planned layout inside a dashed **MOCK DATA** frame. Sync
+  now is disabled, and confirming a removal does nothing. It only appears while
+  the backend is in development mode. Fixtures live in `lib/mock/`.
 - Documents are shown by key (`drive:D_Q3_INCIDENT`), not title, until the
   team decides whether the admin may see titles of documents they cannot
   read (an open question, listed in [PROJECT.md](../PROJECT.md) "Open items").
