@@ -182,8 +182,15 @@ The persona-by-persona checks with expected answers, and the states that can onl
     ("isn't in your company's trail"). For a question: candidates with their decision and
     reason, restricted matches, what was sent to the LLM, the stored (masked)
     question and answer, the Need-to-Know Shield's counts and the
-    prompt-injection rules that matched (never values or text). Other events:
-    their fields. Every record: its hash and the previous one, and the raw JSON.
+    prompt-injection rules that matched (never values or text). A question a
+    seeded persona asked (`live_check_mode` "stub: …": checked against stored
+    permissions, not live) gets an amber **Development: not live-checked**
+    chip, and its table row ends "· not live-checked" (`isStubCheck`, AGENTS.md
+    §2.5). Other events: their fields. Every record: its hash and the previous
+    one, and the raw JSON.
+  - **One search, one request:** in development React runs effects twice on
+    mount; the page reuses the request for each search, so a visit writes one
+    `audit_searched` record, as in production.
   - **Verify chain:** "intact" with the number checked and the latest record's
     hash (**Copy hash**, to note it outside KnowBuddy, ADR-007), or the first
     broken record with **Open record #N**.
@@ -204,21 +211,28 @@ The persona-by-persona checks with expected answers, and the states that can onl
     re-seeding brings it back").
   - **Each allowed scope's status:** "Synced 3 minutes ago"; "Not synced yet";
     "Last synced 40 minutes ago: it may be failing" after 15 minutes (three
-    missed syncs; the backend records only successful ones); or "You can no
-    longer see this channel" when it's no longer in the admin's own list.
+    missed syncs; the backend records only successful ones); "Can't sync until
+    Slack is connected (again)" when its tool isn't connected or refused the
+    stored access; or "You can no longer see this channel" when it's no longer
+    in the admin's own list.
   - **Sync now** syncs the whole company. The sync runs in the background, so
     the page polls `GET /api/admin/boundary` every 3 s for up to a minute, until
-    every allowed scope's `last_synced_at` has moved (compared with the
-    server's own times, not the browser clock), then says "Synced just now" or
-    lists what didn't sync.
+    every allowed scope that *can* sync has a new `last_synced_at` (compared
+    with the server's own times, not the browser clock), then says "Synced just
+    now" or lists what didn't sync. Scopes that can't sync (`blockedReason` in
+    `lib/boundary.ts`: tool not connected, refused, or scope no longer visible)
+    are not waited for; if none can sync, it says so at once without calling
+    the backend.
   - **A tool's own errors are not ours:** for the scope list, the backend's 404
-    means "not connected", 401 "the tool refused the stored access, connect
-    again" and 502 "the tool's API failed". `listScopes` reads those itself
-    (`scopesProblem` in `lib/boundary.ts`), so a revoked Slack token shows
-    "Connect it again" instead of signing the admin out.
+    "connect … first" means not connected, 401 "… connect again" the tool
+    refused the stored access, and 502 "… API call failed" the tool's API
+    failed. `listScopes` recognises only those messages (`scopesProblem`), so a
+    revoked Slack token shows "Connect it again" instead of signing the admin
+    out; anything unrecognised fails safe as an ordinary error (a 401 means
+    sign in again).
   - "How the boundary works" explains the two checks (the tool's permission
-    and the boundary) in plain words, with a link to boundary changes in the
-    audit trail.
+    and the boundary) in plain words, with links to boundary additions and
+    removals in the audit trail.
 - Documents are shown by key (`drive:D_Q3_INCIDENT`), not title, until the
   team decides whether the admin may see titles of documents they cannot
   read (an open question, listed in [PROJECT.md](../PROJECT.md) "Open items").

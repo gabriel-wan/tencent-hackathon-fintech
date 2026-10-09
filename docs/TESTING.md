@@ -54,7 +54,7 @@ From `frontend/`, with Node.js 24 ([RUNNING.md](RUNNING.md) §1):
 |---|---|---|
 | `npm ci` | Installs exactly the locked dependencies | No errors |
 | `npx tsc --noEmit` | Type errors, including calls that don't match the backend's API types | No output |
-| `npm test` | Vitest unit tests (below) | All pass (102 on 9 Oct) |
+| `npm test` | Vitest unit tests (below) | All pass (119 on 9 Oct) |
 | `npm run build` | Anything that breaks the production build, and pages that wrongly try to render at build time | "Compiled successfully" and a route list |
 
 The unit tests sit next to the code they test (`*.test.ts`) and cover the security-relevant helpers: which fixed
@@ -63,7 +63,8 @@ the allowlist of sign-in error codes (`lib/connectors.test.ts`), and the audit p
 (`lib/audit.test.ts`: dates become a whole-day range, a scope ID is only sent with its tool, malformed values in the
 URL are dropped, the open record is read from and written to the URL, and every event type gets a readable line),
 and the boundary page's rules (`lib/boundary.test.ts`: a tool's own 401 or 502 is never mistaken for being signed out
-or the server being down, each scope's status, and when a "sync now" has finished).
+or the server being down, an unrecognised error fails safe, each scope's status, which scopes can't sync, and
+when a "sync now" has finished).
 
 To run the frontend with live reloading while you edit: [frontend/README.md](../frontend/README.md) ("Commands").
 
