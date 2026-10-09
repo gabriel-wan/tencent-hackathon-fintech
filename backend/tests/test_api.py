@@ -71,6 +71,18 @@ def test_dev_routes_do_not_exist_outside_development(conn, fake_llm, alice):
     assert client.get("/api/dev/users").status_code == 404
 
 
+@pytest.mark.security
+def test_dev_routes_list_and_sign_in_only_seeded_users(conn, fake_llm, alice, make_user):
+    real = make_user("someone@gmail.com", ["slack:user:U900"], is_admin=True)  # signed in for real: holds real tokens
+    client = make_client(conn, fake_llm())
+
+    listed = {u["email"] for u in client.get("/api/dev/users").json()}
+    assert "alice@co.example" in listed
+    assert "someone@gmail.com" not in listed
+    assert client.post("/api/dev/session", json={"user_id": real.id}).status_code == 404  # same as no such user
+    assert client.get("/api/me").status_code == 401
+
+
 def test_sign_out_ends_the_session(conn, fake_llm, alice):
     client = make_client(conn, fake_llm())
     client.post("/api/dev/session", json={"user_id": alice.id})
