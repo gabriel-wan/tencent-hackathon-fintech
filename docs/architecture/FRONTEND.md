@@ -19,8 +19,8 @@ are ADR-009 in [DECISIONS.md](../decisions/DECISIONS.md).
 | `/` | Signed in only. The chat (see below) |
 | `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box and Slack token form when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
-| `/admin/audit` | Admins only. Stub: the audit API now exists; this page is next (see "Admin pages") |
-| `/admin/boundary` | Admins only. Stub: the boundary API now exists; this page is next |
+| `/admin/audit` | Admins only. Search the audit trail, read each record, verify the hash chain (see "Admin pages") |
+| `/admin/boundary` | Admins only. Choose which channels, folders, projects and spaces KnowBuddy may read; sync now (see "Admin pages") |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
@@ -158,7 +158,7 @@ Rules:
 The persona-by-persona checks with expected answers, and the states that can only be triggered in mock mode:
 [docs/TESTING.md](../TESTING.md) sections 4 and 6.
 
-## Admin pages (stubs)
+## Admin pages
 
 `app/(app)/admin/`. ADR-007: one admin role, which also does compliance.
 
@@ -166,24 +166,73 @@ The persona-by-persona checks with expected answers, and the states that can onl
   the header shows Chat and Connections for everyone and Audit / Boundary for
   admins (in the user menu below 640 px). Both are UX only: every admin API
   route checks `is_admin` itself and returns 403.
-- **Not built yet.** Each page says so in a "Not built yet" panel:
-  - `/admin/audit`: the API exists since PR #11 (`backend/app/audit/api.py`):
-    `GET /api/admin/audit` (search: `user`, `since`, `until`, `event_type`,
-    `document`, `source`, `scope_id`, `before_id`, `limit`; returns
-    `{records, next_before_id}`) and `POST /api/admin/audit/verify` (hash
-    chain). This page is next.
-  - `/admin/boundary`: the API exists since PR #4
-    (`backend/app/connectors/admin.py`): `GET /api/admin/scopes/{source}`,
-    `GET /api/admin/boundary`, `PUT` and `DELETE
-    /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync` (202,
-    nothing to poll). This page is next; until then an admin uses
-    http://localhost:8000/docs ([RUNNING.md](../RUNNING.md) §5).
-- **Design preview (development only).** "Show design preview" reveals the
-  planned layout inside a dashed **MOCK DATA** frame. Filters, Verify chain
-  and Sync now are disabled, and confirming a boundary removal does nothing.
-  It only appears while the backend is in development mode. Fixtures live in
-  `lib/mock/`; the audit ones copy the payload keys the backend writes today
-  (`backend/app/pipeline/query.py`), so the real wiring should be a swap.
+- **Audit trail** (`/admin/audit`, `components/admin/audit-trail.tsx`). Calls
+  `GET /api/admin/audit` and `POST /api/admin/audit/verify`
+  (`backend/app/audit/api.py`) through the `/api` proxy.
+  - **Filters:** user, from and to (whole days in the viewer's time zone; "to"
+    is inclusive), event type, tool (+ channel, folder, project or space ID)
+    and document. They are kept in the URL (`/admin/audit?user=…&from=…`), so a
+    view can be bookmarked or shared.
+  - **Table:** one row per record, newest first, 50 at a time with **Load
+    older** (`before_id`). Each event type gets a one-line summary
+    (`summarise` in `lib/audit.ts`); a type the page doesn't know shows its name.
+  - **Record dialog:** a centred dialog. The open record is in the URL
+    (`?record=56`), so it can be linked or bookmarked, Back closes it, and
+    Escape returns focus to its row. A record of another company is refused
+    ("isn't in your company's trail"). For a question: candidates with their decision and
+    reason, restricted matches, what was sent to the LLM, the stored (masked)
+    question and answer, the Need-to-Know Shield's counts and the
+    prompt-injection rules that matched (never values or text). A question a
+    seeded persona asked (`live_check_mode` "stub: …": checked against stored
+    permissions, not live) gets an amber **Development: not live-checked**
+    chip, and its table row ends "· not live-checked" (`isStubCheck`, AGENTS.md
+    §2.5). Other events: their fields. Every record: its hash and the previous
+    one, and the raw JSON.
+  - **One search, one request:** in development React runs effects twice on
+    mount; the page reuses the request for each search, so a visit writes one
+    `audit_searched` record, as in production.
+  - **Verify chain:** "intact" with the number checked and the latest record's
+    hash (**Copy hash**, to note it outside KnowBuddy, ADR-007), or the first
+    broken record with **Open record #N**.
+  - The API declares no response model, so the types are written by hand in
+    `lib/audit.ts`; keep them in step with the payloads the backend writes.
+    Every search and verification is itself recorded in the trail.
+- **Boundary** (`/admin/boundary`, `components/admin/boundary-editor.tsx`).
+  Calls the admin API in `backend/app/connectors/admin.py`:
+  `GET /api/admin/scopes/{source}` (what the admin can see in each tool, read
+  with their own connection), `GET /api/admin/boundary`, `PUT` and `DELETE
+  /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync`.
+  - **One section per tool** (Slack, Google Drive, Jira, Confluence), each
+    loading its own list, so one tool failing never blanks the others. A
+    filter box appears above 10 rows.
+  - **A checkbox per scope.** Ticking adds it and starts a sync at once.
+    Unticking asks first ("its content stops appearing in answers immediately,
+    for everyone"; for a scope that never synced, e.g. seeded demo data: "only
+    re-seeding brings it back").
+  - **Each allowed scope's status:** "Synced 3 minutes ago"; "Not synced yet";
+    "Last synced 40 minutes ago: it may be failing" after 15 minutes (three
+    missed syncs; the backend records only successful ones); "Can't sync until
+    Slack is connected (again)" when its tool isn't connected or refused the
+    stored access; or "You can no longer see this channel" when it's no longer
+    in the admin's own list.
+  - **Sync now** syncs the whole company. The sync runs in the background, so
+    the page polls `GET /api/admin/boundary` every 3 s for up to a minute, until
+    every allowed scope that *can* sync has a new `last_synced_at` (compared
+    with the server's own times, not the browser clock), then says "Synced just
+    now" or lists what didn't sync. Scopes that can't sync (`blockedReason` in
+    `lib/boundary.ts`: tool not connected, refused, or scope no longer visible)
+    are not waited for; if none can sync, it says so at once without calling
+    the backend.
+  - **A tool's own errors are not ours:** for the scope list, the backend's 404
+    "connect … first" means not connected, 401 "… connect again" the tool
+    refused the stored access, and 502 "… API call failed" the tool's API
+    failed. `listScopes` recognises only those messages (`scopesProblem`), so a
+    revoked Slack token shows "Connect it again" instead of signing the admin
+    out; anything unrecognised fails safe as an ordinary error (a 401 means
+    sign in again).
+  - "How the boundary works" explains the two checks (the tool's permission
+    and the boundary) in plain words, with links to boundary additions and
+    removals in the audit trail.
 - Documents are shown by key (`drive:D_Q3_INCIDENT`), not title, until the
   team decides whether the admin may see titles of documents they cannot
   read (an open question, listed in [PROJECT.md](../PROJECT.md) "Open items").
@@ -257,8 +306,8 @@ than explaining it.
    assistant, system fonts, thin borders, motion only for the pending state.
 3. **Honest states.** "Not found" is a normal, neutral outcome: never red,
    never "denied", identical whatever the reason.
-4. **Development aids look like development aids.** The persona switcher, mock
-   mode and design previews are amber and labelled, so they cannot be mistaken
+4. **Development aids look like development aids.** The persona switcher and
+   mock mode are amber and labelled, so they cannot be mistaken
    for features in screenshots or the demo.
 5. **Works side by side.** Layouts hold at ~640 px, so two personas can be
    shown next to each other in the demo, and at 375 px on a phone.

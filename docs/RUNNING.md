@@ -114,11 +114,10 @@ whose admin has already connected Jira for that site. So connect **Slack first**
    `backend/.env`, described in [connectors/SETUP.md](connectors/SETUP.md) §3 and §5. Then click **Connect** on
    http://localhost:3000/connectors. Use the same email address as your Slack account.
 3. **Choose what KnowBuddy may read (admin).** Nothing is copied until the admin picks channels, folders, projects
-   or spaces: this is the "boundary". The admin pages for it aren't built yet, so use http://localhost:8000/docs
-   (you're signed in there too):
-   1. Run **`GET /api/admin/scopes/slack`** (or `drive`, `jira`, `confluence`) and note the IDs you want.
-   2. For each, run **`PUT /api/admin/boundary/{source}/{scope_id}`** with the body `{"title": "<name>"}`.
-   3. Run **`POST /api/admin/sync`** to copy it now instead of within 5 minutes.
+   or spaces: this is the "boundary". Open **Boundary** in the header (http://localhost:3000/admin/boundary) and
+   tick what KnowBuddy may read. Each tick is copied straight away.
+
+   ✅ The ticked channel says "Synced just now" within about a minute.
 
    The sync reads as the admin's own accounts, so the admin must be able to open everything they add, including
    being a member of every private channel.
@@ -136,9 +135,9 @@ it as a source.
 - **Connections (`/connectors`).** Every tool, whether it's connected, and as whom. **Test** asks the tool who you
   are; **Disconnect** removes the connection (and revokes it at Google or Slack). Jira and Confluence share one
   sign-in, so disconnecting either removes both.
-- **Admin pages** (admins only): **Audit** and **Boundary** show a "Not built yet" panel and, in development, a
-  design preview filled with labelled MOCK DATA. Their APIs exist and are usable at http://localhost:8000/docs.
-- **Development aids:** the persona switcher, the Slack token form, design previews and mock mode exist only when
+- **Admin pages** (admins only): **Audit** searches the audit trail, opens each record and verifies the hash chain;
+  **Boundary** chooses which channels, folders, projects and spaces KnowBuddy may read, and syncs now.
+- **Development aids:** the persona switcher, the Slack token form and mock mode exist only when
   the backend runs with `APP_ENV=development`, and are labelled as such on screen.
 
 ## 7. Stop, reset, re-seed

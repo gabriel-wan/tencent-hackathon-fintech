@@ -55,8 +55,8 @@ content must never be presented as current.
 scope records when it was last completely synced, and every source in an answer carries that time (`synced_at`) and
 when the item itself was last updated.
 
-**Try it** (with your own tools, [RUNNING.md](RUNNING.md) §5): add a step to a runbook in Google Drive, run "sync
-now" at http://localhost:8000/docs, then ask about that step.
+**Try it** (with your own tools, [RUNNING.md](RUNNING.md) §5): add a step to a runbook in Google Drive, press **Sync
+now** on the Boundary page, then ask about that step.
 
 **You'll see:** the answer uses the new step, and its source shows the new "updated" time.
 
@@ -129,11 +129,14 @@ checked against stored permissions instead.
 **The challenge asks:** a compliance officer can reconstruct what a user asked, what was retrieved, the decision for
 each document, and what was answered, from a tamper-evident log.
 
-**Try it:** sign in as **Priya** (admin), open http://localhost:8000/docs, and run **`GET /api/admin/audit`** with
-`user=charlie@contractor.example`, `source=drive`, `scope_id=F_SEC` (the Security folder). Then run
-**`POST /api/admin/audit/verify`**. (The Audit page in the app is still a preview; the API is complete.)
+**Try it:** sign in as **Priya** (admin) and open **Audit** in the header. Filter **User**
+`charlie@contractor.example`, **Tool** Google Drive, **Channel, folder, project or space ID** `F_SEC` (the Security folder), and press **Search**
+(or open http://localhost:3000/admin/audit?user=charlie%40contractor.example&source=drive&scope_id=F_SEC). Open the
+newest row, then press **Verify chain**. The same data comes from the API: `GET /api/admin/audit` with those
+filters, and `POST /api/admin/audit/verify`.
 
-**You'll see** Charlie's question from Scenario 3:
+**You'll see** Charlie's question from Scenario 3, as the row *Asked "What happened in the Q3 security incident?"
+· 1 sent to the LLM · 2 restricted · not found*. Opening it shows:
 
 | Field | Value |
 |---|---|
@@ -144,8 +147,9 @@ each document, and what was answered, from a tamper-evident log.
 | Answer | I could not find this in the sources you have access to. |
 | Chain | this record's hash and the previous record's hash |
 
-and from verify: `{"ok": true, "checked": 40, "first_broken_id": null, "head": {"id": 61, "hash": "1fff181e…"}}`.
-A non-admin (Alice) gets `403 Admins only`. Each search and verification is itself written to the log.
+Verify chain shows **Chain intact** with the number of records checked, and the latest record's hash with a **Copy
+hash** button. Alice (not an admin) who opens the page is sent back to the chat, and the API gives her `403 Admins
+only`. Each search and verification is itself written to the log, so it appears in the list too.
 
 **What happened underneath:** every question writes one record with the user, time, question, every candidate with
 its decision and reason, what the question matched but the user may not see ("restricted matches", recorded only
@@ -156,7 +160,7 @@ records.
 **Tested by:** `test_the_challenges_audit_inquiry`, `test_a_changed_record_is_detected`, `test_a_deleted_record_is_detected`,
 `test_the_app_can_never_switch_to_a_more_powerful_role`, `test_only_admins_can_search_or_verify` (`test_audit.py`).
 
-**Limits:** the Audit page isn't wired to the API yet. Documents appear by key, not title, until the team decides
+**Limits:** documents appear by key, not title, until the team decides
 whether an admin may see titles of documents they can't read. Someone with full database access could rewrite and
 re-hash the chain; noting the chain's `head` outside the system catches that.
 
@@ -176,7 +180,11 @@ Limits: whoever signs in first becomes admin, and there is no way yet to hand th
 The admin chooses which channels, folders, projects and spaces KnowBuddy may read at all. Content outside the
 boundary is never synced or searched, even for people who can see it in the tool. In the demo, the "Salary bands"
 file is outside the boundary, so nobody gets it. Every change is audited.
-Set it today at http://localhost:8000/docs ([RUNNING.md](RUNNING.md) §5); the Boundary page is a preview.
+**Try it:** as the admin of a company with Slack connected, open **Boundary** and tick a channel that isn't in it yet.
+**You'll see** it sync within about a minute ("Synced just now"), and questions about it start being answered;
+untick it and they stop at once. The scope lists come from the admin's own connection, so an admin can only add what
+they can see themselves. (The seeded demo company has no connections, so its sections say "Connect Slack to choose
+channels".)
 Tested by `test_document_outside_admin_boundary_is_excluded` (`test_search.py`), `test_admin.py`.
 
 ### Grounded answers, and retrieved text kept in its place
@@ -225,12 +233,12 @@ number starting 3, 6, 8 or 9 is masked as a phone (ADR-010).
 
 ### Development aids, clearly labelled
 
-The persona switcher, the Slack token form, the admin design previews and mock mode exist only in development, and
+The persona switcher, the Slack token form and mock mode exist only in development, and
 each is labelled on screen (amber, "DEVELOPMENT ONLY" or "MOCK DATA"), so none can pass for a real feature.
 
 ### Planned
 
-- Showing "synced N minutes ago" under answers, and wiring the Audit and Boundary pages to their APIs.
+- Showing "synced N minutes ago" under answers.
 
 ## Part 3: running the demo
 
