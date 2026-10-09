@@ -208,9 +208,9 @@ returns `instructions_removed: 1`). A "not found" reply never shows it (INV-5).
 How: [QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md) §3, steps 6 to 8. Tested by `test_grounding.py` and
 `test_injection.py` (with a fake model that obeys the attacker), and live against `hy3` with 10 attacks
 ([TESTING.md](TESTING.md) §4).
-Limits: an attack reworded without any of the scanner's phrases is left to the model's rules. The count covers every
-source sent to the LLM, not only the cited ones, so the notice can also appear on an answer that didn't use the
-source the line was removed from (e.g. Alice's dispute question, which also retrieves `#eng`).
+The notice counts only the sources the answer cites (branch `fix/count-cited-injections`): Alice's dispute question
+also retrieves `#eng`, but doesn't cite it, so it shows no notice; the audit record still lists the removal.
+Limits: an attack reworded without any of the scanner's phrases is left to the model's rules.
 
 ### Need-to-Know Shield: personal data only for the people handling it
 
