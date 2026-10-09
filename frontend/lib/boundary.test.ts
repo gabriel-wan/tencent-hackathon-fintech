@@ -32,6 +32,8 @@ describe("scopesProblem", () => {
     [504, "backend timed out"],
     [403, "Admins only"],
     [500, "Internal Server Error"],
+    [401, "Session expired"], // a reworded sign-out: still "sign in again", never "reconnect"
+    [404, "Not Found"], // e.g. the route renamed: an ordinary error, not "connect first"
   ])("%i %j is not, so the page handles it like any other call", (status, detail) => {
     expect(scopesProblem(status, detail)).toBeNull();
   });

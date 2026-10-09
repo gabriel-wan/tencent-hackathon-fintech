@@ -34,11 +34,17 @@ export const TOOLS: { source: SourceName; label: string; scope: string; scopes: 
  */
 export type ScopesProblem = "not-connected" | "reconnect" | "tool-failed";
 
-/** The problem a failed scope list means, or null when it's the app's own (signed out, server down…). */
+/**
+ * The problem a failed scope list means, or null when it's the app's own (signed out, server down…).
+ * Only the tool's own messages are recognised; anything else fails safe, as an ordinary error (a 401
+ * means "sign in again"), so a reworded backend message can never show "reconnect" to someone who is
+ * actually signed out. The messages: backend/app/connectors/admin.py scopes(), and provider_error()
+ * in connectors/api.py.
+ */
 export function scopesProblem(status: number, detail: string): ScopesProblem | null {
-  if (status === 404) return "not-connected"; // "connect slack first"
-  if (status === 401 && detail !== "Not signed in") return "reconnect"; // "… connect again"
-  if (status === 502 && detail.endsWith("API call failed")) return "tool-failed";
+  if (status === 404 && /connect .+ first/i.test(detail)) return "not-connected"; // "connect slack first"
+  if (status === 401 && /connect again/i.test(detail)) return "reconnect"; // "slack …: connect again"
+  if (status === 502 && /API call failed$/i.test(detail)) return "tool-failed"; // "slack API call failed"
   return null;
 }
 

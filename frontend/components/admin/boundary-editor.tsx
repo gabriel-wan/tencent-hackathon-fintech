@@ -98,9 +98,13 @@ function HowItWorks() {
             for people who can open it in the tool.
           </li>
           <li>
-            Every change is recorded in the{" "}
+            Every change is recorded in the audit trail:{" "}
             <Link href="/admin/audit?event_type=boundary_added" className="text-primary underline underline-offset-4">
-              audit trail
+              additions
+            </Link>{" "}
+            and{" "}
+            <Link href="/admin/audit?event_type=boundary_removed" className="text-primary underline underline-offset-4">
+              removals
             </Link>
             .
           </li>
