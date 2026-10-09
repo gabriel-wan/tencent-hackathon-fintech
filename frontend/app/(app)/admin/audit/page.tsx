@@ -2,16 +2,17 @@ import type { Metadata } from "next";
 
 import { AuditTrail } from "@/components/admin/audit-trail";
 import { PageContainer } from "@/components/page-container";
-import { filtersFromParams } from "@/lib/audit";
+import { filtersFromParams, recordFromParams } from "@/lib/audit";
 
 export const metadata: Metadata = { title: "Audit trail · KnowBuddy" };
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 // Scenario 5: "show me everything user X accessed ... in the last 30 days".
-// The filters live in the URL (/admin/audit?user=…&from=…), so a view can be bookmarked or shared.
+// The filters and the open record live in the URL (/admin/audit?user=…&record=56), so a view or a
+// record can be bookmarked or shared.
 export default async function AuditPage({ searchParams }: Props) {
-  const filters = filtersFromParams(await searchParams);
+  const params = await searchParams;
   return (
     <PageContainer className="grid max-w-5xl content-start gap-6">
       <div className="grid gap-1">
@@ -21,7 +22,7 @@ export default async function AuditPage({ searchParams }: Props) {
           The &quot;Ref #&quot; under each chat answer is its record number.
         </p>
       </div>
-      <AuditTrail initialFilters={filters} />
+      <AuditTrail initialFilters={filtersFromParams(params)} initialRecordId={recordFromParams(params)} />
     </PageContainer>
   );
 }

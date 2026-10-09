@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { type AuditRecord, NO_FILTERS, filtersFromParams, summarise, toApiQuery, toPageQuery } from "./audit";
+import {
+  type AuditRecord,
+  NO_FILTERS,
+  filtersFromParams,
+  pageUrl,
+  recordFromParams,
+  summarise,
+  toApiQuery,
+  toPageQuery,
+} from "./audit";
 
 function record(event_type: string, payload: Record<string, unknown>): AuditRecord {
   return { id: 7, ts: "2026-10-09T02:00:00Z", user_email: "priya@co.example", event_type, payload, prev_hash: "", hash: "" };
@@ -65,6 +74,24 @@ describe("filtersFromParams, event types", () => {
 describe("toPageQuery", () => {
   it("keeps only the filters that are set", () => {
     expect(toPageQuery({ ...NO_FILTERS, user: "alice@co.example", source: "jira" })).toBe("user=alice%40co.example&source=jira");
+  });
+});
+
+describe("the open record in the URL", () => {
+  it.each([
+    [{ record: "56" }, 56],
+    [{ record: ["7", "8"] }, 7],
+    [{ record: "0" }, null],
+    [{ record: "-3" }, null],
+    [{ record: "12abc" }, null],
+    [{}, null],
+  ])("%j -> %j", (params, id) => {
+    expect(recordFromParams(params)).toBe(id);
+  });
+
+  it("builds the page URL with the filters and the open record", () => {
+    expect(pageUrl(NO_FILTERS)).toBe("/admin/audit");
+    expect(pageUrl({ ...NO_FILTERS, user: "alice@co.example" }, 56)).toBe("/admin/audit?user=alice%40co.example&record=56");
   });
 });
 

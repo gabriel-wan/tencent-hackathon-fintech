@@ -6,9 +6,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { searchAudit, verifyAuditChain } from "@/lib/api/client";
@@ -21,14 +21,14 @@ import {
   type QueryPayload,
   SOURCES,
   type VerifyResult,
+  pageUrl,
   summarise,
   toApiQuery,
-  toPageQuery,
 } from "@/lib/audit";
 import { formatExact } from "@/lib/format";
 
 // /admin/audit (ADR-007): search the company's audit trail, read each record,
-// and verify the hash chain. Admins only: the admin layout hides the page
+// in a dialog, and verify the hash chain. Admins only: the admin layout hides the page
 // from others, and the backend returns 403 to them anyway. Every search and
 // every verification is itself recorded in the trail.
 
@@ -424,7 +424,7 @@ function OtherDetail({ payload }: { payload: Record<string, unknown> }) {
 
 function RecordDetail({ record }: { record: AuditRecord }) {
   return (
-    <div className="grid gap-5 px-4 pb-6">
+    <div className="grid gap-5">
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-muted-foreground">Who</dt>
         <dd className="break-all">{record.user_email ?? "no user"}</dd>
@@ -465,7 +465,13 @@ type Results =
   | { status: "failed"; message: string }
   | { status: "ready"; records: AuditRecord[]; nextBeforeId: number | null };
 
-export function AuditTrail({ initialFilters }: { initialFilters: AuditFilters }) {
+export function AuditTrail({
+  initialFilters,
+  initialRecordId,
+}: {
+  initialFilters: AuditFilters;
+  initialRecordId: number | null; // ?record=N: open that record on arrival
+}) {
   const [draft, setDraft] = useState(initialFilters); // what the form shows
   const [applied, setApplied] = useState(initialFilters); // what the results are for
   const [results, setResults] = useState<Results>({ status: "loading" });
@@ -473,8 +479,11 @@ export function AuditTrail({ initialFilters }: { initialFilters: AuditFilters })
   const [moreError, setMoreError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AuditRecord | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
-  // Return focus to whatever opened the record panel (keyboard users).
+  // Return focus to whatever opened the record dialog (keyboard users).
   const opener = useRef<HTMLElement | null>(null);
+  // Opening a record adds a browser history entry (?record=N), so Back closes it.
+  // True while the open record is the one we added.
+  const pushed = useRef(false);
 
   useEffect(() => {
     let current = true;
@@ -493,8 +502,24 @@ export function AuditTrail({ initialFilters }: { initialFilters: AuditFilters })
     setDraft(filters);
     setApplied({ ...filters });
     // Keep the filters in the URL, so a view can be bookmarked or shared (Next.js syncs its router with this).
-    const query = toPageQuery(filters);
-    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
+    window.history.replaceState(null, "", pageUrl(filters));
+  }
+
+  /** Show a record in the dialog, with its number in the URL (a new history entry, so Back closes it). */
+  function show(record: AuditRecord) {
+    setSelected(record);
+    window.history[pushed.current ? "replaceState" : "pushState"](null, "", pageUrl(applied, record.id));
+    pushed.current = true;
+  }
+
+  function close() {
+    setSelected(null);
+    if (pushed.current) {
+      pushed.current = false;
+      window.history.back(); // removes the entry show() added
+    } else {
+      window.history.replaceState(null, "", pageUrl(applied)); // arrived with ?record=N
+    }
   }
 
   async function loadOlder() {
@@ -511,18 +536,43 @@ export function AuditTrail({ initialFilters }: { initialFilters: AuditFilters })
     }
   }
 
-  /** Open one record by number (from "chain broken at #N"): the newest record below N + 1. */
-  async function openRecord(id: number) {
+  /**
+   * Open one record by number ("chain broken at #N", or ?record=N in the URL): the newest
+   * record below N + 1. `fromUrl`: the URL already says ?record=N, so add no history entry.
+   */
+  async function openRecord(id: number, fromUrl = false) {
     opener.current = document.activeElement as HTMLElement | null;
     setOpenError(null);
     try {
       const [record] = (await searchAudit(toApiQuery(NO_FILTERS, { beforeId: id + 1, limit: 1 }))).records;
-      if (record?.id === id) setSelected(record);
-      else setOpenError(`Record #${id} isn't in your company's trail.`);
+      if (record?.id !== id) setOpenError(`Record #${id} isn't in your company's trail.`);
+      else if (fromUrl) setSelected(record);
+      else show(record);
     } catch (error) {
       setOpenError(failureOf(error));
     }
   }
+
+  // Arriving with ?record=N opens that record.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (initialRecordId !== null && !opened.current) {
+      opened.current = true; // once, even when React runs effects twice in development
+      void openRecord(initialRecordId, true);
+    }
+  }, []); // on arrival only
+
+  // Back (or Forward) to a URL without ?record closes the dialog.
+  useEffect(() => {
+    function onPopState() {
+      if (!new URLSearchParams(window.location.search).has("record")) {
+        pushed.current = false;
+        setSelected(null);
+      }
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const records = results.status === "ready" ? results.records : [];
   return (
@@ -588,7 +638,7 @@ export function AuditTrail({ initialFilters }: { initialFilters: AuditFilters })
                       type="button"
                       onClick={(event) => {
                         opener.current = event.currentTarget;
-                        setSelected(record);
+                        show(record);
                       }}
                       className="block max-w-full truncate text-left text-primary underline-offset-4 hover:underline"
                     >
@@ -614,21 +664,21 @@ export function AuditTrail({ initialFilters }: { initialFilters: AuditFilters })
           ) : null}
         </div>
       ) : null}
-      <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent
-          className="w-full overflow-y-auto sm:max-w-lg"
+      <Dialog open={selected !== null} onOpenChange={(open) => !open && close()}>
+        <DialogContent
+          className="max-h-[85vh] overflow-y-auto sm:max-w-2xl"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             opener.current?.focus();
           }}
         >
-          <SheetHeader>
-            <SheetTitle>Audit record #{selected?.id}</SheetTitle>
-            <SheetDescription>{selected ? summarise(selected) : null}</SheetDescription>
-          </SheetHeader>
+          <DialogHeader className="pr-8">
+            <DialogTitle>Audit record #{selected?.id}</DialogTitle>
+            <DialogDescription>{selected ? summarise(selected) : null}</DialogDescription>
+          </DialogHeader>
           {selected ? <RecordDetail record={selected} /> : null}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

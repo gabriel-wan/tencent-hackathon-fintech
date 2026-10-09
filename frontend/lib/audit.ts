@@ -123,6 +123,21 @@ export function toPageQuery(filters: AuditFilters): string {
   return query.toString();
 }
 
+/** The record open in the dialog, from the page's URL (?record=56), or null. */
+export function recordFromParams(params: Record<string, string | string[] | undefined>): number | null {
+  const value = params.record;
+  const text = (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
+  return /^[1-9]\d{0,15}$/.test(text) ? Number(text) : null;
+}
+
+/** The page's own URL for these filters and, if one is open, the record in the dialog. */
+export function pageUrl(filters: AuditFilters, recordId: number | null = null): string {
+  const query = new URLSearchParams(toPageQuery(filters));
+  if (recordId !== null) query.set("record", String(recordId));
+  const text = query.toString();
+  return `/admin/audit${text ? `?${text}` : ""}`;
+}
+
 /** Midnight at the start of a YYYY-MM-DD day in the viewer's time zone, as ISO, `days` later. */
 function startOfDay(date: string, days = 0): string {
   const [y, m, d] = date.split("-").map(Number);

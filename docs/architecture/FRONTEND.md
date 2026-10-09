@@ -176,7 +176,10 @@ The persona-by-persona checks with expected answers, and the states that can onl
   - **Table:** one row per record, newest first, 50 at a time with **Load
     older** (`before_id`). Each event type gets a one-line summary
     (`summarise` in `lib/audit.ts`); a type the page doesn't know shows its name.
-  - **Record panel:** for a question: candidates with their decision and
+  - **Record dialog:** a centred dialog. The open record is in the URL
+    (`?record=56`), so it can be linked or bookmarked, Back closes it, and
+    Escape returns focus to its row. A record of another company is refused
+    ("isn't in your company's trail"). For a question: candidates with their decision and
     reason, restricted matches, what was sent to the LLM, the stored (masked)
     question and answer, the Need-to-Know Shield's counts and the
     prompt-injection rules that matched (never values or text). Other events:
