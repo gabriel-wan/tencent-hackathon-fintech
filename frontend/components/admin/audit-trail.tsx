@@ -15,6 +15,7 @@ import { searchAudit, verifyAuditChain } from "@/lib/api/client";
 import { ApiError, BackendUnreachableError, NotSignedInError } from "@/lib/api/errors";
 import {
   type AuditFilters,
+  type AuditPage,
   type AuditRecord,
   EVENT_TYPES,
   NO_FILTERS,
@@ -484,7 +485,9 @@ export function AuditTrail({
   initialRecordId: number | null; // ?record=N: open that record on arrival
 }) {
   const [draft, setDraft] = useState(initialFilters); // what the form shows
-  const [applied, setApplied] = useState(initialFilters); // what the results are for
+  // What the results are for. `n` counts searches: searching again with the same filters is a new search.
+  const [search, setSearch] = useState({ filters: initialFilters, n: 0 });
+  const applied = search.filters;
   const [results, setResults] = useState<Results>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<string | null>(null);
@@ -495,23 +498,29 @@ export function AuditTrail({
   // Opening a record adds a browser history entry (?record=N), so Back closes it.
   // True while the open record is the one we added.
   const pushed = useRef(false);
+  // The request for search `n`. In development React runs this effect twice on mount; the second run
+  // reuses the request instead of sending another, since the backend audits every search.
+  const inflight = useRef<{ n: number; promise: Promise<AuditPage> } | null>(null);
 
   useEffect(() => {
     let current = true;
     setResults({ status: "loading" });
     setMoreError(null);
-    searchAudit(toApiQuery(applied, { limit: PAGE_SIZE })).then(
+    if (inflight.current?.n !== search.n) {
+      inflight.current = { n: search.n, promise: searchAudit(toApiQuery(search.filters, { limit: PAGE_SIZE })) };
+    }
+    inflight.current.promise.then(
       (page) => current && setResults({ status: "ready", records: page.records, nextBeforeId: page.next_before_id }),
       (error) => current && setResults({ status: "failed", message: failureOf(error) }),
     );
     return () => {
       current = false; // a newer search replaced this one
     };
-  }, [applied]);
+  }, [search]);
 
   function apply(filters: AuditFilters) {
     setDraft(filters);
-    setApplied({ ...filters });
+    setSearch((s) => ({ filters: { ...filters }, n: s.n + 1 }));
     // Keep the filters in the URL, so a view can be bookmarked or shared (Next.js syncs its router with this).
     window.history.replaceState(null, "", pageUrl(filters));
   }
