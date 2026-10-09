@@ -97,14 +97,30 @@ export function filterRows(rows: ScopeRow[], text: string): ScopeRow[] {
  */
 export const STALE_AFTER_MS = 15 * 60 * 1000;
 
-export type RowState = "outside" | "unseen" | "not-synced" | "synced" | "stale";
+export type RowState = "outside" | "not-connected" | "reconnect" | "unseen" | "not-synced" | "synced" | "stale";
 
-export function rowState(row: ScopeRow, now: number): RowState {
+/** A row's status. `problem`: its tool's scope list problem; a tool that isn't (properly) connected can't sync. */
+export function rowState(row: ScopeRow, now: number, problem: ScopesProblem | null = null): RowState {
   if (!row.inBoundary) return "outside";
+  if (problem === "not-connected" || problem === "reconnect") return problem;
   if (!row.visible) return "unseen";
   if (row.lastSyncedAt === null) return "not-synced";
   const at = Date.parse(row.lastSyncedAt);
   return Number.isNaN(at) || now - at > STALE_AFTER_MS ? "stale" : "synced";
+}
+
+/** Why an allowed scope can't sync right now (so a "sync now" shouldn't wait for it). */
+export type Blocked = "not-connected" | "reconnect" | "unseen";
+
+/**
+ * Why `entry` can't sync, judged by its tool's scope list: the list itself, the list's problem, or null
+ * (still loading, or failed for another reason). The tool not answering just now ("tool-failed") may pass,
+ * so it doesn't block: if the sync fails too, the scope is listed as not synced yet.
+ */
+export function blockedReason(entry: BoundaryEntry, list: Scope[] | ScopesProblem | null): Blocked | null {
+  if (list === "not-connected" || list === "reconnect") return list;
+  if (Array.isArray(list) && !list.some((s) => s.id === entry.scope_id)) return "unseen";
+  return null;
 }
 
 /** Each allowed scope's last sync, to tell when a "sync now" has finished. */
@@ -113,9 +129,13 @@ export function syncSnapshot(boundary: BoundaryEntry[]): Map<string, string | nu
 }
 
 /**
- * The allowed scopes a sync hasn't finished yet: those whose last sync is unchanged since
- * `before`. Compared with the server's own times, so the browser's clock doesn't matter.
+ * The scopes in `before` that a sync hasn't finished yet: their last sync is unchanged. Scopes left out
+ * of the snapshot (they can't sync) are not waited for. Compared with the server's own times, so the
+ * browser's clock doesn't matter.
  */
 export function stillSyncing(before: Map<string, string | null>, boundary: BoundaryEntry[]): BoundaryEntry[] {
-  return boundary.filter((b) => (before.get(scopeKey(b.source, b.scope_id)) ?? null) === b.last_synced_at);
+  return boundary.filter((b) => {
+    const key = scopeKey(b.source, b.scope_id);
+    return before.has(key) && before.get(key) === b.last_synced_at;
+  });
 }

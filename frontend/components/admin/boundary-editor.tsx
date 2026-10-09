@@ -28,6 +28,7 @@ import {
   type ScopeRow,
   type ScopesProblem,
   TOOLS,
+  blockedReason,
   filterRows,
   rowState,
   rowsFor,
@@ -59,6 +60,7 @@ type SyncState =
   | { status: "idle" }
   | { status: "syncing" }
   | { status: "done" }
+  | { status: "nothing" } // no allowed scope can sync: its tools aren't (properly) connected
   | { status: "partial"; pending: BoundaryEntry[] }
   | { status: "failed"; message: string };
 
@@ -113,6 +115,11 @@ function SyncStatus({ state }: { state: SyncState }) {
     <div aria-live="polite" className="text-sm">
       {state.status === "syncing" ? <p className="text-muted-foreground">Syncing… this can take a minute.</p> : null}
       {state.status === "done" ? <p className="text-muted-foreground">Synced just now.</p> : null}
+      {state.status === "nothing" ? (
+        <p className="text-muted-foreground">
+          Nothing here can sync until a tool is connected. See the note under each tool.
+        </p>
+      ) : null}
       {state.status === "partial" ? (
         <Alert>
           <Info aria-hidden="true" />
@@ -135,9 +142,28 @@ function SyncStatus({ state }: { state: SyncState }) {
   );
 }
 
-function RowStatusLine({ row, tool, now, syncing }: { row: ScopeRow; tool: Tool; now: number; syncing: boolean }) {
-  const state = rowState(row, now);
+function RowStatusLine({
+  row,
+  tool,
+  now,
+  syncing,
+  problem,
+}: {
+  row: ScopeRow;
+  tool: Tool;
+  now: number;
+  syncing: boolean;
+  problem: ScopesProblem | null; // the tool's scope list problem, explained by the section's notice
+}) {
+  const state = rowState(row, now, problem);
   if (state === "outside") return null;
+  if (state === "not-connected" || state === "reconnect") {
+    return (
+      <span className="text-xs text-muted-foreground">
+        Can&apos;t sync until {tool.label} is connected{state === "reconnect" ? " again" : ""}
+      </span>
+    );
+  }
   if (state === "unseen") {
     return (
       <span className="text-xs text-destructive">
@@ -263,7 +289,13 @@ function ToolSection({
                   <label htmlFor={id} className="text-sm font-medium">
                     {row.title}
                   </label>
-                  <RowStatusLine row={row} tool={tool} now={now} syncing={syncing} />
+                  <RowStatusLine
+                    row={row}
+                    tool={tool}
+                    now={now}
+                    syncing={syncing}
+                    problem={scopes.status === "problem" ? scopes.problem : null}
+                  />
                   {rowErrors[key] ? (
                     <span id={`${id}-error`} role="alert" className="text-xs text-destructive">
                       {rowErrors[key]}
@@ -293,6 +325,9 @@ export function BoundaryEditor() {
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [removing, setRemoving] = useState<{ tool: Tool; row: ScopeRow } | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // The latest scope lists, for startSync (called from add() and the button) to judge what can sync.
+  const scopesRef = useRef(scopes);
+  scopesRef.current = scopes;
   const syncingRef = useRef(false); // a sync is being followed
   const againRef = useRef(false); // something was added meanwhile: sync once more afterwards
   const alive = useRef(true);
@@ -337,7 +372,18 @@ export function BoundaryEditor() {
       return next;
     });
 
-  /** Sync the company now, then follow it until every allowed scope's last sync has moved (or a minute passes). */
+  /** A tool's scope list, its problem, or null (loading or failed), for blockedReason. */
+  function listOf(source: string): Scope[] | ScopesProblem | null {
+    const state = scopesRef.current[source as SourceName];
+    if (state?.status === "ready") return state.scopes;
+    return state?.status === "problem" ? state.problem : null;
+  }
+
+  /**
+   * Sync the company now, then follow it until every allowed scope that CAN sync has a new last sync (or a
+   * minute passes). Scopes whose tool isn't connected, or that the admin can no longer see, never update,
+   * so they're not waited for (their rows say why).
+   */
   async function startSync() {
     if (syncingRef.current) {
       againRef.current = true; // the running sync may have started before the latest change
@@ -346,7 +392,12 @@ export function BoundaryEditor() {
     syncingRef.current = true;
     setSync({ status: "syncing" });
     try {
-      const before = syncSnapshot(await listBoundary());
+      const fresh = await listBoundary();
+      const before = syncSnapshot(fresh.filter((entry) => blockedReason(entry, listOf(entry.source)) === null));
+      if (before.size === 0) {
+        setSync({ status: "nothing" }); // don't ask the backend, and don't wait, for a sync that can't happen
+        return;
+      }
       await syncNow();
       const until = Date.now() + POLL_FOR_MS;
       let latest: BoundaryEntry[] = [];

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type BoundaryEntry,
   STALE_AFTER_MS,
+  blockedReason,
   filterRows,
   rowState,
   rowsFor,
@@ -91,6 +92,31 @@ describe("rowState", () => {
   ])("%j -> %s", (over, state) => {
     expect(rowState(row(over), now)).toBe(state);
   });
+
+  it.each([["not-connected"], ["reconnect"]] as const)("a tool that is %s can't sync, whatever else", (problem) => {
+    for (const over of [{ lastSyncedAt: null }, { lastSyncedAt: "2026-10-09T04:59:00Z" }, { visible: false }]) {
+      expect(rowState(row(over), now, problem)).toBe(problem);
+    }
+    expect(rowState(row({ inBoundary: false }), now, problem)).toBe("outside");
+  });
+
+  it("a tool that didn't answer just now doesn't change the status", () => {
+    expect(rowState(row({ lastSyncedAt: "2026-10-09T04:57:00Z" }), now, "tool-failed")).toBe("synced");
+  });
+});
+
+describe("blockedReason", () => {
+  const list = [{ id: "C1", title: "#payments-oncall" }];
+  it.each([
+    ["not-connected", "not-connected"],
+    ["reconnect", "reconnect"],
+    ["tool-failed", null],
+    [null, null],
+    [list, null],
+    [[], "unseen"],
+  ] as const)("list %j -> %j", (scopes, reason) => {
+    expect(blockedReason(entry("C1", null), scopes as never)).toBe(reason);
+  });
 });
 
 describe("stillSyncing", () => {
@@ -100,9 +126,15 @@ describe("stillSyncing", () => {
     expect(stillSyncing(before, after)).toEqual([]);
   });
 
-  it("lists the scopes that haven't synced yet, including one added just now", () => {
-    const before = syncSnapshot([entry("C1", "2026-10-09T04:00:00Z")]);
+  it("lists the scopes that haven't synced yet, including one added just before the sync", () => {
+    const before = syncSnapshot([entry("C1", "2026-10-09T04:00:00Z"), entry("C2", null)]);
     const after = [entry("C1", "2026-10-09T04:00:00Z"), entry("C2", null)];
     expect(stillSyncing(before, after).map((b) => b.scope_id)).toEqual(["C1", "C2"]);
+  });
+
+  it("doesn't wait for scopes left out of the snapshot (they can't sync)", () => {
+    const before = syncSnapshot([entry("C1", "2026-10-09T04:00:00Z")]);
+    const after = [entry("C1", "2026-10-09T04:00:31Z"), entry("C9", null)];
+    expect(stillSyncing(before, after)).toEqual([]);
   });
 });
