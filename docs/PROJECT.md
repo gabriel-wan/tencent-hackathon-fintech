@@ -95,8 +95,8 @@ by tests; see [SECURITY.md](SECURITY.md) for the invariants behind them):
       "sync now"; each citation shows when it was last synced)
 - [x] Audit log: complete (who / query / retrieved IDs / decisions / answer /
       timestamp), tamper-evident (per-company hash chain), queryable (search API)
-- [ ] Audit inquiry interface for a compliance persona: the API is built; the
-      admin Audit page still shows mock data
+- [x] Audit inquiry interface for a compliance persona: the admin Audit page
+      searches, pages and verifies the trail through the API
 - [x] LLM leakage / hallucination mitigation (untrusted source blocks,
       citation checking, fixed reply when nothing is permitted)
 - [ ] Trust-boundary diagram and architecture diagram for the submission
@@ -122,10 +122,10 @@ and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 | 3–4 Oct | 2 | Frontend: sign-in, persona switcher, chat with answers and citations | **Done** (#6) |
 | 3–4 Oct | 3 | Database schema, auth and permission filter, query pipeline (search → permission check → LLM answer) | **Done** (#5) |
 | 5–6 Oct | 1 | Live permission changes and data freshness | **Done** (#10) |
-| 5–6 Oct | 2 | Compliance/audit dashboard | **In progress**: the page exists with mock data; its API is in `main` since #11 |
+| 5–6 Oct | 2 | Compliance/audit dashboard | **Done**: `/admin/audit` searches the trail (filters in the URL, every event type), opens each record and verifies the chain |
 | 5–6 Oct | 3 | Tamper-evident audit log and audit search API | **Done** (#11) |
 | 7–8 Oct | 1 | PII redaction (Need-to-Know Shield) | **Done** (#16) |
-| 7–8 Oct | 2 | UI polish; show redaction and freshness in the UI | **Not started** (the API already returns each citation's `synced_at` and `redacted`) |
+| 7–8 Oct | 2 | UI polish; show redaction and freshness in the UI | **In progress**: the Boundary page (choose scopes, **Sync now**, each scope's last sync) is built; the redaction chip and "synced N minutes ago" under answers are next (the API returns `redacted` and `synced_at`) |
 | 7–8 Oct | 3 | Prompt-injection protection; pass all 5 scenarios | **In progress**: prompt-injection protection built (ADR-011: fence, scanner, link check, `test_injection.py`, a live check against `hy3`); the 5-scenario run with real demo data is next |
 | 9–10 Oct | 1 | Deploy to Tencent Cloud (live link) | **Not started** |
 | 9–10 Oct | 2 | Demo video and cover image | **Not started** |
@@ -142,19 +142,17 @@ What the frontend does next, and what each item waits for:
 
 | Waiting on | UI work |
 |---|---|
-| Nothing (the API exists) | Real `/admin/boundary` on the boundary API: list scopes per tool, add and remove them, "Sync now" |
 | Nothing | Show which sources are connected in the chat |
 | Return target after the OAuth callback | Show sign-in errors on `/login` rather than `/connectors`. The target must come from a fixed allowlist, never an arbitrary URL (open redirect) |
 | `label` on each citation | Turn `[S1]` markers into chips linked to the right source (today they are stripped: an answer citing `[S1]` and `[S3]` came back with two citations, so mapping by position would be wrong) |
 | `status` on query responses | Classify answers by status instead of matching the fixed sentences |
-| Nothing (the API exists) | Real `/admin/audit` (search, verify chain); make "Ref #" a link for admins |
-| Something to poll after `POST /api/admin/sync` (`synced_at` on citations and `last_synced_at` on the boundary already exist) | "Synced N minutes ago" under answers and after "Sync now", for the freshness demo (scenario 2) |
+| Nothing (the API exists) | Make "Ref #" under each answer a link to its audit record, for admins |
+| Nothing (`synced_at` on each citation) | "Synced N minutes ago" under answers, for the freshness demo (scenario 2). The Boundary page already shows it per scope after **Sync now** |
 | A company field on `GET /api/me` | Tell "you have no company yet" apart from "nothing found" (today `/connectors` only infers it from the connections) |
 | Nothing (`redacted` on each citation, #16; regenerate `schema.d.ts` and add `redacted: {}` to the mocks) | Redaction chip on citations, e.g. "2 identifiers masked" |
 | Nothing (`instructions_removed` on answers, #17) | Blocked-injection notice on answers when `instructions_removed` is above 0, only on a real answer |
 
-Each replaces a stub or a reserved slot; remove the matching "Not built yet"
-panel and design preview in the same PR.
+Each fills a reserved slot in the UI.
 
 ## Out of scope for the hackathon (proposed)
 
