@@ -176,22 +176,32 @@ The persona-by-persona checks with expected answers, and the states that can onl
   - **Table:** one row per record, newest first, 50 at a time with **Load
     older** (`before_id`). Each event type gets a one-line summary
     (`summarise` in `lib/audit.ts`); a type the page doesn't know shows its name.
-  - **Record dialog:** a centred dialog. The open record is in the URL
-    (`?record=56`), so it can be linked or bookmarked, Back closes it, and
-    Escape returns focus to its row. A record of another company is refused
-    ("isn't in your company's trail"). Sections have semibold headings and a
-    divider. For a question: role, search, live check, LLM and the step
-    timings on one line (`timingsLine`); candidates with their decision (green
-    ✓ allowed, red ✗ denied, the words kept) and reason, restricted matches,
-    what was sent to the LLM numbered S1, S2… (the labels in the answer: it's
-    stored in label order), the stored (masked) question and answer, the Need-to-Know Shield's counts (green "masked: …", or an outlined
-    "handler: shown unmasked"; never amber, which marks development aids) and the
-    prompt-injection rules that matched (never values or text). A question a
-    seeded persona asked (`live_check_mode` "stub: …": checked against stored
-    permissions, not live) gets an amber **Development: not live-checked**
-    chip, and its table row ends "· not live-checked" (`isStubCheck`, AGENTS.md
-    §2.5). Other events: their fields. Every record: its hash and the previous
-    one, and the raw JSON.
+  - **Record dialog** (`components/admin/audit-record.tsx`): a centred dialog,
+    titled "Audit record #N". The open record is in the URL (`?record=56`), so
+    it can be linked or bookmarked, Back closes it, and Escape returns focus to
+    its row. A record of another company is refused ("isn't in your company's
+    trail"). Explanations sit behind ⓘ buttons, not in headings. For a question:
+    - a **Details** table: who, when, event, role, search ("Keyword +
+      meaning"), live check ("Live, with each tool", or "Stored permissions
+      (development only)" for a seeded persona, AGENTS.md §2.5; the table row
+      also ends "· not live-checked") and LLM;
+    - a **Timings** table, one row per step, total in bold;
+    - the **Question** and **Answer**, with an ⓘ only when they hold masked
+      values (`hasMaskedValues`), and quiet lines for an instruction attempt
+      in the question, links removed or invented citations removed;
+    - one **Documents** table (`documentRows`): each document the question
+      matched, with its decision (green ✓ allowed, red ✗ denied, the words
+      kept) and reason, sent as S1, S2… (stored in label order) and cited,
+      and notes: values masked for this person (Need-to-Know Shield), "shown
+      in full" for a handler, instructions removed (ADR-011). Restricted
+      matches are its denied rows. On a phone it scrolls sideways inside its
+      box.
+
+    Other events: the Details table with their own fields. Every record: its
+    hash and the previous one, and the raw JSON.
+  - **ⓘ** (`components/info-tip.tsx`, Radix Popover): opens on hover, keyboard
+    focus and tap; Escape closes it without closing the dialog. Screen readers
+    get the text as the button's description.
   - **One search, one request:** in development React runs effects twice on
     mount; the page reuses the request for each search, so a visit writes one
     `audit_searched` record, as in production.

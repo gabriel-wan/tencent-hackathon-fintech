@@ -137,16 +137,18 @@ newest row, then press **Verify chain**. The same data comes from the API: `GET 
 filters, and `POST /api/admin/audit/verify`.
 
 **You'll see** Charlie's question from Scenario 3, as the row *Asked "What happened in the Q3 security incident?"
-· 1 sent to the LLM · 2 restricted · not found*. Opening it shows:
+· 1 sent to the LLM · 2 restricted · not found · not live-checked* (Charlie is a seeded persona, so his question was
+checked against stored permissions). Opening it shows a Details table (who, when, Question, Live check "Stored
+permissions (development only)"), the timings, the question, and one Documents table:
 
-| Field | Value |
-|---|---|
-| Question | What happened in the Q3 security incident? |
-| Candidates | `drive:D_CONTRACTOR_GUIDE`: allowed by drive check |
-| Restricted matches | `drive:D_Q3_INCIDENT` and `slack:C_SECURITY:…`: "user not in document ACL" |
-| Sent to the LLM | `drive:D_CONTRACTOR_GUIDE` only |
-| Answer | I could not find this in the sources you have access to. |
-| Chain | this record's hash and the previous record's hash |
+| Document | Decision | Sent |
+|---|---|---|
+| `drive:D_CONTRACTOR_GUIDE` | ✓ allowed, allowed by drive check | S1 |
+| `slack:C_SECURITY:…` | ✗ denied, user not in document ACL | — |
+| `drive:D_Q3_INCIDENT` | ✗ denied, user not in document ACL | — |
+
+then the answer, "I could not find this in the sources you have access to.", and this record's hash and the previous
+one's.
 
 Verify chain shows **Chain intact** with the number of records checked, and the latest record's hash with a **Copy
 hash** button. Alice (not an admin) who opens the page is sent back to the chat, and the API gives her `403 Admins
