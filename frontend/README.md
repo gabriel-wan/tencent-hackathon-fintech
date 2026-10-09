@@ -47,10 +47,9 @@ app/                  root layout.tsx (theme), globals.css, healthz/
 components/ui/        shadcn-generated components: edit freely, keep them generic
 components/           our own components, built from components/ui
 components/connectors/  connection cards and the development-only Slack token form
-components/admin/     the audit trail; NotBuiltYet, DesignPreview and the boundary preview
-lib/mock/             DEVELOPMENT ONLY fixtures for the boundary design preview
+components/admin/     the audit trail and the boundary editor
 lib/api/              backend client (client.ts, server.ts), errors, generated types, mock mode
-lib/                  answer, citation, audit and date helpers; connectors.ts (connector ids, OAuth messages); utils.ts is shadcn's cn()
+lib/                  answer, citation, audit, boundary and date helpers; connectors.ts (connector ids, OAuth messages); utils.ts is shadcn's cn()
 components.json       shadcn CLI settings
 ```
 
