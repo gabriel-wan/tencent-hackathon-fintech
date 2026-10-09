@@ -178,6 +178,15 @@ function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+/**
+ * The question was checked against the STORED permissions, not live with each tool: a seeded demo user
+ * with no connections (backend/app/auth/live_check.py STUB_MODE, "stub: stored ACL, not live"). Labelled
+ * wherever it shows, so it can't pass for the real check (AGENTS.md §2.5).
+ */
+export function isStubCheck(p: QueryPayload): boolean {
+  return p.live_check_mode?.startsWith("stub") ?? false;
+}
+
 /** One line saying what a record is about, for the table. Unknown types show their name. */
 export function summarise(record: AuditRecord): string {
   const p = record.payload;
@@ -189,6 +198,7 @@ export function summarise(record: AuditRecord): string {
       if (q.restricted_matches?.length) parts.push(`${q.restricted_matches.length} restricted`);
       if (q.llm_error) parts.push("LLM failed");
       else parts.push(q.citations?.length ? "answered" : "not found");
+      if (isStubCheck(q)) parts.push("not live-checked");
       return parts.join(" · ");
     }
     case "boundary_added":

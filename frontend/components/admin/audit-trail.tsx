@@ -21,6 +21,7 @@ import {
   type QueryPayload,
   SOURCES,
   type VerifyResult,
+  isStubCheck,
   pageUrl,
   summarise,
   toApiQuery,
@@ -297,7 +298,17 @@ function QueryDetail({ p }: { p: QueryPayload }) {
         <dt className="text-muted-foreground">Search</dt>
         <dd>{p.search_mode ?? "unknown"}</dd>
         <dt className="text-muted-foreground">Live check</dt>
-        <dd>{p.live_check_mode ?? "unknown"}</dd>
+        <dd className="flex flex-wrap items-center gap-2">
+          {p.live_check_mode ?? "unknown"}
+          {isStubCheck(p) ? (
+            <span
+              className="rounded bg-warning px-1.5 py-0.5 text-xs font-medium text-warning-foreground"
+              title="A seeded demo user with no connections: checked against stored permissions, not with each tool"
+            >
+              Development: not live-checked
+            </span>
+          ) : null}
+        </dd>
         <dt className="text-muted-foreground">LLM</dt>
         <dd>{p.llm_error ? `failed (${p.llm_error})` : p.llm_called ? (p.model ?? "called") : "not called"}</dd>
       </dl>

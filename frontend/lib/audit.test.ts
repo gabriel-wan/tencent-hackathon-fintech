@@ -4,6 +4,7 @@ import {
   type AuditRecord,
   NO_FILTERS,
   filtersFromParams,
+  isStubCheck,
   pageUrl,
   recordFromParams,
   summarise,
@@ -36,6 +37,11 @@ describe("summarise", () => {
     expect(summarise(r)).toBe('Asked "Hi" · 1 sent to the LLM · LLM failed');
   });
 
+  it("a question checked against stored permissions says so", () => {
+    const r = record("query", { question: "Hi", sent_to_llm: [], citations: [], live_check_mode: "stub: stored ACL, not live" });
+    expect(summarise(r)).toBe('Asked "Hi" · 0 sent to the LLM · not found · not live-checked');
+  });
+
   it("an older question record without the newer fields", () => {
     expect(summarise(record("query", { question: "Hi" }))).toBe('Asked "Hi" · not found');
   });
@@ -53,6 +59,17 @@ describe("summarise", () => {
     ["something_new", {}, "something_new"],
   ])("%s", (type, payload, line) => {
     expect(summarise(record(type, payload))).toBe(line);
+  });
+});
+
+describe("isStubCheck", () => {
+  it.each([
+    ["stub: stored ACL, not live", true],
+    ["live: each source, as the user", false],
+    ["connector checks", false],
+    [undefined, false],
+  ])("%j -> %j", (mode, stub) => {
+    expect(isStubCheck({ live_check_mode: mode })).toBe(stub);
   });
 });
 
