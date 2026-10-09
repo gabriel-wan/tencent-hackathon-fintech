@@ -55,8 +55,8 @@ content must never be presented as current.
 scope records when it was last completely synced, and every source in an answer carries that time (`synced_at`) and
 when the item itself was last updated.
 
-**Try it** (with your own tools, [RUNNING.md](RUNNING.md) §5): add a step to a runbook in Google Drive, run "sync
-now" at http://localhost:8000/docs, then ask about that step.
+**Try it** (with your own tools, [RUNNING.md](RUNNING.md) §5): add a step to a runbook in Google Drive, press **Sync
+now** on the Boundary page, then ask about that step.
 
 **You'll see:** the answer uses the new step, and its source shows the new "updated" time.
 
@@ -180,7 +180,11 @@ Limits: whoever signs in first becomes admin, and there is no way yet to hand th
 The admin chooses which channels, folders, projects and spaces KnowBuddy may read at all. Content outside the
 boundary is never synced or searched, even for people who can see it in the tool. In the demo, the "Salary bands"
 file is outside the boundary, so nobody gets it. Every change is audited.
-Set it today at http://localhost:8000/docs ([RUNNING.md](RUNNING.md) §5); the Boundary page is a preview.
+**Try it:** as the admin of a company with Slack connected, open **Boundary** and tick a channel that isn't in it yet.
+**You'll see** it sync within about a minute ("Synced just now"), and questions about it start being answered;
+untick it and they stop at once. The scope lists come from the admin's own connection, so an admin can only add what
+they can see themselves. (The seeded demo company has no connections, so its sections say "Connect Slack to choose
+channels".)
 Tested by `test_document_outside_admin_boundary_is_excluded` (`test_search.py`), `test_admin.py`.
 
 ### Grounded answers, and retrieved text kept in its place
@@ -229,12 +233,12 @@ number starting 3, 6, 8 or 9 is masked as a phone (ADR-010).
 
 ### Development aids, clearly labelled
 
-The persona switcher, the Slack token form, the admin design previews and mock mode exist only in development, and
+The persona switcher, the Slack token form and mock mode exist only in development, and
 each is labelled on screen (amber, "DEVELOPMENT ONLY" or "MOCK DATA"), so none can pass for a real feature.
 
 ### Planned
 
-- Showing "synced N minutes ago" under answers, and wiring the Audit and Boundary pages to their APIs.
+- Showing "synced N minutes ago" under answers.
 
 ## Part 3: running the demo
 

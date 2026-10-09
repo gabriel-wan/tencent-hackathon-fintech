@@ -20,7 +20,7 @@ are ADR-009 in [DECISIONS.md](../decisions/DECISIONS.md).
 | `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box and Slack token form when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
 | `/admin/audit` | Admins only. Search the audit trail, read each record, verify the hash chain (see "Admin pages") |
-| `/admin/boundary` | Admins only. Stub: the boundary API now exists; this page is next |
+| `/admin/boundary` | Admins only. Choose which channels, folders, projects and spaces KnowBuddy may read; sync now (see "Admin pages") |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
@@ -190,17 +190,35 @@ The persona-by-persona checks with expected answers, and the states that can onl
   - The API declares no response model, so the types are written by hand in
     `lib/audit.ts`; keep them in step with the payloads the backend writes.
     Every search and verification is itself recorded in the trail.
-- **Not built yet:**
-  - `/admin/boundary`: the API exists since PR #4
-    (`backend/app/connectors/admin.py`): `GET /api/admin/scopes/{source}`,
-    `GET /api/admin/boundary`, `PUT` and `DELETE
-    /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync` (202,
-    nothing to poll). This page is next; until then an admin uses
-    http://localhost:8000/docs ([RUNNING.md](../RUNNING.md) §5).
-- **Design preview (development only).** On the Boundary page, "Show design
-  preview" reveals the planned layout inside a dashed **MOCK DATA** frame. Sync
-  now is disabled, and confirming a removal does nothing. It only appears while
-  the backend is in development mode. Fixtures live in `lib/mock/`.
+- **Boundary** (`/admin/boundary`, `components/admin/boundary-editor.tsx`).
+  Calls the admin API in `backend/app/connectors/admin.py`:
+  `GET /api/admin/scopes/{source}` (what the admin can see in each tool, read
+  with their own connection), `GET /api/admin/boundary`, `PUT` and `DELETE
+  /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync`.
+  - **One section per tool** (Slack, Google Drive, Jira, Confluence), each
+    loading its own list, so one tool failing never blanks the others. A
+    filter box appears above 10 rows.
+  - **A checkbox per scope.** Ticking adds it and starts a sync at once.
+    Unticking asks first ("its content stops appearing in answers immediately,
+    for everyone"; for a scope that never synced, e.g. seeded demo data: "only
+    re-seeding brings it back").
+  - **Each allowed scope's status:** "Synced 3 minutes ago"; "Not synced yet";
+    "Last synced 40 minutes ago: it may be failing" after 15 minutes (three
+    missed syncs; the backend records only successful ones); or "You can no
+    longer see this channel" when it's no longer in the admin's own list.
+  - **Sync now** syncs the whole company. The sync runs in the background, so
+    the page polls `GET /api/admin/boundary` every 3 s for up to a minute, until
+    every allowed scope's `last_synced_at` has moved (compared with the
+    server's own times, not the browser clock), then says "Synced just now" or
+    lists what didn't sync.
+  - **A tool's own errors are not ours:** for the scope list, the backend's 404
+    means "not connected", 401 "the tool refused the stored access, connect
+    again" and 502 "the tool's API failed". `listScopes` reads those itself
+    (`scopesProblem` in `lib/boundary.ts`), so a revoked Slack token shows
+    "Connect it again" instead of signing the admin out.
+  - "How the boundary works" explains the two checks (the tool's permission
+    and the boundary) in plain words, with a link to boundary changes in the
+    audit trail.
 - Documents are shown by key (`drive:D_Q3_INCIDENT`), not title, until the
   team decides whether the admin may see titles of documents they cannot
   read (an open question, listed in [PROJECT.md](../PROJECT.md) "Open items").
@@ -274,8 +292,8 @@ than explaining it.
    assistant, system fonts, thin borders, motion only for the pending state.
 3. **Honest states.** "Not found" is a normal, neutral outcome: never red,
    never "denied", identical whatever the reason.
-4. **Development aids look like development aids.** The persona switcher, mock
-   mode and design previews are amber and labelled, so they cannot be mistaken
+4. **Development aids look like development aids.** The persona switcher and
+   mock mode are amber and labelled, so they cannot be mistaken
    for features in screenshots or the demo.
 5. **Works side by side.** Layouts hold at ~640 px, so two personas can be
    shown next to each other in the demo, and at 375 px on a phone.
