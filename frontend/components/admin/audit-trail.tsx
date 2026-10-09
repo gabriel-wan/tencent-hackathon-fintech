@@ -468,6 +468,12 @@ export function AuditTrail({
       <Dialog open={selected !== null} onOpenChange={(open) => !open && close()}>
         <DialogContent
           className="max-h-[85vh] overflow-y-auto sm:max-w-2xl"
+          // Focus the dialog itself on opening (screen readers announce its title), not its first button,
+          // which would be an ⓘ and pop its explanation open.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            (event.currentTarget as HTMLElement).focus();
+          }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             opener.current?.focus();

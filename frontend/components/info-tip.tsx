@@ -28,7 +28,8 @@ export function InfoTip({ label, children }: { label: string; children: ReactNod
           className="inline-flex size-5 shrink-0 items-center justify-center rounded-full align-middle text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           onPointerEnter={(event) => mouse(event) && setOpen(true)}
           onPointerLeave={(event) => mouse(event) && setOpen(false)}
-          onFocus={() => setOpen(true)}
+          // Only keyboard focus (Tab) opens it: focus moved by code, e.g. a dialog opening, must not.
+          onFocus={(event) => event.currentTarget.matches(":focus-visible") && setOpen(true)}
           onBlur={() => setOpen(false)}
           onClick={() => setOpen(true)} // a tap opens it; Escape or a tap elsewhere closes it
         >
