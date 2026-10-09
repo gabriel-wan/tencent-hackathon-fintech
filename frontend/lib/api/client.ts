@@ -7,6 +7,7 @@
 import { BackendUnreachableError, readResponse } from "./errors";
 import { isMockEnabled, mockAnswer } from "./mock";
 import type { DevUser, Me, QueryRequest, QueryResponse } from "./types";
+import type { AuditPage, VerifyResult } from "@/lib/audit";
 
 async function request<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   let res: Response;
@@ -45,6 +46,19 @@ export function getMe(): Promise<Me> {
 /** DELETE /api/session. */
 export async function signOut(): Promise<void> {
   await request<null>("/session", { method: "DELETE" });
+}
+
+/**
+ * GET /api/admin/audit. Admins only (the backend returns 403 to anyone else).
+ * `query` comes from toApiQuery in lib/audit.ts. The search is itself audited.
+ */
+export function searchAudit(query: string): Promise<AuditPage> {
+  return request<AuditPage>(`/admin/audit${query ? `?${query}` : ""}`);
+}
+
+/** POST /api/admin/audit/verify: recompute the company's hash chain. Admins only; itself audited. */
+export function verifyAuditChain(): Promise<VerifyResult> {
+  return request<VerifyResult>("/admin/audit/verify", { method: "POST" });
 }
 
 /** GET /api/dev/users. DEVELOPMENT ONLY: the route exists only when the backend runs with APP_ENV=development. */
