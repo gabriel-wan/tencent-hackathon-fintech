@@ -126,7 +126,7 @@ and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 | 5–6 Oct | 3 | Tamper-evident audit log and audit search API | **Done** (#11) |
 | 7–8 Oct | 1 | PII redaction (Need-to-Know Shield) | **Done** (#16) |
 | 7–8 Oct | 2 | UI polish; show redaction and freshness in the UI | **Not started** (the API already returns each citation's `synced_at` and `redacted`) |
-| 7–8 Oct | 3 | Prompt-injection protection; pass all 5 scenarios | **In progress**: retrieved text is fenced as untrusted and citations are checked; no dedicated injection tests or scenario run yet |
+| 7–8 Oct | 3 | Prompt-injection protection; pass all 5 scenarios | **In progress**: prompt-injection protection built (ADR-011: fence, scanner, link check, `test_injection.py`, a live check against `hy3`); the 5-scenario run with real demo data is next |
 | 9–10 Oct | 1 | Deploy to Tencent Cloud (live link) | **Not started** |
 | 9–10 Oct | 2 | Demo video and cover image | **Not started** |
 | 9–10 Oct | 3 | Tests, bug fixes and docs | **In progress** (with each pull request; docs restructure in progress) |
@@ -151,7 +151,7 @@ What the frontend does next, and what each item waits for:
 | Something to poll after `POST /api/admin/sync` (`synced_at` on citations and `last_synced_at` on the boundary already exist) | "Synced N minutes ago" under answers and after "Sync now", for the freshness demo (scenario 2) |
 | A company field on `GET /api/me` | Tell "you have no company yet" apart from "nothing found" (today `/connectors` only infers it from the connections) |
 | Nothing (`redacted` on each citation, #16; regenerate `schema.d.ts` and add `redacted: {}` to the mocks) | Redaction chip on citations, e.g. "2 identifiers masked" |
-| Injection flags (7–8 Oct) | Blocked-injection notice on answers |
+| Nothing (`instructions_removed` on answers, #17) | Blocked-injection notice on answers when `instructions_removed` is above 0, only on a real answer |
 
 Each replaces a stub or a reserved slot; remove the matching "Not built yet"
 panel and design preview in the same PR.

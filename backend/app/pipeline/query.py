@@ -1,9 +1,10 @@
-"""Query pipeline: question -> permission-filtered search -> live check -> Shield -> LLM -> audit.
+"""Query pipeline: question -> permission-filtered search -> live check -> Shield -> scanner -> LLM -> audit.
 
 Security boundary (docs/ARCHITECTURE.md section 2): nothing reaches the LLM unless
 it passed the stored-ACL filter, the admin boundary AND the live check. When
 nothing passes, the LLM is not called at all. What does pass is masked by the
-Need-to-Know Shield (app/redaction.py, ADR-010) before the LLM sees it.
+Need-to-Know Shield (app/redaction.py, ADR-010), and it is untrusted data: lines
+in it that speak to the assistant are removed (ADR-011) before the LLM sees it.
 
 No database connection is held during the slow external calls (embedding, live
 check, LLM): the database is used in two short transactions.
@@ -24,6 +25,8 @@ from app.auth.session import User
 from app.db import Tx
 from app.llm.client import EMBEDDING_MAX_CHARS, ChatResult
 from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, build_messages, ground
+from app.llm.injection import find as find_injection
+from app.llm.injection import strip_blocks
 from app.redaction import Shield, has_need_to_know, mask_secrets, names_in
 from app.retrieval.search import Candidate, ChunkHit, hybrid_search, restricted_matches
 
@@ -57,6 +60,7 @@ class QueryResult:
     answer: str
     citations: list[Citation]
     audit_id: int
+    instructions_removed: int = 0  # lines speaking to the assistant, removed from the sources sent (ADR-011)
 
 
 def _fit(candidates: list[Candidate]) -> list[tuple[Candidate, list[ChunkHit]]]:
@@ -87,6 +91,9 @@ def answer_question(
         "user_email": user.email,
         "role": "admin" if user.is_admin else "user",
         "live_check_mode": getattr(checkers_factory, "mode", "connector checks"),
+        # Prompt injection (ADR-011): rule names only, never text. Injection typed into the question
+        # cannot widen what is retrieved; it is recorded for the compliance officer.
+        "injection": {"question": find_injection(question), "sources": []},
     }
     started = last = time.perf_counter()
     timings = audit["timings_ms"] = {}
@@ -135,6 +142,7 @@ def answer_question(
     audit["sent_to_llm"] = [c.key for c, _ in sources]
 
     citations: list[Citation] = []
+    instructions_removed = 0
     if not sources:
         # Same reply whether nothing exists or nothing is permitted (INV-5).
         answer = FALLBACK_ANSWER
@@ -162,15 +170,22 @@ def answer_question(
                 updated_at=c.updated_at.isoformat(),
                 text=body,
             ))
+        # 5. Remove lines that speak to the assistant rather than to the reader (ADR-011).
+        blocks, found = strip_blocks(blocks)
+        audit["injection"]["sources"] = [
+            {"document": by_label[label].key, "rules": f.rules, "removed": f.removed} for label, f in found.items()
+        ]
+        instructions_removed = sum(f.removed for f in found.values())
+        messages = build_messages(question, blocks)
         audit["llm_called"] = True
         try:
-            result = llm.chat(build_messages(question, blocks))
+            result = llm.chat(messages)
         except Exception as exc:
             log.error("LLM call failed: %s", exc)
             answer = UNAVAILABLE_ANSWER
             audit["llm_error"] = type(exc).__name__
         else:
-            grounded = ground(result.content, set(by_label))
+            grounded = ground(result.content, set(by_label), seen=messages[1]["content"])
             answer, answer_masked = shield.guard(grounded.answer, question)
             audit["answer_masked"] = dict(answer_masked)
             citations = [
@@ -183,6 +198,7 @@ def answer_question(
                 prompt_tokens=result.prompt_tokens,
                 completion_tokens=result.completion_tokens,
                 removed_citations=grounded.removed_labels,  # labels the model invented
+                removed_links=grounded.removed_links,  # links the model was not shown
                 grounding_note=grounded.note,
             )
         finally:
@@ -195,4 +211,6 @@ def answer_question(
     log.info("query answered in %s ms: %s", timings["total"], timings)
     with tx() as conn:  # committed before the answer is returned
         audit_id = record_event(conn, user.id, "query", audit)
-    return QueryResult(answer=answer, citations=citations, audit_id=audit_id)
+    # Reported only with a real answer: a fixed reply must look the same whatever was sent (INV-5).
+    return QueryResult(answer=answer, citations=citations, audit_id=audit_id,
+                       instructions_removed=instructions_removed if citations else 0)

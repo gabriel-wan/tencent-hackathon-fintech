@@ -8,24 +8,20 @@ Everyone else sees typed tags. Secrets are masked for everyone, always. Recall o
 in doubt, mask. Stored chunks stay raw; masking happens on the way out.
 """
 import re
-import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
-from functools import lru_cache
 
 from app.auth.principals import IDENTITY_PREFIX
 from app.llm.client import EMBEDDING_MAX_CHARS
+from app.llm.grounding import plain_char
 
 _IDENTITIES = tuple(set(IDENTITY_PREFIX.values()))
 _CARD_WORD_WINDOW = 30  # characters before a number searched for a card word
 _IBAN_LENGTHS = range(15, 35)  # ISO 13616: 15 to 34 characters
 _IBAN_MOD = 97  # ISO 7064 MOD 97-10: a valid IBAN leaves remainder 1
 _LAST_SHOWN = 4  # characters a tag keeps: last 4 of a card (PCI DSS), last 3 digits and letter of an NRIC (PDPC)
-_CHAR_CACHE_SIZE = 1 << 16  # bounded: hostile text can hold every code point
 _SENTENCE_END = ",;."  # after normalisation, also the Chinese ，；
 _MIN_NAME_PART = 2  # letters a first or last name needs to be masked on its own
-_VARIATION_SELECTORS = (("\N{VARIATION SELECTOR-1}", "\N{VARIATION SELECTOR-16}"),
-                        ("\N{VARIATION SELECTOR-17}", "\N{VARIATION SELECTOR-256}"))
 _CARD_WORD = re.compile(r"(?i)\b(?:card|visa|master ?card|amex|pan|cc|credit|debit)\b|卡")
 
 
@@ -164,21 +160,10 @@ DETECTORS: list[tuple[str, re.Pattern, Callable[[re.Match], int]]] = [
 ]
 
 
-@lru_cache(maxsize=_CHAR_CACHE_SIZE)
-def _plain_char(c: str) -> str:
-    """A character as the model reads it: format characters (zero-width spaces and joiners) and variation
-    selectors (invisible, category Mn, also dropped by the prompt fence) removed, every dash a hyphen,
-    everything else in NFKC form (full-width, mathematical, no-break spaces)."""
-    category = unicodedata.category(c)
-    if category == "Cf" or any(low <= c <= high for low, high in _VARIATION_SELECTORS):
-        return ""
-    return "-" if category == "Pd" else unicodedata.normalize("NFKC", c)
-
-
 def _plain_map(text: str) -> tuple[str, Callable[[int, int], tuple[int, int]]]:
     """The text as the model reads it, which the detectors search, and a map from a span in it back to
     the span of `text` it came from, so only masked spans change and the rest stays as written."""
-    parts = None if text.isascii() else list(map(_plain_char, text))
+    parts = None if text.isascii() else list(map(plain_char, text))
     if parts is None or set(map(len, parts)) == {1}:  # nothing dropped or expanded: same offsets
         return text if parts is None else "".join(parts), lambda start, end: (start, end)
     where: list[int] = []  # plain offset -> raw offset, built on the first masked span only

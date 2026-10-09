@@ -41,9 +41,9 @@ flowchart TB
     G1["Gate 1: stored permissions<br/>one SQL query: own company,<br/>ACL shares a principal,<br/>scope is in the boundary,<br/>then rank the matches<br/>app/retrieval/search.py"]
     G2["Gate 2: ask each tool<br/>as this person, in parallel<br/>no, error or 2 s timeout: dropped<br/>app/auth/live_check.py"]
     N["Fixed 'not found' reply<br/>LLM not called"]
-    C["Allowed sources only,<br/>identifiers masked unless need-to-know<br/>app/redaction.py,<br/>wrapped as untrusted data<br/>app/llm/grounding.py"]
+    C["Allowed sources only,<br/>identifiers masked unless need-to-know<br/>app/redaction.py,<br/>wrapped as untrusted data,<br/>lines aimed at the AI removed<br/>app/llm/grounding.py, injection.py"]
     M["LLM: hy3 on TokenHub"]
-    V["Citations checked<br/>against what was sent"]
+    V["Citations and links checked<br/>against what was sent"]
     A[("Audit record written<br/>every decision and reason,<br/>hash-chained<br/>app/audit/log.py")]
     R["The person sees the answer<br/>and its sources"]
 
@@ -68,9 +68,9 @@ flowchart TB
 | Identity | Turns the session cookie into a user, and the user into their principals in each tool | Allow a question without a verified session (INV-3) |
 | Gate 1: stored permissions | Searches only documents of the user's own company, inside the admin's boundary, whose ACL includes one of the user's principals | Rank or return anything before that filter: the filter runs inside the same query |
 | Gate 2: live check | Asks each tool, as the user, whether they can still read each candidate | Let anything through on doubt: an error or a timeout is a "no" |
-| Context assembly | Wraps each allowed source as untrusted data, with short labels instead of raw IDs | Include anything not allowed, other users' data, or secrets (INV-1, INV-9) |
+| Context assembly | Wraps each allowed source as untrusted data, with short labels instead of raw IDs, and removes lines addressed to the AI (ADR-011) | Include anything not allowed, other users' data, or secrets (INV-1, INV-9) |
 | LLM | Answers only from the sources it was given, citing them | Decide who may see what (INV-2) |
-| Answer check | Drops citations to anything not sent; with no valid citation, returns the fixed "not found" reply | Reveal whether a restricted document exists: "not found" looks the same either way (INV-5) |
+| Answer check | Drops citations to anything not sent, and links the model wasn't shown; with no valid citation, returns the fixed "not found" reply | Reveal whether a restricted document exists: "not found" looks the same either way (INV-5) |
 | Audit log | Records the question, every candidate with its decision and reason, what was sent, the answer and timings | Be changed silently: records are hash-chained and the app's database login can only add them (INV-7) |
 
 ## 3. The parts
@@ -139,12 +139,12 @@ sequenceDiagram
     alt Nothing allowed
         API-->>API: Fixed "not found" reply, LLM not called
     else Some sources allowed
-        API->>LLM: Allowed sources, identifiers masked, as untrusted blocks (≤ 12,000 characters)
+        API->>LLM: Allowed sources, identifiers masked, as untrusted blocks, injected lines removed (≤ 12,000 characters)
         LLM-->>API: Answer citing [S1], [S2]…
-        API-->>API: Drop citations to anything not sent and mask identifiers the model was not shown
+        API-->>API: Drop citations and links to anything not sent, and mask identifiers the model was not shown
     end
     API->>DB: Add one hash-chained audit record (committed before replying)
-    API-->>FE: Answer, sources (with synced_at, redacted), audit id
+    API-->>FE: Answer, sources (with synced_at, redacted), audit id, instructions removed
     FE-->>P: Answer, Sources list, Ref #
 ```
 

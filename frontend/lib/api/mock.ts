@@ -79,7 +79,7 @@ const CONFLUENCE_DOC: Citation = {
 };
 
 function reply(answer: string, citations: Citation[]): QueryResponse {
-  return { answer, citations, audit_id: MOCK_AUDIT_ID };
+  return { answer, citations, audit_id: MOCK_AUDIT_ID, instructions_removed: 0 };
 }
 
 type Fixture = () => QueryResponse;
