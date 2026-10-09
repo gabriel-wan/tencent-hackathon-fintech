@@ -1,5 +1,7 @@
 import { CircleAlert, RotateCcw, TriangleAlert } from "lucide-react";
+import Link from "next/link";
 
+import { useMe } from "@/components/me-provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,10 +24,25 @@ function AnswerText({ text }: { text: string }) {
   return <p className="leading-relaxed whitespace-pre-wrap">{stripCitationMarkers(text)}</p>;
 }
 
+/**
+ * The answer's audit record number. For admins, a link to that record (/admin/audit?record=N); others see
+ * the number only (the audit trail is admin-only, and its API refuses anyone else anyway).
+ */
 function Reference({ response }: { response: QueryResponse }) {
+  const me = useMe();
+  const id = response.audit_id;
   return (
     <p className="text-right text-xs text-muted-foreground tabular-nums">
-      {isMockResponse(response) ? "Ref # — (mock)" : `Ref #${response.audit_id}`}
+      {isMockResponse(response) ? (
+        "Ref # — (mock)"
+      ) : me.is_admin ? (
+        <Link href={`/admin/audit?record=${id}`} className="text-primary underline-offset-4 hover:underline">
+          Ref #{id}
+          <span className="sr-only"> (open its audit record)</span>
+        </Link>
+      ) : (
+        `Ref #${id}`
+      )}
     </p>
   );
 }

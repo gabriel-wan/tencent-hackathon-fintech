@@ -17,6 +17,8 @@ const badgeVariants = cva(
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         // Ours: marks development-only aids and mock data, so they can't pass for real features.
         warning: "border-warning-foreground/30 bg-warning text-warning-foreground",
+        // Ours: a good outcome (a document allowed, an identifier masked). Never for development aids.
+        success: "border-success-foreground/30 bg-success text-success-foreground",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",

@@ -18,6 +18,8 @@
     --color-border: var(--border);
     --color-warning: var(--warning);
     --color-warning-foreground: var(--warning-foreground);
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
     --color-destructive: var(--destructive);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
@@ -63,6 +65,8 @@
     /* "Unavailable", the development banner and the MOCK DATA label. */
     --warning: #fef3c7;
     --warning-foreground: #92400e;
+    --success: #dcfce7; /* allowed, masked: the system working as designed (≥ 4.5:1 with its foreground) */
+    --success-foreground: #166534;
     /* Decorative edges only: too faint for inputs. */
     --border: #e5e5e3;
     /* Input borders: 3:1 against the page, unlike --border. */
@@ -89,6 +93,8 @@
     --destructive: #f97066;
     --warning: #3a2a06;
     --warning-foreground: #fbbf24;
+    --success: #0d2a17;
+    --success-foreground: #4ade80;
     --border: #2a2f3a;
     --input: #6b7280;
     --ring: #7fa2ff;

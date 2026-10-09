@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Check, Copy, Eye, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -24,6 +24,7 @@ import {
   type VerifyResult,
   isStubCheck,
   pageUrl,
+  timingsLine,
   summarise,
   toApiQuery,
 } from "@/lib/audit";
@@ -255,11 +256,16 @@ function VerifyPanel({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
   );
 }
 
+/** Allowed in green with ✓, denied in red with ✗. The words stay: colour and icons alone don't carry it. */
 function Decision({ allowed }: { allowed: boolean }) {
   return allowed ? (
-    <Badge variant="secondary">allowed</Badge>
+    <Badge variant="success">
+      <Check aria-hidden="true" />
+      allowed
+    </Badge>
   ) : (
-    <Badge variant="outline" className="border-destructive/40 text-destructive">
+    <Badge variant="destructive">
+      <X aria-hidden="true" />
       denied
     </Badge>
   );
@@ -267,8 +273,8 @@ function Decision({ allowed }: { allowed: boolean }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1.5">
-      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+    <div className="grid gap-1.5 border-t pt-4">
+      <h3 className="text-xs font-semibold tracking-wide text-foreground uppercase">{title}</h3>
       {children}
     </div>
   );
@@ -302,16 +308,22 @@ function QueryDetail({ p }: { p: QueryPayload }) {
         <dd className="flex flex-wrap items-center gap-2">
           {p.live_check_mode ?? "unknown"}
           {isStubCheck(p) ? (
-            <span
-              className="rounded bg-warning px-1.5 py-0.5 text-xs font-medium text-warning-foreground"
+            <Badge
+              variant="warning"
               title="A seeded demo user with no connections: checked against stored permissions, not with each tool"
             >
               Development: not live-checked
-            </span>
+            </Badge>
           ) : null}
         </dd>
         <dt className="text-muted-foreground">LLM</dt>
         <dd>{p.llm_error ? `failed (${p.llm_error})` : p.llm_called ? (p.model ?? "called") : "not called"}</dd>
+        {timingsLine(p.timings_ms) ? (
+          <>
+            <dt className="text-muted-foreground">Timings</dt>
+            <dd className="tabular-nums">{timingsLine(p.timings_ms)}</dd>
+          </>
+        ) : null}
       </dl>
       <Section title="Question (as stored, masked)">
         <p className="text-sm whitespace-pre-wrap">{p.question}</p>
@@ -338,12 +350,15 @@ function QueryDetail({ p }: { p: QueryPayload }) {
           ))}
         />
       </Section>
-      <Section title="Sent to the LLM">
+      <Section title="Sent to the LLM (as S1, S2… in the answer)">
         <Items
-          items={(p.sent_to_llm ?? []).map((d) => (
-            <li key={d}>
+          // Stored in label order (backend/app/pipeline/query.py: sent_to_llm and the S1, S2… labels both
+          // follow `sources`), so the position is the label.
+          items={(p.sent_to_llm ?? []).map((d, i) => (
+            <li key={d} className="flex flex-wrap items-baseline gap-2">
+              <span className="w-7 shrink-0 text-xs font-semibold tabular-nums">S{i + 1}</span>
               <code className="text-xs">{d}</code>
-              {p.citations?.includes(d) ? <span className="ml-2 text-xs text-muted-foreground">cited</span> : null}
+              {p.citations?.includes(d) ? <span className="text-xs text-muted-foreground">cited</span> : null}
             </li>
           ))}
         />
@@ -357,10 +372,16 @@ function QueryDetail({ p }: { p: QueryPayload }) {
             items={[
               ...masking.map(([doc, r]) => (
                 <li key={doc} className="flex flex-wrap items-center gap-2">
+                  {/* Not amber: a handler seeing their own item is the design, and amber marks development aids. */}
+                  {r.need_to_know ? (
+                    <Badge variant="outline">
+                      <Eye aria-hidden="true" />
+                      handler: shown unmasked
+                    </Badge>
+                  ) : (
+                    <Badge variant="success">masked: {counts(r.masked)}</Badge>
+                  )}
                   <code className="text-xs">{doc}</code>
-                  <span className="text-xs text-muted-foreground">
-                    {r.need_to_know ? "handler: shown unmasked" : `masked: ${counts(r.masked)}`}
-                  </span>
                 </li>
               )),
               ...(counts(p.answer_masked)

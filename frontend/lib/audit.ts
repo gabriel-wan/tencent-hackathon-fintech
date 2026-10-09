@@ -178,6 +178,30 @@ function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+const TIMING_NAMES: [string, string][] = [
+  ["embed", "embed"],
+  ["search", "search"],
+  ["live_check", "live check"],
+  ["llm", "LLM"],
+  ["total", "total"],
+];
+
+/**
+ * A question's step timings on one line, in pipeline order: "embed 864 ms · search 10 ms · … · total 2,786 ms".
+ * Steps the record lacks are skipped; steps this list doesn't know come after, by their own name.
+ */
+export function timingsLine(timings: Record<string, number> | undefined): string {
+  if (!timings) return "";
+  const known = new Set(TIMING_NAMES.map(([key]) => key));
+  const fmt = (n: number) => `${new Intl.NumberFormat("en").format(Math.round(n))} ms`;
+  return [
+    ...TIMING_NAMES.filter(([key]) => typeof timings[key] === "number").map(([key, name]) => `${name} ${fmt(timings[key])}`),
+    ...Object.entries(timings)
+      .filter(([key, value]) => !known.has(key) && typeof value === "number")
+      .map(([key, value]) => `${key.replace(/_/g, " ")} ${fmt(value)}`),
+  ].join(" · ");
+}
+
 /**
  * The question was checked against the STORED permissions, not live with each tool: a seeded demo user
  * with no connections (backend/app/auth/live_check.py STUB_MODE, "stub: stored ACL, not live"). Labelled

@@ -8,6 +8,7 @@ import {
   pageUrl,
   recordFromParams,
   summarise,
+  timingsLine,
   toApiQuery,
   toPageQuery,
 } from "./audit";
@@ -59,6 +60,23 @@ describe("summarise", () => {
     ["something_new", {}, "something_new"],
   ])("%s", (type, payload, line) => {
     expect(summarise(record(type, payload))).toBe(line);
+  });
+});
+
+describe("timingsLine", () => {
+  it("lists the steps in pipeline order, with thousands separators", () => {
+    expect(timingsLine({ total: 2786, llm: 1633, embed: 864, search: 10, live_check: 280 })).toBe(
+      "embed 864 ms · search 10 ms · live check 280 ms · LLM 1,633 ms · total 2,786 ms",
+    );
+  });
+
+  it("skips missing steps and puts unknown ones last, by name", () => {
+    expect(timingsLine({ total: 12, search: 4, rerank_step: 3 })).toBe("search 4 ms · total 12 ms · rerank step 3 ms");
+  });
+
+  it("is empty for an older record without timings", () => {
+    expect(timingsLine(undefined)).toBe("");
+    expect(timingsLine({})).toBe("");
   });
 });
 
