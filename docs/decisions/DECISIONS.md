@@ -646,7 +646,7 @@ Deterministic layers, in the order a question meets them:
 4. **Audit and API:** the audit record keeps, per source and for the question, the names of the
    rules that matched and the number of lines removed, plus the links removed; never the text.
    `POST /api/query` returns `instructions_removed`, so the UI can say a source tried to
-   instruct the assistant. *Amended 2026-10-09 (review of PR #21, Zewei):* it counts only lines
+   instruct the assistant. *Amended 2026-10-09 (Zewei, found while testing the answer notice in the UI follow-up):* it counts only lines
    removed from the sources the answer **cites**. Counting every source sent made the notice appear
    on answers that never used the source in question (e.g. a dispute answer that also retrieved
    the poisoned `#eng` thread). The audit record still lists every removal, cited or not.

@@ -293,7 +293,7 @@ class CitesOneSource(FakeLLM):
 
 
 def test_a_line_removed_from_an_uncited_source_is_not_reported(conn, make_user, add_doc):
-    """Review of #21: the notice is about this answer, so it counts only the sources the answer cites."""
+    """The answer notice is about this answer, so it counts only the sources the answer cites (ADR-011)."""
     alice = make_user("alice@co.example", ALICE)
     add_doc("slack", "C1:1", ["slack:members"], f"gateway migration status\n{POISON}")
     add_doc("slack", "C2:1", ["slack:members"], "gateway migration runbook CLEAN-SOURCE")
