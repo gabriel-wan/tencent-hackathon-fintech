@@ -1,0 +1,26 @@
+# One public address for KnowBuddy (docs/DEPLOYMENT.md section 2).
+# SITE_ADDRESS is a domain (e.g. knowbuddy.example.com): Caddy then gets a TLS
+# certificate from Let's Encrypt by itself and redirects HTTP to HTTPS.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Sign-in starts and ends on the backend: the OAuth redirect must begin and
+	# return there, and that is where the session cookie is set.
+	@backend path /connectors/*/connect /oauth/*
+	handle @backend {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else is the website, which forwards /api/* to the backend itself.
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

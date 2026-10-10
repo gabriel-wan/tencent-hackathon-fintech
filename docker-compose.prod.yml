@@ -1,0 +1,47 @@
+# Production override for the live server (docs/DEPLOYMENT.md, ADR-008).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# Adds Caddy as the only public entry point (HTTPS on one address, certificate issued
+# automatically) and stops publishing the backend and frontend ports, so nothing but
+# Caddy is reachable from outside even if the firewall is misconfigured.
+# SITE_ADDRESS comes from the .env file next to this one (scripts/deploy/new-env.sh).
+# Needs Docker Compose 2.24 or newer (for !reset).
+
+services:
+  db:
+    restart: unless-stopped
+
+  backend:
+    ports: !reset []
+    restart: unless-stopped
+
+  sync:
+    restart: unless-stopped
+
+  frontend:
+    ports: !reset []
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in the .env next to docker-compose.yml}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # certificates: keep, or Let's Encrypt rate limits apply on reissue
+      - caddy-config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+
+volumes:
+  caddy-data:
+  caddy-config:
