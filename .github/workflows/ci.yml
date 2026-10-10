@@ -1,0 +1,57 @@
+# CI: every test, on every pull request (docs/TESTING.md).
+#
+# Also called by deploy.yml before each deploy, so the same checks guard main and the
+# live server. Make "backend", "frontend" and "docs" required checks for main
+# (docs/DEPLOYMENT.md section 8) so a pull request can't merge while they fail.
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Backend tests (Postgres in Docker, same command as docs/TESTING.md)
+        run: |
+          cp backend/.env.example backend/.env
+          cp frontend/.env.example frontend/.env
+          docker compose run --rm --build --user root -e POSTGRES_DB=brain_test \
+            -v ./backend/tests:/app/tests backend \
+            sh -c "uv sync --locked --group dev --quiet && pytest -q"
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend type check, tests and production build
+        working-directory: frontend
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm test
+          npm run build
+
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Every link in the docs resolves
+        run: python3 scripts/check_doc_links.py
