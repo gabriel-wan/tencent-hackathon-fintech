@@ -10,6 +10,8 @@ WORKDIR /app
 ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+# Static files served as-is (e.g. the tool logos): the standalone output doesn't include them.
+COPY --from=build /app/public ./public
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s CMD wget -qO /dev/null http://127.0.0.1:3000/healthz || exit 1

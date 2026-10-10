@@ -18,7 +18,7 @@ The frontend never decides who may see what: the backend filters by permission b
 | Tailwind CSS v4 | Styling, compiled at build time (`postcss.config.mjs`) |
 | shadcn/ui (Radix base, Nova preset) | Accessible components, copied into `components/ui/` |
 | next-themes | System / Light / Dark theme, no flash on load |
-| lucide-react | Icons (generic icons only, no brand logos) |
+| lucide-react | Icons (generic icons only; tool logos come from `public/logos/`, see below) |
 
 ## Commands
 
@@ -58,6 +58,10 @@ components.json       shadcn CLI settings
 - Colours are CSS variables in `app/globals.css` (light under `:root`, dark under `.dark`), using shadcn's names.
   Use them through Tailwind classes (`bg-card`, `text-muted-foreground`, `border-input`, `bg-warning`); never
   hard-code a colour in a component.
+- **Tool logos** (`components/platform-logo.tsx`, files in `public/logos/`) only name an integration (Slack,
+  Google Drive, Jira, Confluence), always next to the tool's written name, which carries the meaning. Each file comes
+  from the vendor's own brand page, unaltered: Slack's media kit (the colour mark), Google's Drive branding guidelines,
+  and Atlassian's logo library (the "app" icons). A missing or failing file shows nothing, or a generic icon.
 - Our brand colour is `--primary`. shadcn's `--accent` is the hover background, not the brand colour.
 - `--destructive` is for genuine failures only. A "not found" answer is never red.
 - `--warning` is for "unavailable", development-only aids and mock data.

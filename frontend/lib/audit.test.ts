@@ -3,11 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   type AuditRecord,
   NO_FILTERS,
+  documentRows,
+  eventLabel,
   filtersFromParams,
+  formatMs,
+  hasMaskedValues,
   isStubCheck,
+  liveCheckLabel,
   pageUrl,
   recordFromParams,
+  searchLabel,
   summarise,
+  timingRows,
   toApiQuery,
   toPageQuery,
 } from "./audit";
@@ -59,6 +66,117 @@ describe("summarise", () => {
     ["something_new", {}, "something_new"],
   ])("%s", (type, payload, line) => {
     expect(summarise(record(type, payload))).toBe(line);
+  });
+});
+
+describe("timingRows", () => {
+  it("lists the steps in pipeline order, total last", () => {
+    expect(timingRows({ total: 2786, llm: 1633, embed: 864, search: 10, live_check: 280 })).toEqual([
+      { step: "Embed", ms: 864, total: false },
+      { step: "Search", ms: 10, total: false },
+      { step: "Live check", ms: 280, total: false },
+      { step: "LLM", ms: 1633, total: false },
+      { step: "Total", ms: 2786, total: true },
+    ]);
+  });
+
+  it("skips missing steps and puts unknown ones before the total, by name", () => {
+    expect(timingRows({ total: 12, search: 4, rerank_step: 3 }).map((r) => r.step)).toEqual(["Search", "Rerank step", "Total"]);
+  });
+
+  it("is empty for an older record without timings", () => {
+    expect(timingRows(undefined)).toEqual([]);
+  });
+
+  it("formats with a thousands separator", () => {
+    expect(formatMs(1633.4)).toBe("1,633 ms");
+  });
+});
+
+describe("hasMaskedValues", () => {
+  it.each([
+    "[secret]",
+    "card [card ending 1111]",
+    "to [account ending 6789]",
+    "[IBAN ending 4321]",
+    "NRIC [NRIC *****567D]",
+    "call [phone 1]",
+    "[email 2]",
+    "customer [name 1]",
+    "[passport 1]",
+    "[date of birth]",
+    "[address]",
+  ])("%j has a masked value", (text) => {
+    expect(hasMaskedValues(text)).toBe(true);
+  });
+
+  it.each(["Blocked [S1][S2].", "see [draft] notes", "[link removed]", "", undefined])("%j has none", (text) => {
+    expect(hasMaskedValues(text)).toBe(false);
+  });
+});
+
+describe("plain-word labels", () => {
+  it.each([
+    ["live: each source, as the user", "Live, with each tool", "live"],
+    ["stub: stored ACL, not live", "Stored permissions (development only)", "stub"],
+    ["connector checks", "connector checks", "other"],
+  ])("live check %j", (mode, text, kind) => {
+    expect(liveCheckLabel(mode)).toEqual({ text, kind });
+  });
+
+  it("search and event names", () => {
+    expect([searchLabel("hybrid"), searchLabel("keyword_only"), searchLabel("odd")]).toEqual([
+      "Keyword + meaning",
+      "Keyword only",
+      "odd",
+    ]);
+    expect([eventLabel("query"), eventLabel("boundary_removed"), eventLabel("something_new")]).toEqual([
+      "Question",
+      "Boundary: removed",
+      "something_new",
+    ]);
+  });
+});
+
+describe("documentRows", () => {
+  const p = {
+    candidates: [
+      { document: "drive:D_GUIDE", allowed: true, reason: "allowed by drive check" },
+      { document: "slack:C_ENG:1", allowed: true, reason: "allowed by slack check" },
+      { document: "drive:D_DISPUTES", allowed: true, reason: "allowed by drive check" },
+      { document: "slack:C_OLD:1", allowed: false, reason: "denied by slack check" },
+    ],
+    restricted_matches: [{ document: "slack:C_PAYONCALL:1", reason: "user not in document ACL" }],
+    sent_to_llm: ["slack:C_ENG:1", "drive:D_DISPUTES"],
+    citations: ["drive:D_DISPUTES"],
+    redactions: {
+      "drive:D_DISPUTES": { need_to_know: false, masked: { card: 1, name: 1 } },
+      "slack:C_ENG:1": { need_to_know: true, masked: {} },
+    },
+    injection: { question: [], sources: [{ document: "slack:C_ENG:1", rules: ["override"], removed: 1 }] },
+  };
+
+  it("orders sent (by label), allowed but not sent, denied, then restricted matches", () => {
+    expect(documentRows(p).map((r) => [r.document, r.allowed, r.sentAs])).toEqual([
+      ["slack:C_ENG:1", true, 1],
+      ["drive:D_DISPUTES", true, 2],
+      ["drive:D_GUIDE", true, null],
+      ["slack:C_OLD:1", false, null],
+      ["slack:C_PAYONCALL:1", false, null],
+    ]);
+  });
+
+  it("puts each note on its own document", () => {
+    const [eng, disputes, guide, , restricted] = documentRows(p);
+    expect(eng).toMatchObject({ cited: false, handler: true, masked: null, injection: { removed: 1, rules: ["override"] } });
+    expect(disputes).toMatchObject({ cited: true, handler: false, masked: { card: 1, name: 1 }, injection: null });
+    expect(guide).toMatchObject({ masked: null, handler: false, injection: null });
+    expect(restricted.reason).toBe("user not in document ACL");
+  });
+
+  it("lists a document once even if two lists name it, and reads an older record", () => {
+    expect(documentRows({ candidates: [{ document: "a", allowed: false, reason: "x" }], restricted_matches: [{ document: "a", reason: "y" }] })).toHaveLength(1);
+    expect(documentRows({})).toEqual([]);
   });
 });
 

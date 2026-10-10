@@ -1,10 +1,11 @@
-import { BookOpen, ExternalLink, FileText, Link2, MessageSquare, SquareKanban, type LucideIcon } from "lucide-react";
+import { BookOpen, ExternalLink, EyeOff, FileText, Link2, MessageSquare, SquareKanban, type LucideIcon } from "lucide-react";
 
+import { PlatformLogo } from "@/components/platform-logo";
 import type { Citation } from "@/lib/api/types";
-import { safeHttpUrl } from "@/lib/citations";
+import { freshness, maskedSummary, safeHttpUrl } from "@/lib/citations";
 import { formatExact, formatRelative } from "@/lib/format";
 
-// Generic icons only, never brand logos; the text label carries the meaning.
+// Each tool's logo, with a generic icon if it can't load; the text label always carries the meaning.
 const SOURCES: Record<string, { label: string; Icon: LucideIcon }> = {
   slack: { label: "Slack", Icon: MessageSquare },
   drive: { label: "Drive", Icon: FileText },
@@ -16,9 +17,45 @@ function SourceBadge({ source }: { source: string }) {
   const { label, Icon } = SOURCES[source] ?? { label: source, Icon: Link2 };
   return (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
-      <Icon aria-hidden="true" className="size-3" />
+      <PlatformLogo source={source} size={12} fallback={<Icon aria-hidden="true" className="size-3" />} />
       {label}
     </span>
+  );
+}
+
+/** "3 masked": what the Need-to-Know Shield hid in this source for you (ADR-010). Neutral: it's working. */
+function MaskedChip({ redacted }: { redacted: Record<string, number> }) {
+  const masked = maskedSummary(redacted);
+  if (!masked) return null;
+  const detail = `Masked for you: ${masked.text} (Need-to-Know Shield)`;
+  return (
+    <span
+      title={detail}
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground"
+    >
+      <EyeOff aria-hidden="true" className="size-3" />
+      <span aria-hidden="true">{masked.total} masked</span>
+      <span className="sr-only">{detail}</span>
+    </span>
+  );
+}
+
+/** " · synced 3 minutes ago": when our copy was last checked against the tool. Nothing for never-synced data. */
+function Synced({ syncedAt }: { syncedAt: string | null }) {
+  const fresh = freshness(syncedAt);
+  if (!fresh || !syncedAt) return null;
+  const when = (
+    <time dateTime={syncedAt} title={formatExact(syncedAt)}>
+      {formatRelative(syncedAt)}
+    </time>
+  );
+  return fresh.stale ? (
+    <span className="text-destructive">
+      {" "}
+      · synced {when}, may be out of date
+    </span>
+  ) : (
+    <span> · synced {when}</span>
   );
 }
 
@@ -43,12 +80,14 @@ function CitationItem({ citation }: { citation: Citation }) {
       ) : (
         <span className="font-medium break-words">{citation.title}</span>
       )}
+      <MaskedChip redacted={citation.redacted} />
       <span className="text-xs text-muted-foreground">
         updated{" "}
         {/* title: exact time on hover; assistive tech also reads it as the name. */}
         <time dateTime={citation.updated_at} title={exact}>
           {formatRelative(citation.updated_at)}
         </time>
+        <Synced syncedAt={citation.synced_at} />
       </span>
     </li>
   );

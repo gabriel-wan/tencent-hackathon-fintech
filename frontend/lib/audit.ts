@@ -178,6 +178,129 @@ function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+// ---- The record dialog's tables ----
+
+const TIMING_STEPS: [string, string][] = [
+  ["embed", "Embed"],
+  ["search", "Search"],
+  ["live_check", "Live check"],
+  ["llm", "LLM"],
+];
+
+/**
+ * A question's step timings as table rows, in pipeline order, total last: steps the record lacks are
+ * skipped, steps this list doesn't know come before the total, by their own name.
+ */
+export function timingRows(timings: Record<string, number> | undefined): { step: string; ms: number; total: boolean }[] {
+  if (!timings) return [];
+  const known = new Set(["total", ...TIMING_STEPS.map(([key]) => key)]);
+  const num = (key: string) => typeof timings[key] === "number";
+  return [
+    ...TIMING_STEPS.filter(([key]) => num(key)).map(([key, step]) => ({ step, ms: timings[key], total: false })),
+    ...Object.entries(timings)
+      .filter(([key, value]) => !known.has(key) && typeof value === "number")
+      .map(([key, ms]) => ({ step: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "), ms, total: false })),
+    ...(num("total") ? [{ step: "Total", ms: timings.total, total: true }] : []),
+  ];
+}
+
+/** "1,037 ms". */
+export function formatMs(ms: number): string {
+  return `${new Intl.NumberFormat("en").format(Math.round(ms))} ms`;
+}
+
+// The tags the Need-to-Know Shield writes in place of a value (backend/app/redaction.py Shield._tag).
+const MASK_TAG =
+  /\[(?:secret|date of birth|address|(?:card|account|IBAN) ending [A-Za-z0-9]{1,4}|NRIC \*+[A-Za-z0-9]{1,4}|(?:phone|email|name|passport) \d+)\]/;
+
+/** Whether stored text has values the Shield masked ("[card ending 1111]", "[name 1]"…), not "[S1]" or "[draft]". */
+export function hasMaskedValues(text: string | undefined): boolean {
+  return !!text && MASK_TAG.test(text);
+}
+
+/** The live check in plain words: "live", the development stand-in, or the raw value. */
+export function liveCheckLabel(mode: string | undefined): { text: string; kind: "live" | "stub" | "other" } {
+  if (mode?.startsWith("live")) return { text: "Live, with each tool", kind: "live" };
+  if (mode?.startsWith("stub")) return { text: "Stored permissions (development only)", kind: "stub" };
+  return { text: mode ?? "unknown", kind: "other" };
+}
+
+/** The search mode in plain words. */
+export function searchLabel(mode: string | undefined): string {
+  if (mode === "hybrid") return "Keyword + meaning";
+  if (mode === "keyword_only") return "Keyword only";
+  return mode ?? "unknown";
+}
+
+const EVENT_NAMES: Record<string, string> = {
+  query: "Question",
+  boundary_added: "Boundary: added",
+  boundary_removed: "Boundary: removed",
+  connector_connected: "Tool connected",
+  connector_disconnected: "Tool disconnected",
+  sync_requested: "Sync requested",
+  audit_searched: "Audit searched",
+  audit_verified: "Chain verified",
+};
+
+/** An event type in words ("Question"); an unknown type as written. */
+export function eventLabel(type: string): string {
+  return EVENT_NAMES[type] ?? type;
+}
+
+/** One row of the record's Documents table: everything the record says about one document. */
+export type DocumentRow = {
+  document: string;
+  allowed: boolean;
+  reason: string;
+  sentAs: number | null; // 1 for S1, … ; null: not sent to the LLM
+  cited: boolean;
+  masked: Record<string, number> | null; // what the Shield hid from this person, if anything
+  handler: boolean; // shown unmasked: the person handles this item in the tool
+  injection: { removed: number; rules: string[] } | null; // lines written to the AI, removed
+};
+
+/**
+ * Merges a question record's per-document lists into one row per document: sent first, in label order
+ * (S1, S2…: `sent_to_llm` is stored in that order), then allowed but not sent, then denied (by the live
+ * check, then restricted matches: documents the question matched that the person may not see).
+ */
+export function documentRows(p: QueryPayload): DocumentRow[] {
+  const sent = p.sent_to_llm ?? [];
+  const injected = new Map((p.injection?.sources ?? []).map((s) => [s.document, s]));
+  const row = (document: string, allowed: boolean, reason: string): DocumentRow => {
+    const shield = p.redactions?.[document];
+    const masked = shield && !shield.need_to_know && Object.values(shield.masked).some((n) => n > 0) ? shield.masked : null;
+    const removed = injected.get(document);
+    const at = sent.indexOf(document);
+    return {
+      document,
+      allowed,
+      reason,
+      sentAs: at >= 0 ? at + 1 : null,
+      cited: p.citations?.includes(document) ?? false,
+      masked,
+      handler: shield?.need_to_know ?? false,
+      injection: removed ? { removed: removed.removed, rules: removed.rules } : null,
+    };
+  };
+  const candidates = p.candidates ?? [];
+  const reasonOf = new Map(candidates.map((c) => [c.document, c.reason]));
+  const rows: DocumentRow[] = [];
+  const seen = new Set<string>();
+  const add = (r: DocumentRow) => {
+    if (!seen.has(r.document)) {
+      seen.add(r.document);
+      rows.push(r);
+    }
+  };
+  sent.forEach((d) => add(row(d, true, reasonOf.get(d) ?? "")));
+  candidates.filter((c) => c.allowed).forEach((c) => add(row(c.document, true, c.reason)));
+  candidates.filter((c) => !c.allowed).forEach((c) => add(row(c.document, false, c.reason)));
+  (p.restricted_matches ?? []).forEach((m) => add(row(m.document, false, m.reason)));
+  return rows;
+}
+
 /**
  * The question was checked against the STORED permissions, not live with each tool: a seeded demo user
  * with no connections (backend/app/auth/live_check.py STUB_MODE, "stub: stored ACL, not live"). Labelled

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PlatformLogo } from "@/components/platform-logo";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CONNECTOR_BLURBS, type Connector } from "@/lib/connectors";
 
@@ -57,7 +58,10 @@ export function ConnectorCard({ connector, connectHref }: Props) {
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle>
-            <h2 className="text-base font-semibold">{connector.name}</h2>
+            <h2 className="flex items-center gap-2 text-base font-semibold">
+              <PlatformLogo source={connector.id} size={20} />
+              {connector.name}
+            </h2>
           </CardTitle>
           {connector.connected ? <Badge variant="secondary">Connected</Badge> : <Badge variant="outline">Not connected</Badge>}
         </div>

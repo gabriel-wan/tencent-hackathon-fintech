@@ -1,4 +1,6 @@
-// Helpers for the untrusted parts of an answer: its text and its source links.
+// Helpers for the untrusted parts of an answer: its text and its source links,
+// plus what each source says about masking (ADR-010) and freshness (ADR-005).
+import { STALE_AFTER_MS } from "@/lib/boundary";
 
 // Matches the backend's citation labels (backend/app/llm/grounding.py LABEL_RE),
 // including runs like "[S1][S2]" and the space before them.
@@ -28,4 +30,27 @@ export function safeHttpUrl(url: string): string | null {
   } catch {
     return null; // relative or malformed
   }
+}
+
+/**
+ * What the Need-to-Know Shield masked in one source for this reader (`redacted`, ADR-010): the total and
+ * "card 1, phone 2", or null when nothing was. A handler sees the item unmasked, so gets null.
+ */
+export function maskedSummary(redacted: Record<string, number> | undefined): { total: number; text: string } | null {
+  const kinds = Object.entries(redacted ?? {})
+    .filter(([, n]) => n > 0)
+    .sort(([a], [b]) => a.localeCompare(b));
+  const total = kinds.reduce((sum, [, n]) => sum + n, 0);
+  return total ? { total, text: kinds.map(([kind, n]) => `${kind} ${n}`).join(", ") } : null;
+}
+
+/**
+ * How current our copy of a source is (`synced_at`: its scope's last complete sync). Null when it has never
+ * synced (e.g. seeded demo data): nothing pretends it was. Stale after three missed 5-minute syncs.
+ */
+export function freshness(syncedAt: string | null | undefined, now: number = Date.now()): { stale: boolean } | null {
+  if (!syncedAt) return null;
+  const at = Date.parse(syncedAt);
+  if (Number.isNaN(at)) return null;
+  return { stale: now - at > STALE_AFTER_MS };
 }

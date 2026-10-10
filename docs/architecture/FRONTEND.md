@@ -133,8 +133,8 @@ full page load on sign-out or user switch (SECURITY.md T6).
 | State | When | What the user sees |
 |---|---|---|
 | Pending | Request in flight (about 3–5 s with the real LLM since hy3's hidden reasoning was turned off) | "Searching your sources…" with a skeleton. No invented progress steps |
-| Answered | 200, not a fixed sentence | Answer as plain text (`[S1]` markers removed), Sources list, `Ref #<audit_id>` |
-| Not found | 200, the fixed "I could not find this…" sentence | Muted card. **Identical whether nothing exists or nothing is permitted** (INV-5) |
+| Answered | 200, not a fixed sentence | Answer as plain text (`[S1]` markers removed); a notice when `instructions_removed` is above 0 ("KnowBuddy ignored instructions hidden in the sources", ADR-011); Sources list, each with the tool's logo and name, "N masked" when the Shield masked something for this reader (`redacted`, ADR-010; the kinds on hover and for screen readers), "updated …" and "synced …" (red with "may be out of date" after 15 minutes; nothing for data that never synced); `Ref #<audit_id>`, a link to `/admin/audit?record=N` for admins |
+| Not found | 200, the fixed "I could not find this…" sentence | Muted card. **Identical whether nothing exists or nothing is permitted** (INV-5): never the injection notice, whatever the response says |
 | Unavailable | 200, the fixed "The assistant is unavailable…" sentence | Warning with Try again |
 | Failed | 422, 503, other 5xx, backend unreachable | Short message with Try again (re-sends the same question in place) |
 | Signed out | 401 | Full page load to `/login`; the draft is not kept |
@@ -176,18 +176,32 @@ The persona-by-persona checks with expected answers, and the states that can onl
   - **Table:** one row per record, newest first, 50 at a time with **Load
     older** (`before_id`). Each event type gets a one-line summary
     (`summarise` in `lib/audit.ts`); a type the page doesn't know shows its name.
-  - **Record dialog:** a centred dialog. The open record is in the URL
-    (`?record=56`), so it can be linked or bookmarked, Back closes it, and
-    Escape returns focus to its row. A record of another company is refused
-    ("isn't in your company's trail"). For a question: candidates with their decision and
-    reason, restricted matches, what was sent to the LLM, the stored (masked)
-    question and answer, the Need-to-Know Shield's counts and the
-    prompt-injection rules that matched (never values or text). A question a
-    seeded persona asked (`live_check_mode` "stub: …": checked against stored
-    permissions, not live) gets an amber **Development: not live-checked**
-    chip, and its table row ends "· not live-checked" (`isStubCheck`, AGENTS.md
-    §2.5). Other events: their fields. Every record: its hash and the previous
-    one, and the raw JSON.
+  - **Record dialog** (`components/admin/audit-record.tsx`): a centred dialog,
+    titled "Audit record #N". The open record is in the URL (`?record=56`), so
+    it can be linked or bookmarked, Back closes it, and Escape returns focus to
+    its row. A record of another company is refused ("isn't in your company's
+    trail"). Explanations sit behind ⓘ buttons, not in headings. For a question:
+    - a **Details** table: who, when, event, role, search ("Keyword +
+      meaning"), live check ("Live, with each tool", or "Stored permissions
+      (development only)" for a seeded persona, AGENTS.md §2.5; the table row
+      also ends "· not live-checked") and LLM;
+    - a **Timings** table, one row per step, total in bold;
+    - the **Question** and **Answer**, with an ⓘ only when they hold masked
+      values (`hasMaskedValues`), and quiet lines for an instruction attempt
+      in the question, links removed or invented citations removed;
+    - one **Documents** table (`documentRows`): each document the question
+      matched, with its decision (green ✓ allowed, red ✗ denied, the words
+      kept) and reason, sent as S1, S2… (stored in label order) and cited,
+      and notes: values masked for this person (Need-to-Know Shield), "shown
+      in full" for a handler, instructions removed (ADR-011). Restricted
+      matches are its denied rows. On a phone it scrolls sideways inside its
+      box.
+
+    Other events: the Details table with their own fields. Every record: its
+    hash and the previous one, and the raw JSON.
+  - **ⓘ** (`components/info-tip.tsx`, Radix Popover): opens on hover, keyboard
+    focus and tap; Escape closes it without closing the dialog. Screen readers
+    get the text as the button's description.
   - **One search, one request:** in development React runs effects twice on
     mount; the page reuses the request for each search, so a visit writes one
     `audit_searched` record, as in production.
