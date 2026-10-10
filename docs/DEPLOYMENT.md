@@ -53,7 +53,8 @@ published at all, and the database never is.
 
 **The server:** a Tencent Cloud Lighthouse instance in **Singapore** (no ICP filing needed outside mainland China), 2
 vCPU and 4 GB RAM or more, Ubuntu 24.04 or the Docker CE image, with Docker Compose 2.24 or newer.
-**Lighthouse firewall:** allow TCP 80, TCP and UDP 443, and SSH (22) only from your own IP address. Nothing else.
+**Lighthouse firewall:** allow TCP 80, TCP and UDP 443, and SSH (22). Nothing else. Automatic deploys (section 8) need
+SSH open to all IPv4 addresses, because GitHub's servers have no fixed IP; without them, allow SSH from your own IP only.
 
 **The address** must be a domain name: Let's Encrypt does not issue certificates for bare IP addresses. Point a DNS
 `A` record at the server's public IP before the first start. `ASSUMPTION:` the team uses a domain it controls; for a
@@ -137,7 +138,7 @@ Never run `docker compose down -v` on the server: it deletes the database, inclu
 
 | Check | ✅ |
 |---|---|
-| `https://<your address>/status` | `db: ok` |
+| `https://<your address>/status` | Database: `ok` |
 | `https://<your address>/login` | The Google, Slack and Atlassian sign-in buttons; **no** "Sign in as a seeded user" and **no** token form |
 | Sign in with Slack | You land on Connections with "Connected Slack"; the browser shows the cookie as `Secure` |
 | As the admin, set a boundary and run "sync now" | `docker compose logs sync` shows the scopes synced |
@@ -161,7 +162,7 @@ changes excepted), and from the **Actions** tab with **Run workflow**:
    (Postgres in Docker), the frontend type check, tests and production build, and the doc link check. Any failure stops
    here, so a broken merge never reaches the server.
 2. **Deploy:** GitHub connects to the server over SSH and runs `scripts/deploy/update.sh` (section 5).
-3. **Check:** `https://knowbuddy.xyz/status` must report "Database ok".
+3. **Check:** `https://knowbuddy.xyz/status` must show Database: `ok`.
 
 **The deploy key can do one thing.** Its line in the server's `~/.ssh/authorized_keys` forces it to run the update
 script, with no shell, port forwarding or terminal. Someone holding the key can only trigger a deploy of what is
@@ -169,6 +170,9 @@ already on GitHub's main.
 
 **One-time setup** (until it's done, the workflow tests and skips the deploy with a warning):
 
+0. In the Lighthouse console, **Firewall** tab: the SSH (22) rule's source must be **all IPv4** (`0.0.0.0/0`), or
+   GitHub can't connect and the deploy fails with "Connection timed out". The server also accepts password sign-in,
+   so with SSH open to everyone, make sure the `ubuntu` password is long and random.
 1. On the server, as `ubuntu`, switch to main so the update script exists, then create the key with the forced command:
 
    ```bash
