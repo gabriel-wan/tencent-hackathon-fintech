@@ -113,7 +113,7 @@ Questions the team answered:
 
 ## Roadmap and status
 
-Status as of 8 October 2026, with the pull request that delivered each task. Task 1 is Vincent's, Task 2 Zewei's
+Status as of 10 October 2026, with the pull request that delivered each task. Task 1 is Vincent's, Task 2 Zewei's
 and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 
 | Dates | Task | What | Status |
@@ -127,9 +127,9 @@ and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 | 7–8 Oct | 1 | PII redaction (Need-to-Know Shield) | **Done** (#16) |
 | 7–8 Oct | 2 | UI polish; show redaction and freshness in the UI | **Done**: the Boundary page; under answers, a "N masked" chip per source, the blocked-injection notice and "synced N minutes ago"; tool logos; "Ref #" links to the audit record for admins |
 | 7–8 Oct | 3 | Prompt-injection protection; pass all 5 scenarios | **In progress**: prompt-injection protection built (ADR-011: fence, scanner, link check, `test_injection.py`, a live check against `hy3`); the 5-scenario run with real demo data is next |
-| 9–10 Oct | 1 | Deploy to Tencent Cloud (live link) | **Not started** |
+| 9–10 Oct | 1 | Deploy to Tencent Cloud (live link) | **Done** (#23, #24): live at <https://knowbuddy.xyz> with Slack sign-in, and every merge to main deploys itself after CI passes ([DEPLOYMENT.md](DEPLOYMENT.md)). Google Drive and Jira/Confluence sign-in are not configured on the server yet |
 | 9–10 Oct | 2 | Demo video and cover image | **Not started** |
-| 9–10 Oct | 3 | Tests, bug fixes and docs | **In progress** (with each pull request; docs restructure in progress) |
+| 9–10 Oct | 3 | Tests, bug fixes and docs | **In progress** (with each pull request; docs restructure in progress). CI runs every test on each pull request, and main only merges green (#24) |
 | 11–12 Oct | 1 | Final testing on a clean machine | **Not started** |
 | 11–12 Oct | 2 | Project description and diagrams | **Not started** |
 | 11–12 Oct | 3 | Collect the CodeBuddy/WorkBuddy screenshots and submit | **In progress**: the minimum is met (3 CodeBuddy sessions, 6 screenshots, [tool-usage.md](hackathon/tool-usage.md)); the submission itself is not done |
