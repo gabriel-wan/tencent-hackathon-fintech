@@ -1,7 +1,7 @@
 # Test, then deploy main to the live server (docs/DEPLOYMENT.md section 8).
 #
 # Runs after every merge to main, and from the Actions tab ("Run workflow").
-# Deploys only if every test passes. The SSH key it uses can run nothing on the
+# Deploys only if every CI check (ci.yml) passes. The SSH key it uses can run nothing on the
 # server except scripts/deploy/update.sh.
 name: Test and deploy
 
@@ -20,31 +20,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Backend tests (Postgres in Docker, as in docs/TESTING.md)
-        run: |
-          cp backend/.env.example backend/.env
-          cp frontend/.env.example frontend/.env
-          docker compose run --rm --build --user root -e POSTGRES_DB=brain_test \
-            -v ./backend/tests:/app/tests backend \
-            sh -c "uv sync --locked --group dev --quiet && pytest -q"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Frontend tests and production build
-        working-directory: frontend
-        run: |
-          npm ci
-          npm test
-          npm run build
+    uses: ./.github/workflows/ci.yml  # the same checks as every pull request
 
   deploy:
     needs: test

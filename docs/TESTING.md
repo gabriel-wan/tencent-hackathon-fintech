@@ -174,6 +174,12 @@ Shows every chat state without spending LLM tokens. Development only.
 - The manual checks (section 4) for what you changed, and accessibility (section 5) if you changed a page.
 - Write what you ran and the results in the PR's "How it was tested" ([CONTRIBUTING.md](../CONTRIBUTING.md) §3).
 
+**CI runs the automated ones again on every pull request**
+([.github/workflows/ci.yml](../.github/workflows/ci.yml)): the backend tests, the four frontend checks and the doc
+link check, shown as three checks on the pull request. They are required for main
+([DEPLOYMENT.md](DEPLOYMENT.md) §8), so a pull request can't merge until all three pass. Running them locally first is
+still faster than waiting for CI to fail.
+
 **Before submitting:** the quality gates in [hackathon/submission.md](hackathon/submission.md), including the
 end-to-end run on a clean machine.
 

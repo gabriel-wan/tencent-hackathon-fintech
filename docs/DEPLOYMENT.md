@@ -157,8 +157,9 @@ Then record what was done, and the address, in this page.
 [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) runs after every merge to main (documentation-only
 changes excepted), and from the **Actions** tab with **Run workflow**:
 
-1. **Test:** the backend tests (Postgres in Docker) and the frontend tests and production build. Any failure stops here,
-   so a broken merge never reaches the server.
+1. **Test:** the same checks as every pull request ([ci.yml](../.github/workflows/ci.yml)): the backend tests
+   (Postgres in Docker), the frontend type check, tests and production build, and the doc link check. Any failure stops
+   here, so a broken merge never reaches the server.
 2. **Deploy:** GitHub connects to the server over SSH and runs `scripts/deploy/update.sh` (section 5).
 3. **Check:** `https://knowbuddy.xyz/status` must report "Database ok".
 
@@ -194,6 +195,9 @@ already on GitHub's main.
 
 4. Delete the private key from the server (GitHub now holds the only copy): `rm ~/.ssh/github_deploy`.
 5. **Actions → Test and deploy → Run workflow** on main, and check all three steps pass.
+6. Make CI block broken merges: **Settings → Branches → Add branch ruleset** (or **Add rule**) for `main`, turn on
+   **Require status checks to pass**, and add `backend`, `frontend` and `docs`. They appear in the search box once
+   CI has run on one pull request.
 
 **To stop automatic deploys:** delete the `github-deploy` line from `~/.ssh/authorized_keys` on the server. To replace a
 leaked key: delete that line, then repeat steps 1 to 4.
