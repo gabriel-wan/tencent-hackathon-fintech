@@ -189,7 +189,10 @@ already on GitHub's main.
    ssh -i ~/.ssh/github_deploy ubuntu@localhost
    ```
 
-3. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**, three times:
+3. In GitHub: **Settings → Environments → production** (created by the workflow's first run). Under **Deployment
+   branches and tags**, choose **Selected branches and tags** and add `main`. Then **Add environment secret**, three
+   times. Environment secrets, not repository secrets: only a deploy running from main can read them, so a workflow on
+   another branch can't copy the key out.
 
    | Name | Value |
    |---|---|
@@ -197,11 +200,12 @@ already on GitHub's main.
    | `DEPLOY_KNOWN_HOSTS` | The output of `ssh-keyscan -t ed25519 <IP>`; check its fingerprint matches `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server |
    | `DEPLOY_SSH_KEY` | The whole output of `cat ~/.ssh/github_deploy` on the server, including the BEGIN and END lines |
 
-4. Delete the private key from the server (GitHub now holds the only copy): `rm ~/.ssh/github_deploy`.
-5. **Actions → Test and deploy → Run workflow** on main, and check all three steps pass.
-6. Make CI block broken merges: **Settings → Branches → Add branch ruleset** (or **Add rule**) for `main`, turn on
-   **Require status checks to pass**, and add `backend`, `frontend` and `docs`. They appear in the search box once
-   CI has run on one pull request.
+4. **Actions → Test and deploy → Run workflow** on main, and check every job passes.
+5. Delete the private key from the server (GitHub now holds the only copy): `rm ~/.ssh/github_deploy`.
+6. Make CI block broken merges: **Settings → Rules → New branch ruleset**, enforcement **Active**, target the default
+   branch, add **Repository admin** to the bypass list (for an urgent fix when CI itself is broken), tick **Require
+   status checks to pass** and add `backend`, `frontend` and `docs`. They appear in the search box once CI has run on
+   one pull request.
 
 **To stop automatic deploys:** delete the `github-deploy` line from `~/.ssh/authorized_keys` on the server. To replace a
-leaked key: delete that line, then repeat steps 1 to 4.
+leaked key: delete that line, then repeat steps 1 to 5.
