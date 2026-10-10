@@ -4,12 +4,12 @@
 **You'll:** set up one HTTPS address, the production settings and sign-in apps, deploy, and check it works.
 **Not here:** running it locally → [RUNNING.md](RUNNING.md) · how it's built → [ARCHITECTURE.md](ARCHITECTURE.md).
 
-> **Status (8 Oct): not deployed yet** (roadmap 9–10 Oct, [PROJECT.md](PROJECT.md#roadmap-and-status)). This page is
-> the plan, from ADR-008 and what the code requires. Whoever deploys updates it with what was actually done, and
-> replaces every `ASSUMPTION:` below with the real choice.
+> **Status (10 Oct): live at <https://knowbuddy.xyz>.** One Lighthouse server in Singapore (2 vCPU, 2 GB RAM, Docker
+> image, 6-month plan) runs the setup on this page, with a Let's Encrypt certificate and Slack sign-in. Google Drive and
+> Jira/Confluence sign-in are not configured on the server yet.
 
 **Contents:** 1. The shape · 2. One HTTPS address · 3. Server settings · 4. Production sign-in apps · 5. Deploy and
-update · 6. Check it works · 7. Never on the live site
+update · 6. Check it works · 7. Never on the live site · 8. Automatic deploys
 
 ## 1. The shape
 
@@ -113,15 +113,17 @@ Production uses its own apps, never the ones from a laptop. `<APP_URL>` is `http
 
 ## 5. Deploy and update
 
-On the server, from the repository folder:
+Merges to main deploy themselves once section 8 is set up. By hand, on the server as the `ubuntu` user (never
+`root`, or files in the repository end up owned by root):
 
 ```bash
-git pull
+sh ~/tencent-hackathon-fintech/scripts/deploy/update.sh
 ```
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
-```
+It switches to main, takes the latest commits, rebuilds what changed, removes unused images and waits for the backend
+to be healthy. It refuses to run if a deploy is already running, or if someone changed main on the server itself. The
+first deploy is different: run `docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d` after
+`new-env.sh` (section 3).
 
 Always include both files on the server: without the second one, Caddy does not run and ports 3000 and 8000 are
 published. The `migrate` service updates the database before the backend starts, and sets the app's database password
@@ -149,3 +151,49 @@ Then record what was done, and the address, in this page.
 - Real company data or real people's content: the demo uses fictional, team-owned workspaces (ADR-004).
 - Development mode, the demo personas or mock mode: they don't exist with `APP_ENV=production`.
 - Any secret in the repository, a screenshot or the demo video.
+
+## 8. Automatic deploys
+
+[.github/workflows/deploy.yml](../.github/workflows/deploy.yml) runs after every merge to main (documentation-only
+changes excepted), and from the **Actions** tab with **Run workflow**:
+
+1. **Test:** the backend tests (Postgres in Docker) and the frontend tests and production build. Any failure stops here,
+   so a broken merge never reaches the server.
+2. **Deploy:** GitHub connects to the server over SSH and runs `scripts/deploy/update.sh` (section 5).
+3. **Check:** `https://knowbuddy.xyz/status` must report "Database ok".
+
+**The deploy key can do one thing.** Its line in the server's `~/.ssh/authorized_keys` forces it to run the update
+script, with no shell, port forwarding or terminal. Someone holding the key can only trigger a deploy of what is
+already on GitHub's main.
+
+**One-time setup** (until it's done, the workflow tests and skips the deploy with a warning):
+
+1. On the server, as `ubuntu`, switch to main so the update script exists, then create the key with the forced command:
+
+   ```bash
+   cd ~/tencent-hackathon-fintech && git checkout main && git pull
+   ```
+
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C github-deploy -f ~/.ssh/github_deploy && echo "restrict,command=\"sh /home/ubuntu/tencent-hackathon-fintech/scripts/deploy/update.sh\" $(cat ~/.ssh/github_deploy.pub)" >> ~/.ssh/authorized_keys
+   ```
+
+2. Test it on the server itself: this must run a deploy and print "Deployed" (answer `yes` to the host-key question):
+
+   ```bash
+   ssh -i ~/.ssh/github_deploy ubuntu@localhost
+   ```
+
+3. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**, three times:
+
+   | Name | Value |
+   |---|---|
+   | `DEPLOY_HOST` | The server's public IP |
+   | `DEPLOY_KNOWN_HOSTS` | The output of `ssh-keyscan -t ed25519 <IP>`; check its fingerprint matches `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server |
+   | `DEPLOY_SSH_KEY` | The whole output of `cat ~/.ssh/github_deploy` on the server, including the BEGIN and END lines |
+
+4. Delete the private key from the server (GitHub now holds the only copy): `rm ~/.ssh/github_deploy`.
+5. **Actions → Test and deploy → Run workflow** on main, and check all three steps pass.
+
+**To stop automatic deploys:** delete the `github-deploy` line from `~/.ssh/authorized_keys` on the server. To replace a
+leaked key: delete that line, then repeat steps 1 to 4.

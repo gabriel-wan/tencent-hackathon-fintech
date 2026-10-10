@@ -1,0 +1,83 @@
+# Test, then deploy main to the live server (docs/DEPLOYMENT.md section 8).
+#
+# Runs after every merge to main, and from the Actions tab ("Run workflow").
+# Deploys only if every test passes. The SSH key it uses can run nothing on the
+# server except scripts/deploy/update.sh.
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**/*.md"]  # documentation-only changes don't redeploy
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false  # never stop a deploy half-way; queue the next one instead
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Backend tests (Postgres in Docker, as in docs/TESTING.md)
+        run: |
+          cp backend/.env.example backend/.env
+          cp frontend/.env.example frontend/.env
+          docker compose run --rm --build --user root -e POSTGRES_DB=brain_test \
+            -v ./backend/tests:/app/tests backend \
+            sh -c "uv sync --locked --group dev --quiet && pytest -q"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend tests and production build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+  deploy:
+    needs: test
+    if: github.repository == 'gabriel-wan/tencent-hackathon-fintech'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$KNOWN_HOSTS" ] || [ -z "$HOST" ]; then
+            echo "::warning::Deploy secrets are not set yet (docs/DEPLOYMENT.md section 8): skipping the deploy."
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The server's authorized_keys entry forces this key to run scripts/deploy/update.sh.
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes "ubuntu@$HOST"
+
+      - name: Check the live site
+        run: |
+          for _ in $(seq 1 12); do
+            if curl -fsS --max-time 10 https://knowbuddy.xyz/status | grep -q "Database ok"; then
+              echo "Live site reports Database ok"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::https://knowbuddy.xyz/status did not report 'Database ok'"
+          exit 1
