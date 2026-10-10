@@ -46,15 +46,31 @@ else to the frontend:
 | `/oauth/<provider>/callback` | backend `:8000` | Where the tool returns after sign-in |
 | everything else, including `/connectors` and `/api/*` | frontend `:3000` | The website; it forwards `/api/*` to the backend itself |
 
-Only the proxy should be reachable from the internet: close ports 3000 and 8000 in the Lighthouse firewall. The
-database has no public port.
+Only the proxy should be reachable from the internet. The proxy is **Caddy**, added by
+[docker-compose.prod.yml](../docker-compose.prod.yml) with the routing above in [deploy/Caddyfile](../deploy/Caddyfile).
+It gets a free TLS certificate from Let's Encrypt by itself. In production the backend and frontend ports are not
+published at all, and the database never is.
 
-`ASSUMPTION:` the proxy is Caddy or Nginx with a free TLS certificate (e.g. Let's Encrypt), and the address is a domain
-the team controls.
+**The server:** a Tencent Cloud Lighthouse instance in **Singapore** (no ICP filing needed outside mainland China), 2
+vCPU and 4 GB RAM or more, Ubuntu 24.04 or the Docker CE image, with Docker Compose 2.24 or newer.
+**Lighthouse firewall:** allow TCP 80, TCP and UDP 443, and SSH (22) only from your own IP address. Nothing else.
+
+**The address** must be a domain name: Let's Encrypt does not issue certificates for bare IP addresses. Point a DNS
+`A` record at the server's public IP before the first start. `ASSUMPTION:` the team uses a domain it controls; for a
+quick test without one, a wildcard-DNS name such as `<ip-with-dashes>.sslip.io` resolves to the server and can get a
+certificate, but shared names like this are more likely to hit Let's Encrypt rate limits.
 
 ## 3. Server settings
 
-Create the two `.env` files on the server, never in the repository. Use **new** secrets, never the ones from a laptop.
+Create the `.env` files on the server, never in the repository. Use **new** secrets, never the ones from a laptop.
+The script does this for you, generating every password and key and never printing them:
+
+```bash
+sh scripts/deploy/new-env.sh <your domain>
+```
+
+It writes `backend/.env`, `frontend/.env` and a top-level `.env` (the address for Caddy), and refuses to overwrite
+existing files. Then fill in `LLM_API_KEY` and the sign-in apps (section 4) in `backend/.env`. What it sets:
 
 **`backend/.env`:**
 
@@ -104,12 +120,14 @@ git pull
 ```
 
 ```bash
-docker compose up --build -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
 ```
 
-The `migrate` service updates the database before the backend starts, and sets the app's database password from
-`APP_DB_PASSWORD`. The `sync` service then syncs every company every 5 minutes. To see what's happening:
-`docker compose ps` and `docker compose logs backend sync`.
+Always include both files on the server: without the second one, Caddy does not run and ports 3000 and 8000 are
+published. The `migrate` service updates the database before the backend starts, and sets the app's database password
+from `APP_DB_PASSWORD`. The `sync` service then syncs every company every 5 minutes. Every service restarts by itself
+after a crash or a server reboot. To see what's happening: `docker compose ps` and
+`docker compose logs proxy backend sync` (the proxy log shows the certificate being issued on first start).
 
 Never run `docker compose down -v` on the server: it deletes the database, including the audit log.
 
