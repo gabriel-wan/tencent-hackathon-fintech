@@ -21,7 +21,8 @@ are ADR-009 in [DECISIONS.md](../decisions/DECISIONS.md).
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
 | `/admin/audit` | Admins only. Search the audit trail, read each record, verify the hash chain (see "Admin pages") |
 | `/admin/boundary` | Admins only. Choose which channels, folders, projects and spaces KnowBuddy may read; sync now (see "Admin pages") |
-| `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
+| `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`, a green or red dot per value. For developers. The deploy's live check reads `Database</dt><dd …>ok</dd>` here (`.github/workflows/deploy.yml`), so the value stays plain text in its `<dd>` |
+| Any other URL | "Page not found" (`app/not-found.tsx`, HTTP 404) with "Back to KnowBuddy". A page that throws shows "Something went wrong" (`app/error.tsx`) with Try again; the error goes to the console and server log, never onto the page |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
 
