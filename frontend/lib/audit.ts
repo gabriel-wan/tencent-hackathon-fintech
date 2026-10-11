@@ -374,22 +374,19 @@ export function moreFiltersCount(filters: AuditFilters): number {
 export type Outcome = { text: string; tone: "neutral" | "success" | "danger" };
 
 /**
- * A question record's outcome, for the table: answered, not found or failed, plus how many documents were
- * denied (by the live check, or restricted matches the person may not see). Other events have none.
+ * A question record's outcome, for the table: answered, not found or LLM failed. Other events have none. Which
+ * documents were denied is in the record itself, not the table (Zewei, 12 Oct).
  */
 export function outcomes(record: AuditRecord): Outcome[] {
   if (record.event_type !== "query") return [];
   const p = record.payload as QueryPayload;
-  const result: Outcome[] = [
+  return [
     p.llm_error
       ? { text: "LLM failed", tone: "danger" }
       : p.citations?.length
         ? { text: "Answered", tone: "success" }
         : { text: "Not found", tone: "neutral" },
   ];
-  const denied = (p.candidates ?? []).filter((c) => !c.allowed).length + (p.restricted_matches?.length ?? 0);
-  if (denied) result.push({ text: `${denied} denied`, tone: "danger" });
-  return result;
 }
 
 /** The table's line for a record: the question itself for questions (its outcome is shown as chips), else summarise. */

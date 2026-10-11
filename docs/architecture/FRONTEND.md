@@ -209,9 +209,9 @@ menu (name and email, theme, Sign out).
   - **Table:** one row per record, newest first, 50 at a time with **Load
     older** (`before_id`), fixed columns so long lines truncate. "What" is the
     event as a chip, then the question in quotes (or the one-line `summarise`
-    for other events), then for questions their outcome chips (`outcomes`):
-    Answered (green), Not found, LLM failed (red) and "N denied" (red: denied
-    by the live check or restricted matches). The whole row opens the record.
+    for other events), then for questions their outcome chip (`outcomes`):
+    Answered (green), Not found, or LLM failed (red). Which documents were
+    denied is in the record. The whole row opens the record.
   - **Empty:** "No records yet", or with filters "No records match these
     filters" with Clear filters.
   - **Record dialog** (`components/admin/audit-record.tsx`): a centred dialog,

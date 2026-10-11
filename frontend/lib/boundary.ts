@@ -78,10 +78,11 @@ const details = (s: Scope | undefined) => ({ private: s?.private ?? false, paren
  */
 export function rowsFor(source: string, scopes: Scope[] | null, boundary: BoundaryEntry[]): ScopeRow[] {
   const allowed = boundary.filter((b) => b.source === source);
-  const seen = new Set((scopes ?? []).map((s) => s.id));
+  const listedById = new Map((scopes ?? []).map((s) => [s.id, s]));
+  const seen = new Set(listedById.keys());
   const inside: ScopeRow[] = allowed
     .map((b) => {
-      const listed = scopes?.find((s) => s.id === b.scope_id);
+      const listed = listedById.get(b.scope_id);
       return {
         id: b.scope_id,
         title: listed?.title || b.title || b.scope_id,
@@ -109,41 +110,56 @@ export function filterRows(rows: ScopeRow[], text: string): ScopeRow[] {
 /** The page's "Show" choice. */
 export type ShowMode = "all" | "in" | "out";
 
+/**
+ * The folder tree, worked out once per change of the rows (the Boundary page memoises it): every lookup below is
+ * then a Map read, so thousands of Drive folders stay fast (review of the UI revamp PR: rebuilding this per call
+ * froze the page at 2,000 folders).
+ * - `covered`: a folder's nearest ancestor in the boundary (sync includes subfolders, so it is already in);
+ * - `contains`: for a folder with a folder below it in the boundary, one such folder (adding it would overlap).
+ */
+export type RowIndex = { byId: Map<string, ScopeRow>; covered: Map<string, ScopeRow>; contains: Map<string, ScopeRow> };
+
+export function indexRows(rows: ScopeRow[]): RowIndex {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const covered = new Map<string, ScopeRow>();
+  const contains = new Map<string, ScopeRow>();
+  for (const row of rows) {
+    for (const up of ancestorsOf(row, byId)) {
+      if (row.inBoundary && !contains.has(up.id)) contains.set(up.id, row);
+      if (up.inBoundary && !covered.has(row.id)) covered.set(row.id, up);
+    }
+  }
+  return { byId, covered, contains };
+}
+
+/** The listed folders above this one, nearest first (a loop in odd data ends the walk). */
+function ancestorsOf(row: ScopeRow, byId: Map<string, ScopeRow>): ScopeRow[] {
+  const out: ScopeRow[] = [];
+  const seen = new Set([row.id]);
+  for (let p = row.parent; p && !seen.has(p); ) {
+    const up = byId.get(p);
+    if (!up) break;
+    seen.add(p);
+    out.push(up);
+    p = up.parent;
+  }
+  return out;
+}
+
 /** Rows matching the search and the Show choice. A Drive folder included with its parent counts as "in". */
-export function matchRows(rows: ScopeRow[], text: string, show: ShowMode): ScopeRow[] {
-  const inside = (r: ScopeRow) => r.inBoundary || coveredBy(r, rows) !== null;
+export function matchRows(rows: ScopeRow[], text: string, show: ShowMode, index: RowIndex = indexRows(rows)): ScopeRow[] {
+  const inside = (r: ScopeRow) => r.inBoundary || index.covered.has(r.id);
   return filterRows(rows, text).filter((r) => show === "all" || (show === "in") === inside(r));
 }
 
-/**
- * The nearest folder above this one that is in the boundary, or null. Sync includes subfolders, so a folder
- * under a ticked one is already in (the backend refuses adding it again, 409).
- */
-export function coveredBy(row: ScopeRow, rows: ScopeRow[]): ScopeRow | null {
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const seen = new Set([row.id]);
-  for (let p = row.parent; p && !seen.has(p); p = byId.get(p)?.parent ?? null) {
-    seen.add(p);
-    const up = byId.get(p);
-    if (!up) return null;
-    if (up.inBoundary) return up;
-  }
-  return null;
+/** The nearest folder above this one that is in the boundary, or null. */
+export function coveredBy(row: ScopeRow, index: RowIndex): ScopeRow | null {
+  return index.covered.get(row.id) ?? null;
 }
 
-/** True when a folder below this one is in the boundary (adding this one would be refused, 409). */
-export function containsAllowed(row: ScopeRow, rows: ScopeRow[]): boolean {
-  return rows.some((r) => r.inBoundary && r.id !== row.id && isAbove(row.id, r, rows));
-}
-
-function isAbove(id: string, row: ScopeRow, rows: ScopeRow[]): boolean {
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const seen = new Set([row.id]);
-  for (let p = row.parent; p && !seen.has(p); p = byId.get(p)?.parent ?? null) {
-    if (p === id) return true;
-    seen.add(p);
-  }
-  return false;
+/** A folder below this one that is in the boundary (adding this one would be refused, 409), or null. */
+export function containsAllowed(row: ScopeRow, index: RowIndex): ScopeRow | null {
+  return index.contains.get(row.id) ?? null;
 }
 
 /** Drive folders as a tree, depth first, each level by name, with its depth (0 at the top). */
@@ -152,7 +168,9 @@ export function treeOrder(rows: ScopeRow[]): { row: ScopeRow; depth: number }[] 
   const children = new Map<string | null, ScopeRow[]>();
   for (const r of rows) {
     const key = r.parent && ids.has(r.parent) ? r.parent : null;
-    children.set(key, [...(children.get(key) ?? []), r]);
+    const siblings = children.get(key);
+    if (siblings) siblings.push(r);
+    else children.set(key, [r]);
   }
   const out: { row: ScopeRow; depth: number }[] = [];
   const seen = new Set<string>();
@@ -174,13 +192,14 @@ export const BULK_LIMIT = 50;
 /**
  * What "Add all shown" adds: shown rows outside the boundary, leaving out Drive folders already included with
  * a parent, folders with one below them already in, and folders inside another one being added (the parent
- * covers them). What "Remove all shown" removes: the shown rows in the boundary.
+ * covers them). What "Remove all shown" removes: the shown rows in the boundary. Each candidate's parents are
+ * walked once, against a Set: about rows × depth, not rows².
  */
-export function bulkRows(shown: ScopeRow[], all: ScopeRow[], mode: "add" | "remove"): ScopeRow[] {
+export function bulkRows(shown: ScopeRow[], index: RowIndex, mode: "add" | "remove"): ScopeRow[] {
   if (mode === "remove") return shown.filter((r) => r.inBoundary);
-  const candidates = shown.filter((r) => !r.inBoundary && coveredBy(r, all) === null && !containsAllowed(r, all));
+  const candidates = shown.filter((r) => !r.inBoundary && !index.covered.has(r.id) && !index.contains.has(r.id));
   const ids = new Set(candidates.map((r) => r.id));
-  return candidates.filter((r) => !candidates.some((other) => other.id !== r.id && ids.has(other.id) && isAbove(other.id, r, all)));
+  return candidates.filter((r) => !ancestorsOf(r, index.byId).some((up) => ids.has(up.id)));
 }
 
 /**

@@ -283,14 +283,14 @@ describe("outcomes and row text", () => {
   const query = (payload: Record<string, unknown>): AuditRecord => ({
     id: 1, ts: "2026-10-11T00:00:00Z", user_email: "a@co.example", event_type: "query", payload, prev_hash: "", hash: "",
   });
-  it("answered, with denied documents counted from both lists", () => {
+  it("answered, without a count of denied documents (they're in the record)", () => {
     const r = query({
       question: "q?",
       citations: ["slack:C1:1"],
       candidates: [{ document: "a", allowed: true, reason: "" }, { document: "b", allowed: false, reason: "" }],
       restricted_matches: [{ document: "c", reason: "" }],
     });
-    expect(outcomes(r)).toEqual([{ text: "Answered", tone: "success" }, { text: "2 denied", tone: "danger" }]);
+    expect(outcomes(r)).toEqual([{ text: "Answered", tone: "success" }]);
     expect(rowText(r)).toBe('"q?"');
   });
   it("not found, and LLM failed", () => {
