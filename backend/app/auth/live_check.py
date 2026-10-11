@@ -111,9 +111,10 @@ def stored_acl_stub(candidates: Sequence[CandidateLike], principals: list[str]) 
 
 def default_checkers(candidates: Sequence[CandidateLike], principals: list[str]) -> dict[str, CanRead]:
     log.warning("live check is using the STUB (%s)", STUB_MODE)
+    # Every source the seed has documents in: a source without a checker would deny all its documents.
     return {
         source: stored_acl_stub([c for c in candidates if c.source == source], principals)
-        for source in ("slack", "drive")
+        for source in ("slack", "drive", "jira", "confluence")
     }
 
 
