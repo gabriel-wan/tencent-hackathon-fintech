@@ -252,10 +252,30 @@ menu (name and email, theme, Sign out).
   Calls the admin API in `backend/app/connectors/admin.py`:
   `GET /api/admin/scopes/{source}` (what the admin can see in each tool, read
   with their own connection), `GET /api/admin/boundary`, `PUT` and `DELETE
-  /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync`.
-  - **One section per tool** (Slack, Google Drive, Jira, Confluence), each
-    loading its own list, so one tool failing never blanks the others. A
-    filter box appears above 10 rows.
+  /api/admin/boundary/{source}/{scope_id}`, `POST
+  /api/admin/boundary/{source}/bulk` and `POST /api/admin/sync`. Built for
+  hundreds of channels and nested folders (the handbook's Company A).
+  - **A sticky bar** (from 768 px; on phones it scrolls away) stays in view while scrolling: one search across the four
+    tools ("Find a channel, folder, project or space", matching names and
+    Drive paths, the match highlighted), **Show** All / In the boundary / Not
+    in it (`matchRows` in `lib/boundary.ts`), Sync now and the sync status.
+  - **One collapsible section per tool** (Slack, Google Drive, Jira,
+    Confluence), each loading its own list, so one tool failing never blanks
+    the others; the heading says "4 of 73 channels in the boundary · 10
+    shown". The first 50 rows, then "Show 100 more".
+  - **Per tool:** Slack in Public and Private groups (a lock on private ones;
+    DMs are never offered). Drive as a **tree** (`treeOrder`), or with each
+    folder's path when searching; a folder under a ticked one is shown ticked
+    and locked, "Included with *Parent*" (`coveredBy`), since sync includes
+    subfolders and the backend refuses overlapping folders (409, shown under
+    the row). Jira with the project key.
+  - **Bulk:** "Add all N shown" and "Remove all N shown" per section, on what
+    the search and Show leave (`bulkRows`: adding skips folders already
+    included, folders with one below them in, and folders under another being
+    added). Over 50 (`BULK_LIMIT`) they are disabled with "Search to narrow
+    it". A confirmation names the first five, says what happens, and how many
+    are private channels; one request, all or nothing, each scope audited on
+    its own; adding starts a sync, like a tick.
   - **A checkbox per scope.** Ticking adds it and starts a sync at once.
     Unticking asks first ("its content stops appearing in answers immediately,
     for everyone"; for a scope that never synced, e.g. seeded demo data: "only
