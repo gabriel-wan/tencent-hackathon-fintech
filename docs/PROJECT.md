@@ -128,11 +128,11 @@ and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 | 7–8 Oct | 2 | UI polish; show redaction and freshness in the UI | **Done**: the Boundary page; under answers, a "N masked" chip per source, the blocked-injection notice and "synced N minutes ago"; tool logos; "Ref #" links to the audit record for admins |
 | 7–8 Oct | 3 | Prompt-injection protection; pass all 5 scenarios | **In progress**: prompt-injection protection built (ADR-011: fence, scanner, link check, `test_injection.py`, a live check against `hy3`); the 5-scenario run with real demo data is next |
 | 9–10 Oct | 1 | Deploy to Tencent Cloud (live link) | **Done** (#23, #24): live at <https://knowbuddy.xyz> with Slack, Google Drive and Jira/Confluence sign-in, and every merge to main deploys itself after CI passes ([DEPLOYMENT.md](DEPLOYMENT.md)). Only the Atlassian app's owner (the demo admin) can connect Jira and Confluence until the app is shared |
-| 9–10 Oct | 2 | Demo video and cover image | **Not started** |
+| 9–10 Oct | 2 | Demo video and cover image | **In progress**: the cover image is done ([hackathon/cover.png](hackathon/cover.png), made with Miora); the demo video is not started |
 | 9–10 Oct | 3 | Tests, bug fixes and docs | **In progress** (with each pull request; docs restructure in progress). CI runs every test on each pull request, and main only merges green (#24) |
 | 11–12 Oct | 1 | Final testing on a clean machine | **Not started** |
 | 11–12 Oct | 2 | Project description and diagrams | **Not started** |
-| 11–12 Oct | 3 | Collect the CodeBuddy/WorkBuddy screenshots and submit | **In progress**: the minimum is met (3 CodeBuddy sessions, 6 screenshots, [tool-usage.md](hackathon/tool-usage.md)); the submission itself is not done |
+| 11–12 Oct | 3 | Collect the CodeBuddy/WorkBuddy screenshots and submit | **In progress**: the minimum is met (3 CodeBuddy sessions, 6 screenshots, [tool-usage.md](hackathon/tool-usage.md)), plus a Miora session for the cover; the submission itself is not done |
 | 13–16 Oct | | Buffer | |
 
 ### Planned UI work
