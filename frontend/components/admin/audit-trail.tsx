@@ -1,13 +1,18 @@
 "use client";
 
-import { Check, Copy, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Check, Copy, ScrollText, Search, SearchX, ShieldAlert, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
+import { RecordDetail } from "@/components/admin/audit-record";
+import { Disclosure } from "@/components/disclosure";
+import { EmptyState } from "@/components/empty-state";
+import { InfoTip } from "@/components/info-tip";
+import { StatusChip } from "@/components/status-chip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { RecordDetail } from "@/components/admin/audit-record";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,13 +26,20 @@ import {
   NO_FILTERS,
   SOURCES,
   type VerifyResult,
+  eventLabel,
+  filterChips,
+  moreFiltersCount,
+  outcomes,
   pageUrl,
+  rowText,
   summarise,
   toApiQuery,
+  withoutFilter,
 } from "@/lib/audit";
 import { formatExact } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
-// /admin/audit (ADR-007): search the company's audit trail, read each record,
+// /admin/audit (ADR-007): search the company's audit trail, read each record
 // in a dialog, and verify the hash chain. Admins only: the admin layout hides the page
 // from others, and the backend returns 403 to them anyway. Every search and
 // every verification is itself recorded in the trail.
@@ -48,9 +60,9 @@ function failureOf(error: unknown): string {
   return "Something went wrong.";
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <label className={cn("grid gap-1 text-xs font-medium text-muted-foreground", className)}>
       {label}
       {children}
     </label>
@@ -92,79 +104,138 @@ function SelectField({
   );
 }
 
+/**
+ * The filter bar: who and when in view, the rest behind "More filters". Searching is explicit (Search, or
+ * Enter): the backend records every search in the trail, so typing must not send one per key.
+ */
 function Filters({
   value,
+  applied,
   onChange,
   onSearch,
-  onClear,
+  onApply,
   busy,
 }: {
   value: AuditFilters;
+  applied: AuditFilters;
   onChange: (next: AuditFilters) => void;
   onSearch: () => void;
-  onClear: () => void;
+  onApply: (filters: AuditFilters) => void;
   busy: boolean;
 }) {
   const set = (key: keyof AuditFilters) => (event: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...value, [key]: event.target.value });
+  const [moreOpen, setMoreOpen] = useState(false);
+  const more = moreFiltersCount(value);
+  const chips = filterChips(applied);
   return (
-    <form
-      role="search"
-      aria-label="Audit trail"
-      className="grid gap-3 sm:grid-cols-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSearch();
-      }}
-    >
-      <Field label="User (email)">
-        <Input value={value.user} onChange={set("user")} placeholder="name@company.com" autoComplete="off" />
-      </Field>
-      <Field label="From">
-        <Input type="date" value={value.from} onChange={set("from")} />
-      </Field>
-      <Field label="To (inclusive)">
-        <Input type="date" value={value.to} onChange={set("to")} />
-      </Field>
-      <SelectField
-        label="Event"
-        value={value.event_type || ANY}
-        onChange={(v) => onChange({ ...value, event_type: v === ANY ? "" : v })}
-        options={[{ value: ANY, label: "Any event" }, ...EVENT_TYPES]}
-      />
-      <SelectField
-        label="Tool"
-        value={value.source || ANY}
-        onChange={(v) => onChange({ ...value, source: v === ANY ? "" : v, scope_id: v === ANY ? "" : value.scope_id })}
-        options={[{ value: ANY, label: "Any tool" }, ...SOURCES]}
-      />
-      <Field label="Channel, folder, project or space ID">
-        <Input
-          value={value.scope_id}
-          onChange={set("scope_id")}
-          disabled={!value.source}
-          placeholder={value.source ? "e.g. C_ENG" : "Pick a tool first"}
-          autoComplete="off"
-        />
-      </Field>
-      <Field label="Document">
-        <Input value={value.document} onChange={set("document")} placeholder="e.g. drive:D_SALARY" autoComplete="off" />
-      </Field>
-      <div className="flex items-end gap-2 sm:col-span-2">
+    <div className="grid gap-3">
+      <form
+        role="search"
+        aria-label="Audit trail"
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSearch();
+        }}
+      >
+        <Field label="User (email)" className="min-w-56 flex-1">
+          <div className="relative">
+            <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={value.user} onChange={set("user")} placeholder="name@company.com" autoComplete="off" className="pl-8" />
+          </div>
+        </Field>
+        <Field label="From">
+          <Input type="date" value={value.from} onChange={set("from")} className="w-40" />
+        </Field>
+        <Field label="To (inclusive)">
+          <Input type="date" value={value.to} onChange={set("to")} className="w-40" />
+        </Field>
+        <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline">
+              <SlidersHorizontal aria-hidden="true" />
+              More filters
+              {more ? (
+                <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground tabular-nums">
+                  {more}
+                  <span className="sr-only"> set</span>
+                </span>
+              ) : null}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="grid w-80 gap-3">
+            <SelectField
+              label="Event"
+              value={value.event_type || ANY}
+              onChange={(v) => onChange({ ...value, event_type: v === ANY ? "" : v })}
+              options={[{ value: ANY, label: "Any event" }, ...EVENT_TYPES]}
+            />
+            <SelectField
+              label="Tool"
+              value={value.source || ANY}
+              onChange={(v) => onChange({ ...value, source: v === ANY ? "" : v, scope_id: v === ANY ? "" : value.scope_id })}
+              options={[{ value: ANY, label: "Any tool" }, ...SOURCES]}
+            />
+            <Field label="Channel, folder, project or space ID">
+              <Input
+                value={value.scope_id}
+                onChange={set("scope_id")}
+                disabled={!value.source}
+                placeholder={value.source ? "e.g. C_ENG" : "Pick a tool first"}
+                autoComplete="off"
+              />
+            </Field>
+            <Field label="Document">
+              <Input value={value.document} onChange={set("document")} placeholder="e.g. drive:D_SALARY" autoComplete="off" />
+            </Field>
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setMoreOpen(false);
+                onSearch();
+              }}
+            >
+              Search
+            </Button>
+          </PopoverContent>
+        </Popover>
         <Button type="submit" disabled={busy}>
           Search
         </Button>
-        <Button type="button" variant="outline" onClick={onClear} disabled={busy}>
-          Clear
-        </Button>
-      </div>
-    </form>
+      </form>
+      {chips.length ? (
+        <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
+          {chips.map((chip) => (
+            <li key={chip.key}>
+              <button
+                type="button"
+                onClick={() => onApply(withoutFilter(applied, chip.key))}
+                disabled={busy}
+                aria-label={`Remove filter ${chip.label}`}
+                className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border bg-secondary pr-1.5 pl-2.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_8%)] active:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_14%)] disabled:opacity-50"
+              >
+                {chip.label}
+                <X aria-hidden="true" className="size-3.5" />
+              </button>
+            </li>
+          ))}
+          <li>
+            <Button variant="ghost" size="sm" onClick={() => onApply(NO_FILTERS)} disabled={busy}>
+              Clear filters
+            </Button>
+          </li>
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
+/** The hash chain, as a status card: not checked yet, intact, or broken (with a way to that record). */
 function VerifyPanel({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
   const [state, setState] = useState<
-    { status: "idle" | "running" } | { status: "done"; result: VerifyResult } | { status: "failed"; message: string }
+    { status: "idle" | "running" } | { status: "done"; result: VerifyResult; at: string } | { status: "failed"; message: string }
   >({ status: "idle" });
   const [copied, setCopied] = useState(false);
 
@@ -172,7 +243,7 @@ function VerifyPanel({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
     setState({ status: "running" });
     setCopied(false);
     try {
-      setState({ status: "done", result: await verifyAuditChain() });
+      setState({ status: "done", result: await verifyAuditChain(), at: new Date().toISOString() });
     } catch (error) {
       setState({ status: "failed", message: failureOf(error) });
     }
@@ -188,68 +259,91 @@ function VerifyPanel({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
   }
 
   const result = state.status === "done" ? state.result : null;
+  const broken = result && !result.ok;
   return (
-    <div className="grid gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Each record holds the hash of the one before it, so a changed, deleted or reordered record shows.
-        </p>
-        <Button variant="outline" size="sm" onClick={verify} disabled={state.status === "running"} aria-busy={state.status === "running"}>
-          <ShieldCheck aria-hidden="true" />
-          {state.status === "running" ? "Verifying…" : "Verify chain"}
-        </Button>
-      </div>
-      <div aria-live="polite">
-        {state.status === "failed" ? (
-          <Alert variant="destructive">
-            <ShieldAlert aria-hidden="true" />
-            <AlertTitle>Couldn&apos;t verify the chain</AlertTitle>
-            <AlertDescription>{state.message}</AlertDescription>
-          </Alert>
-        ) : null}
-        {result && result.ok ? (
-          <Alert>
-            <ShieldCheck aria-hidden="true" />
-            <AlertTitle>Chain intact</AlertTitle>
-            <AlertDescription>
-              <p>
+    <section
+      aria-labelledby="chain-heading"
+      className={cn(
+        "grid gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10",
+        broken && "ring-destructive/40",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className={cn(
+            "grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground",
+            result?.ok && "bg-success text-success-foreground",
+            broken && "bg-destructive/10 text-destructive",
+          )}
+        >
+          {broken ? <ShieldAlert aria-hidden="true" className="size-5" /> : <ShieldCheck aria-hidden="true" className="size-5" />}
+        </span>
+        <div className="grid min-w-0 flex-1 gap-0.5">
+          <h2 id="chain-heading" className="flex items-center gap-1 text-sm font-semibold">
+            Hash chain
+            <InfoTip label="About the hash chain">
+              Each record holds the hash of the one before it, so a changed, deleted or reordered record shows when the
+              chain is verified.
+            </InfoTip>
+          </h2>
+          <p aria-live="polite" className="text-sm text-muted-foreground">
+            {state.status === "idle" ? "Not verified on this visit." : null}
+            {state.status === "running" ? "Verifying…" : null}
+            {state.status === "failed" ? <span className="text-destructive">{state.message}</span> : null}
+            {result?.ok ? (
+              <>
+                <StatusChip tone="success" className="mr-1.5 align-middle">
+                  <Check aria-hidden="true" />
+                  Intact
+                </StatusChip>
                 {result.checked} {result.checked === 1 ? "record" : "records"} checked: none changed, deleted or
                 reordered.
-              </p>
-              {result.head ? (
-                <div className="grid gap-1.5">
-                  <p>
-                    Latest record #{result.head.id}. Note its hash outside KnowBuddy: if anyone rewrote the whole log,
-                    it would no longer match.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs break-all">{result.head.hash}</code>
-                    <Button variant="outline" size="sm" onClick={() => copy(result.head!.hash)}>
-                      {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                      {copied ? "Copied" : "Copy hash"}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        {result && !result.ok ? (
-          <Alert variant="destructive">
-            <ShieldAlert aria-hidden="true" />
-            <AlertTitle>Chain broken at record #{result.first_broken_id}</AlertTitle>
-            <AlertDescription>
-              <p>{result.reason}</p>
-              {result.first_broken_id !== null ? (
-                <Button variant="outline" size="sm" onClick={() => onOpenRecord(result.first_broken_id!)}>
-                  Open record #{result.first_broken_id}
-                </Button>
-              ) : null}
-            </AlertDescription>
-          </Alert>
-        ) : null}
+              </>
+            ) : null}
+            {broken ? (
+              <>
+                <StatusChip tone="danger" className="mr-1.5 align-middle">
+                  <X aria-hidden="true" />
+                  Broken at #{result.first_broken_id}
+                </StatusChip>
+                {result.reason}
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {broken && result.first_broken_id !== null ? (
+            <Button variant="outline" size="sm" onClick={() => onOpenRecord(result.first_broken_id!)}>
+              Open record #{result.first_broken_id}
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={verify}
+            disabled={state.status === "running"}
+            aria-busy={state.status === "running"}
+          >
+            <ShieldCheck aria-hidden="true" />
+            {state.status === "running" ? "Verifying…" : state.status === "done" ? "Verify again" : "Verify chain"}
+          </Button>
+        </div>
       </div>
-    </div>
+      {result?.ok && result.head ? (
+        <Disclosure summary={`Latest record #${result.head.id} and its hash`}>
+          <div className="grid gap-2 text-muted-foreground">
+            <p>Note this hash outside KnowBuddy: if anyone rewrote the whole log, it would no longer match.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs break-all text-foreground">{result.head.hash}</code>
+              <Button variant="outline" size="sm" onClick={() => copy(result.head!.hash)}>
+                {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                {copied ? "Copied" : "Copy hash"}
+              </Button>
+            </div>
+          </div>
+        </Disclosure>
+      ) : null}
+    </section>
   );
 }
 
@@ -376,6 +470,8 @@ export function AuditTrail({
   }, []);
 
   const records = results.status === "ready" ? results.records : [];
+  const filtered = filterChips(applied).length > 0;
+
   return (
     <div className="grid gap-6">
       <VerifyPanel onOpenRecord={openRecord} />
@@ -386,9 +482,10 @@ export function AuditTrail({
       ) : null}
       <Filters
         value={draft}
+        applied={applied}
         onChange={setDraft}
         onSearch={() => apply(draft)}
-        onClear={() => apply(NO_FILTERS)}
+        onApply={apply}
         busy={results.status === "loading"}
       />
       <p className="sr-only" aria-live="polite">
@@ -400,15 +497,37 @@ export function AuditTrail({
           <AlertTitle>Couldn&apos;t load the audit trail</AlertTitle>
           <AlertDescription>{results.message}</AlertDescription>
         </Alert>
+      ) : results.status === "ready" && records.length === 0 ? (
+        <div className="rounded-xl ring-1 ring-foreground/10">
+          {filtered ? (
+            <EmptyState
+              icon={SearchX}
+              title="No records match these filters"
+              description="Try a wider date range, or remove a filter."
+              action={
+                <Button variant="outline" onClick={() => apply(NO_FILTERS)}>
+                  Clear filters
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={ScrollText}
+              title="No records yet"
+              description="Questions, boundary changes and connections appear here as they happen."
+            />
+          )}
+        </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
+        <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-foreground/10">
+          {/* Fixed columns: a long question truncates instead of pushing its outcome out of view. */}
+          <Table className="min-w-[44rem] table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>User</TableHead>
+                <TableHead className="w-40">Time</TableHead>
+                <TableHead className="w-44">User</TableHead>
                 <TableHead>What</TableHead>
-                <TableHead className="text-right">Ref</TableHead>
+                <TableHead className="w-16 text-right">Ref</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -421,32 +540,38 @@ export function AuditTrail({
                     </TableRow>
                   ))
                 : null}
-              {results.status === "ready" && records.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                    No records match these filters.
-                  </TableCell>
-                </TableRow>
-              ) : null}
               {records.map((record) => (
-                <TableRow key={record.id}>
-                  <TableCell className="whitespace-nowrap tabular-nums">{formatExact(record.ts)}</TableCell>
-                  <TableCell className="max-w-48 truncate" title={record.user_email ?? undefined}>
+                <TableRow
+                  key={record.id}
+                  // The row's button stretches over the whole row (after:inset-0), so anywhere on it opens the record.
+                  className="relative cursor-pointer"
+                >
+                  <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">{formatExact(record.ts)}</TableCell>
+                  <TableCell className="truncate" title={record.user_email ?? undefined}>
                     {record.user_email ?? "no user"}
                   </TableCell>
-                  <TableCell className="max-w-96">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        opener.current = event.currentTarget;
-                        show(record);
-                      }}
-                      className="block max-w-full truncate text-left text-primary underline-offset-4 hover:underline"
-                    >
-                      {summarise(record)}
-                    </button>
+                  <TableCell>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <StatusChip>{eventLabel(record.event_type)}</StatusChip>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          opener.current = event.currentTarget;
+                          show(record);
+                        }}
+                        aria-label={`Record #${record.id}: ${summarise(record)}`}
+                        className="min-w-0 flex-1 cursor-pointer truncate text-left outline-none after:absolute after:inset-0 focus-visible:after:rounded-sm focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                      >
+                        {rowText(record)}
+                      </button>
+                      {outcomes(record).map((o) => (
+                        <StatusChip key={o.text} tone={o.tone}>
+                          {o.text}
+                        </StatusChip>
+                      ))}
+                    </div>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">#{record.id}</TableCell>
+                  <TableCell className="text-right text-muted-foreground tabular-nums">#{record.id}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
