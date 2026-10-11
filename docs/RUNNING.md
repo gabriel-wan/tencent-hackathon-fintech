@@ -70,17 +70,27 @@ No accounts needed. Load two fictional companies:
 docker compose run --rm backend python -m app.seed
 ```
 
-The seed only runs with `APP_ENV=development`. Add `--embed` to also compute embeddings through TokenHub, so
-search matches by meaning as well as by keyword.
+The seed only runs with `APP_ENV=development`. It holds Slack, Drive, Jira and Confluence documents, each showing
+one permission case (the list is at the top of `backend/app/seed.py`).
+
+| Add | To |
+|---|---|
+| `--embed` | Compute embeddings through TokenHub, so search matches by meaning as well as by keyword: every demo document, and a fixed sample of the filler below (`--embed-sample N` or `--embed-sample=N`, default 2,000). It runs after the seed is saved, in batches, so a TokenHub error keeps the seed and the batches already done; run it again to carry on |
+| `--scale` | Add Company A-sized filler (the handbook's size): about 12,000 Confluence pages in 50 spaces, 3,000 Jira issues in 30 projects, 4,000 threads in 200 Slack channels and 2,000 Drive files, with mixed permissions. The same every run; about 15 seconds |
+| `--remove-scale` | Remove the filler again (documents and scopes); the demo documents stay |
+
+The filler is keyword-only apart from the sample, on purpose: its chunks are marked `keyword_only`, which the `sync`
+service never embeds, so seeding it doesn't spend TokenHub tokens on 20,000 chunks. `--remove-scale` only touches
+MerlionPay's filler, never a real scope that looks alike (such as a Jira project `SCRUM`).
 
 Open http://localhost:3000/login and pick a person under **Sign in as a seeded user** (development only; identity
 isn't checked). Personas have no real connections, so their questions are checked against the stored permissions.
 
 | Persona | Company | Can see | Can't see |
 |---|---|---|---|
-| Alice, payments engineer | MerlionPay | `#payments-oncall`, `#eng`, the on-call runbook, the contractor guide, the dispute log (customer data masked) | `#security-incidents`, the Q3 incident report |
-| Ben, backend engineer | MerlionPay | `#eng`, the runbook, the contractor guide, the dispute log (customer data masked) | `#payments-oncall`, the security channel and report |
-| Charlie, external contractor | MerlionPay | Only the contractor onboarding guide | Everything else |
+| Alice, payments engineer | MerlionPay | `#payments-oncall`, `#eng`, the on-call runbook, the contractor guide, the dispute log (customer data masked); Jira MIG and PAY; Confluence Engineering and payment-gateway (not the contract terms) | `#security-incidents`, `#db-team`, the Q3 incident report, the Security team space |
+| Ben, backend engineer | MerlionPay | `#eng`, `#db-team`, the runbook, the contractor guide, the dispute log and PAY-440 (customer data masked); Jira; Confluence Engineering and payment-gateway (not the 3DS2 notes or contract terms) | `#payments-oncall`, the security channel, report and space |
+| Charlie, external contractor | MerlionPay | The contractor onboarding guide; the Confluence Engineering space; with `--scale`, the few filler pages and channels that name him | Everything else |
 | Priya, admin and compliance | MerlionPay | Everything in MerlionPay's boundary; the admin pages | Nothing in the boundary is hidden from her |
 | Dana, engineer | Kopi Labs | Kopi Labs' `#general` | Anything of MerlionPay |
 
@@ -94,6 +104,9 @@ Try these:
 | Charlie | What happened in the Q3 security incident? | "I could not find this in the sources you have access to." |
 | Dana | How did the payment gateway migration go? | Kopi Labs' own answer ("finished last week with no blockers"), never MerlionPay's |
 | Alice, then Priya | What happened in dispute 118? | Alice: the customer's details as tags (`[card ending 1111]`, `[NRIC *****567D]`); Priya, who owns the dispute log, sees them in full (ADR-010) |
+| Alice | What's the status of the ledger database migration, and were there blockers in Slack last week? | MIG-7 (Jira) and the `#eng` blocker thread; never the private `#db-team` thread |
+| Alice | Why did we pick the new payment gateway vendor, what fees did each vendor quote, and what's the status of PAY-412? | One answer citing Jira, Slack, Confluence and Drive |
+| Charlie | Can I see the Q3 breach report? | "I could not find this in the sources you have access to." |
 
 ✅ Alice gets an answer with sources, Charlie gets "not found", and Dana never sees MerlionPay content.
 More cases: [TESTING.md](TESTING.md) §4.
@@ -146,7 +159,7 @@ it as a source.
 |---|---|
 | Stop | Ctrl+C in the terminal running Docker (or `docker compose stop`) |
 | Start again | `docker compose up` |
-| Re-load the demo data | `docker compose run --rm backend python -m app.seed` (safe to re-run; persona IDs may change) |
+| Re-load the demo data | `docker compose run --rm backend python -m app.seed` (safe to re-run; persona IDs may change). Add `--scale` for Company A-sized filler, `--remove-scale` to take it out (§4) |
 | **Wipe the database** | `docker compose down -v`. This deletes all local data: users, connections, documents and the audit log |
 
 ## 8. When something goes wrong

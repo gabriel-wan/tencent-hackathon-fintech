@@ -89,6 +89,14 @@ def test_stub_answers_from_stored_acl():
     assert [d.allowed for d in decisions] == [True, False]
 
 
+def test_stub_covers_jira_and_confluence_too():
+    # Seeded people have no connections, so their Jira and Confluence documents depend on the stub as well.
+    held = "atlassian:user:A1"
+    cands = [Cand(1, "jira", "10101", [held]), Cand(2, "confluence", "20401", ["atlassian:user:A9"])]
+    decisions = live_check(cands, [held], default_checkers(cands, [held]))
+    assert [d.allowed for d in decisions] == [True, False]
+
+
 @pytest.mark.parametrize("reply", [None, {"a"}, ["a"], "a"])
 def test_a_reply_that_is_not_a_mapping_denies_instead_of_crashing(reply):
     """Regression (review of PR #5): a bad reply must deny, not fail the request."""
