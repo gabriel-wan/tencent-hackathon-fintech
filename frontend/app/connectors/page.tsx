@@ -7,6 +7,7 @@ import { connection } from "next/server";
 import { ConnectorCard } from "@/components/connectors/connector-card";
 import { SlackTokenForm } from "@/components/connectors/slack-token-form";
 import { PageContainer } from "@/components/page-container";
+import { PageHeader } from "@/components/page-header";
 import { ServerUnavailable } from "@/components/server-unavailable";
 import { SignedInShell } from "@/components/signed-in-shell";
 import { AppHeader } from "@/components/app-header";
@@ -77,12 +78,10 @@ export default async function ConnectionsPage({ searchParams }: Props) {
   return (
     <SignedInShell me={me}>
       <PageContainer className="grid content-start gap-6">
-        <div className="grid gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Connections</h1>
-          <p className="text-muted-foreground">
-            Connect the tools you use. Answers only include what you can already see in them.
-          </p>
-        </div>
+        <PageHeader
+          title="Connections"
+          description="Connect the tools you use. Answers only include what you can already see in them."
+        />
 
         {justConnected ? (
           <Alert>

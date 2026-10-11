@@ -21,7 +21,7 @@ export function EmptyState({ onPick }: { onPick: (question: string) => void }) {
         </p>
       </div>
       <div className="grid gap-2">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Try asking</p>
+        <p className="text-sm font-medium text-muted-foreground">Try asking</p>
         <ul className="flex flex-wrap gap-2">
           {EXAMPLES.map((example) => (
             <li key={example}>

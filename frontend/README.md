@@ -70,7 +70,12 @@ components.json       shadcn CLI settings
 - **Buttons:** every button is `components/ui/button.tsx`, so they all behave the same: hover deepens the colour,
   pressing deepens it more (towards the text colour, so darker in light mode and lighter in dark mode), a pointer
   cursor. Change states there, never with one-off classes on a single button.
-- Our brand colour is `--primary`. shadcn's `--accent` is the hover background, not the brand colour.
+- Our brand colour is `--primary`, the app icon's indigo. shadcn's `--accent` is the hover background, not the brand
+  colour.
+- **Shared pieces, use them instead of rebuilding:** `PageHeader` (each page's h1, description and actions),
+  `StatusChip` (every small status label: neutral, success, danger, warning), `EmptyState` (nothing yet, or no
+  results for the filters), `Disclosure` (a collapsed section with a turning arrow). Labels and headings are sentence
+  case, never ALL CAPS (the amber development and mock labels are the one exception, on purpose).
 - `--destructive` is for genuine failures only. A "not found" answer is never red.
 - `--warning` is for "unavailable", development-only aids and mock data.
 - Input borders use `--input`, which meets 3:1 contrast; `--border` is for decorative edges only.

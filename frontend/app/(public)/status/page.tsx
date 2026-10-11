@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 
 import { PageContainer } from "@/components/page-container";
+import { PageHeader } from "@/components/page-header";
 
 export const metadata: Metadata = { title: "Status · KnowBuddy" };
 
@@ -29,10 +30,9 @@ export default async function StatusPage() {
     : [["Backend", "unreachable"]];
 
   return (
-    <PageContainer>
-      <h1 className="text-2xl font-semibold tracking-tight">Status</h1>
-      <p className="mt-2 text-muted-foreground">Backend health, checked when this page loads.</p>
-      <dl className="mt-6 divide-y rounded-lg border bg-card">
+    <PageContainer className="grid content-start gap-6">
+      <PageHeader title="Status" description="Backend health, checked when this page loads." />
+      <dl className="divide-y rounded-lg border bg-card">
         {rows.map(([label, value]) => (
           <div key={label} className="flex justify-between gap-4 px-4 py-3 text-sm">
             <dt className="text-muted-foreground">{label}</dt>

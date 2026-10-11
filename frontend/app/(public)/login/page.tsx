@@ -1,4 +1,4 @@
-import { ChevronRight, CircleAlert } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
@@ -6,6 +6,7 @@ import { connection } from "next/server";
 import { Wordmark } from "@/components/brand";
 import { SlackTokenForm } from "@/components/connectors/slack-token-form";
 import { DevSignInList } from "@/components/dev-sign-in-list";
+import { Disclosure } from "@/components/disclosure";
 import { HeroIllustration } from "@/components/login/hero-illustration";
 import { PageContainer } from "@/components/page-container";
 import { PlatformLogo } from "@/components/platform-logo";
@@ -85,17 +86,13 @@ export default async function LoginPage({ searchParams }: Props) {
               </div>
             </div>
 
-            <details className="group max-w-prose text-sm">
-              <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-                <ChevronRight aria-hidden="true" className="size-4 transition-transform group-open:rotate-90" />
-                How accounts work
-              </summary>
-              <ul className="mt-3 grid list-disc gap-2 pl-10 text-muted-foreground">
+            <Disclosure summary="How accounts work" className="max-w-prose">
+              <ul className="grid list-disc gap-2 pl-4.5 text-muted-foreground">
                 <li>Signing in connects that tool. Only what you can already see there is used, and there&apos;s no separate password.</li>
                 <li>Your company comes from your Slack workspace, so sign in with Slack first, or connect it later.</li>
                 <li>Jira and Confluence join once your admin has added your company&apos;s Atlassian site.</li>
               </ul>
-            </details>
+            </Disclosure>
           </div>
 
           <div className="hidden sm:block">

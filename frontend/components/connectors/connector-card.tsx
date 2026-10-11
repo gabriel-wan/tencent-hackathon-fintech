@@ -1,6 +1,6 @@
 "use client";
 
-import { Plug, Unplug } from "lucide-react";
+import { CheckCircle2, Plug, Unplug } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -15,9 +15,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PlatformLogo } from "@/components/platform-logo";
+import { StatusChip } from "@/components/status-chip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CONNECTOR_BLURBS, type Connector } from "@/lib/connectors";
 
@@ -63,7 +63,14 @@ export function ConnectorCard({ connector, connectHref }: Props) {
               {connector.name}
             </h2>
           </CardTitle>
-          {connector.connected ? <Badge variant="secondary">Connected</Badge> : <Badge variant="outline">Not connected</Badge>}
+          {connector.connected ? (
+            <StatusChip tone="success">
+              <CheckCircle2 aria-hidden="true" />
+              Connected
+            </StatusChip>
+          ) : (
+            <StatusChip>Not connected</StatusChip>
+          )}
         </div>
         <CardDescription>{CONNECTOR_BLURBS[connector.id]}</CardDescription>
       </CardHeader>
