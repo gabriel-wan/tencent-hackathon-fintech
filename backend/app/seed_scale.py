@@ -28,6 +28,10 @@ SEEDED = {  # the four seeded people, so filler is spread over who can see what
     "google": [f"google:user:{n}@{DOMAIN}" for n in ("alice", "ben", "priya")],
 }
 
+# The rest of the staff, as named users: the connectors expand groups into users, so a group principal in an
+# ACL would match nobody (review of PR #35).
+STAFF = [f"atlassian:user:A{n}" for n in range(500, 540)]
+
 TEAMS = ["Payments", "Risk", "Ledger", "Merchant success", "Platform", "Data", "Mobile", "Compliance", "Treasury",
          "Fraud", "Identity", "Growth", "Support", "Billing", "Infrastructure", "Partnerships"]
 SYSTEMS = ["settlement service", "card vault", "merchant portal", "payout scheduler", "KYC pipeline",
@@ -73,7 +77,7 @@ def generate() -> tuple[list[tuple], list[tuple]]:
         scope("confluence", space, "space", f"{team} space {s}")
         restricted = rng.random() < 0.1
         members = _some(rng, SEEDED["atlassian"], "atlassian:user:A", 6) if restricted else \
-            [*SEEDED["atlassian"][:2], SEEDED["atlassian"][3], "atlassian:group:all-staff"]
+            [*SEEDED["atlassian"][:2], SEEDED["atlassian"][3], *STAFF]
         for p in range(1, PAGES_PER_SPACE + 1):
             acl = _some(rng, SEEDED["atlassian"], "atlassian:user:A", 2) if rng.random() < 0.02 else members
             page = f"{s:02d}{p:04d}"

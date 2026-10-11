@@ -75,12 +75,13 @@ one permission case (the list is at the top of `backend/app/seed.py`).
 
 | Add | To |
 |---|---|
-| `--embed` | Compute embeddings through TokenHub, so search matches by meaning as well as by keyword: every demo document, and a fixed sample of the filler below (`--embed-sample N`, default 2,000) |
+| `--embed` | Compute embeddings through TokenHub, so search matches by meaning as well as by keyword: every demo document, and a fixed sample of the filler below (`--embed-sample N` or `--embed-sample=N`, default 2,000). It runs after the seed is saved, in batches, so a TokenHub error keeps the seed and the batches already done; run it again to carry on |
 | `--scale` | Add Company A-sized filler (the handbook's size): about 12,000 Confluence pages in 50 spaces, 3,000 Jira issues in 30 projects, 4,000 threads in 200 Slack channels and 2,000 Drive files, with mixed permissions. The same every run; about 15 seconds |
 | `--remove-scale` | Remove the filler again (documents and scopes); the demo documents stay |
 
-The filler is keyword-only apart from the sample, on purpose: the `sync` service never embeds it (`embed_missing` in
-`app/sync.py` skips it), so seeding it doesn't spend TokenHub tokens on 20,000 chunks.
+The filler is keyword-only apart from the sample, on purpose: its chunks are marked `keyword_only`, which the `sync`
+service never embeds, so seeding it doesn't spend TokenHub tokens on 20,000 chunks. `--remove-scale` only touches
+MerlionPay's filler, never a real scope that looks alike (such as a Jira project `SCRUM`).
 
 Open http://localhost:3000/login and pick a person under **Sign in as a seeded user** (development only; identity
 isn't checked). Personas have no real connections, so their questions are checked against the stored permissions.
@@ -89,7 +90,7 @@ isn't checked). Personas have no real connections, so their questions are checke
 |---|---|---|---|
 | Alice, payments engineer | MerlionPay | `#payments-oncall`, `#eng`, the on-call runbook, the contractor guide, the dispute log (customer data masked); Jira MIG and PAY; Confluence Engineering and payment-gateway (not the contract terms) | `#security-incidents`, `#db-team`, the Q3 incident report, the Security team space |
 | Ben, backend engineer | MerlionPay | `#eng`, `#db-team`, the runbook, the contractor guide, the dispute log and PAY-440 (customer data masked); Jira; Confluence Engineering and payment-gateway (not the 3DS2 notes or contract terms) | `#payments-oncall`, the security channel, report and space |
-| Charlie, external contractor | MerlionPay | The contractor onboarding guide; the Confluence Engineering space | Everything else |
+| Charlie, external contractor | MerlionPay | The contractor onboarding guide; the Confluence Engineering space; with `--scale`, the few filler pages and channels that name him | Everything else |
 | Priya, admin and compliance | MerlionPay | Everything in MerlionPay's boundary; the admin pages | Nothing in the boundary is hidden from her |
 | Dana, engineer | Kopi Labs | Kopi Labs' `#general` | Anything of MerlionPay |
 

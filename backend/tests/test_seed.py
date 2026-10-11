@@ -67,9 +67,7 @@ def test_the_scale_filler_matches_company_a_and_is_the_same_every_run():
 
 def test_scale_filler_is_added_once_and_removed_cleanly(seeded, monkeypatch):
     conn, company, _principals = seeded
-    for name, value in (("CONFLUENCE_SPACES", 2), ("PAGES_PER_SPACE", 3), ("JIRA_PROJECTS", 1),
-                        ("SLACK_CHANNELS", 2), ("DRIVE_TOP", 1)):
-        monkeypatch.setattr(seed_scale, name, value)
+    small_scale(monkeypatch)
     count = lambda: conn.execute(text("SELECT count(*) FROM documents WHERE metadata->>'seed' = 'scale'")).scalar()  # noqa: E731
     added = seed.seed_scale(conn, "T_MERLION")
     assert added == count() > 0
@@ -88,3 +86,41 @@ def test_removing_the_filler_never_touches_a_real_scope_that_looks_alike(seeded)
                       "VALUES (:c, 'jira', 'SCRUM', 'project')"), {"c": company})
     seed.remove_scale(conn)
     assert conn.execute(text("SELECT count(*) FROM boundary WHERE scope_id = 'SCRUM'")).scalar() == 1
+
+
+def small_scale(monkeypatch):
+    for name, value in (("CONFLUENCE_SPACES", 2), ("PAGES_PER_SPACE", 3), ("JIRA_PROJECTS", 1),
+                        ("SLACK_CHANNELS", 2), ("DRIVE_TOP", 1)):
+        monkeypatch.setattr(seed_scale, name, value)
+
+
+def test_filler_is_keyword_only_except_a_fixed_sample(seeded, monkeypatch):
+    conn, _company, _principals = seeded
+    small_scale(monkeypatch)
+    seed.seed_scale(conn, "T_MERLION")
+    to_embed = lambda: conn.execute(text(  # noqa: E731
+        "SELECT c.id FROM chunks c JOIN documents d ON d.id = c.document_id "
+        "WHERE d.metadata->>'seed' = 'scale' AND NOT c.keyword_only ORDER BY c.id")).scalars().all()
+    assert to_embed() == []  # the sync worker leaves all of it alone
+    assert seed.choose_filler_sample(conn, 3) == 3
+    sample = to_embed()
+    assert seed.choose_filler_sample(conn, 3) == 0 and to_embed() == sample  # the same ones, not more
+
+
+def test_handlers_are_keyed_by_tool_and_id(seeded):
+    conn, _company, _principals = seeded
+    need = conn.execute(text("SELECT metadata->'need_to_know' FROM documents WHERE source = 'jira' "
+                             "AND source_id = '10601'")).scalar()
+    assert need == ["atlassian:user:A001"]
+
+
+@pytest.mark.parametrize("argv", [["--embed-sample"], ["--embed-sample", "x"], ["--embed-sample", "-1"],
+                                  ["--embed-smaple", "5"]])
+def test_bad_flags_stop_with_a_usage_error(argv):
+    with pytest.raises(SystemExit):
+        seed.parse_args(argv)
+
+
+def test_flags_in_either_spelling():
+    assert seed.parse_args(["--embed", "--embed-sample=200"]).embed_sample == 200
+    assert seed.parse_args(["--scale"]).embed_sample == 2000
