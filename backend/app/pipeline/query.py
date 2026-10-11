@@ -53,6 +53,7 @@ class Citation:
     updated_at: datetime
     synced_at: datetime | None
     redacted: dict[str, int]  # identifiers masked in this source for this user, by kind (ADR-010)
+    label: str  # the [S<n>] marker that cites this source in this answer's text, so the UI can link the two
 
 
 @dataclass(frozen=True)
@@ -192,8 +193,8 @@ def answer_question(
             audit["answer_masked"] = dict(answer_masked)
             citations = [
                 Citation(c.key, titles[c.key], urls[c.key], c.source, c.updated_at, c.synced_at,
-                         redactions[c.key]["masked"])
-                for c in (by_label[label] for label in grounded.labels)
+                         redactions[c.key]["masked"], label)
+                for label, c in ((label, by_label[label]) for label in grounded.labels)
             ]
             audit.update(
                 model=result.model,
