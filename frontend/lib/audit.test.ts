@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   type AuditRecord,
   NO_FILTERS,
+  filterChips,
+  moreFiltersCount,
+  outcomes,
+  rowText,
+  withoutFilter,
   documentRows,
   eventLabel,
   filtersFromParams,
@@ -250,5 +255,51 @@ describe("toApiQuery", () => {
     expect(toApiQuery({ ...NO_FILTERS, event_type: "query" }, { beforeId: 41, limit: 1 })).toBe(
       "event_type=query&before_id=41&limit=1",
     );
+  });
+});
+
+describe("filter chips", () => {
+  const filters = { ...NO_FILTERS, user: "alice@co.example", event_type: "query", source: "slack", scope_id: "C_ENG" };
+  it("lists only the set filters, in words", () => {
+    expect(filterChips(filters).map((c) => c.label)).toEqual([
+      "User: alice@co.example",
+      "Event: Question",
+      "Tool: Slack",
+      "In: C_ENG",
+    ]);
+    expect(filterChips(NO_FILTERS)).toEqual([]);
+  });
+  it("removing the tool also removes its scope", () => {
+    expect(withoutFilter(filters, "source")).toEqual({ ...filters, source: "", scope_id: "" });
+    expect(withoutFilter(filters, "user").user).toBe("");
+  });
+  it("counts the filters behind More filters", () => {
+    expect(moreFiltersCount(filters)).toBe(3);
+    expect(moreFiltersCount(NO_FILTERS)).toBe(0);
+  });
+});
+
+describe("outcomes and row text", () => {
+  const query = (payload: Record<string, unknown>): AuditRecord => ({
+    id: 1, ts: "2026-10-11T00:00:00Z", user_email: "a@co.example", event_type: "query", payload, prev_hash: "", hash: "",
+  });
+  it("answered, with denied documents counted from both lists", () => {
+    const r = query({
+      question: "q?",
+      citations: ["slack:C1:1"],
+      candidates: [{ document: "a", allowed: true, reason: "" }, { document: "b", allowed: false, reason: "" }],
+      restricted_matches: [{ document: "c", reason: "" }],
+    });
+    expect(outcomes(r)).toEqual([{ text: "Answered", tone: "success" }, { text: "2 denied", tone: "danger" }]);
+    expect(rowText(r)).toBe('"q?"');
+  });
+  it("not found, and LLM failed", () => {
+    expect(outcomes(query({ citations: [] }))).toEqual([{ text: "Not found", tone: "neutral" }]);
+    expect(outcomes(query({ llm_error: "Timeout" }))).toEqual([{ text: "LLM failed", tone: "danger" }]);
+  });
+  it("other events have no outcome and use the summary", () => {
+    const r: AuditRecord = { ...query({}), event_type: "sync_requested" };
+    expect(outcomes(r)).toEqual([]);
+    expect(rowText(r)).toBe("Asked for a sync now");
   });
 });

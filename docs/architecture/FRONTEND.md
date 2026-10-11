@@ -196,13 +196,22 @@ menu (name and email, theme, Sign out).
 - **Audit trail** (`/admin/audit`, `components/admin/audit-trail.tsx`). Calls
   `GET /api/admin/audit` and `POST /api/admin/audit/verify`
   (`backend/app/audit/api.py`) through the `/api` proxy.
-  - **Filters:** user, from and to (whole days in the viewer's time zone; "to"
-    is inclusive), event type, tool (+ channel, folder, project or space ID)
-    and document. They are kept in the URL (`/admin/audit?user=…&from=…`), so a
-    view can be bookmarked or shared.
+  - **Filter bar:** user, from and to (whole days in the viewer's time zone;
+    "to" is inclusive) in view; event type, tool (+ channel, folder, project or
+    space ID) and document behind **More filters** (a popover; its button
+    counts how many are set). Searching is explicit (Search or Enter), since
+    every search is recorded. Applied filters show as removable chips with
+    **Clear filters** (`filterChips`, `withoutFilter` in `lib/audit.ts`;
+    removing the tool also removes its scope). They are kept in the URL
+    (`/admin/audit?user=…&from=…`), so a view can be bookmarked or shared.
   - **Table:** one row per record, newest first, 50 at a time with **Load
-    older** (`before_id`). Each event type gets a one-line summary
-    (`summarise` in `lib/audit.ts`); a type the page doesn't know shows its name.
+    older** (`before_id`), fixed columns so long lines truncate. "What" is the
+    event as a chip, then the question in quotes (or the one-line `summarise`
+    for other events), then for questions their outcome chips (`outcomes`):
+    Answered (green), Not found, LLM failed (red) and "N denied" (red: denied
+    by the live check or restricted matches). The whole row opens the record.
+  - **Empty:** "No records yet", or with filters "No records match these
+    filters" with Clear filters.
   - **Record dialog** (`components/admin/audit-record.tsx`): a centred dialog,
     titled "Audit record #N". The open record is in the URL (`?record=56`), so
     it can be linked or bookmarked, Back closes it, and Escape returns focus to
@@ -232,9 +241,10 @@ menu (name and email, theme, Sign out).
   - **One search, one request:** in development React runs effects twice on
     mount; the page reuses the request for each search, so a visit writes one
     `audit_searched` record, as in production.
-  - **Verify chain:** "intact" with the number checked and the latest record's
-    hash (**Copy hash**, to note it outside KnowBuddy, ADR-007), or the first
-    broken record with **Open record #N**.
+  - **Hash chain card** at the top: "Not verified on this visit", then a green
+    "Intact" chip with the number checked (the latest record's hash and **Copy
+    hash** in a collapsed section, to note it outside KnowBuddy, ADR-007), or a
+    red "Broken at #N" with the reason and **Open record #N**.
   - The API declares no response model, so the types are written by hand in
     `lib/audit.ts`; keep them in step with the payloads the backend writes.
     Every search and verification is itself recorded in the trail.
