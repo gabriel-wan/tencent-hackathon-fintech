@@ -84,6 +84,25 @@ def setup(monkeypatch):
     empty()
 
 
+def test_a_tool_that_isnt_connected_is_tried_once_and_logged_once(setup, monkeypatch, caplog):
+    # e.g. the seed's 200 filler channels with no Slack connection: one warning, not one per channel.
+    with engine.begin() as c:
+        for scope in ("C2", "C3"):
+            c.execute(text("INSERT INTO boundary (company_id, source, scope_id, scope_type) "
+                           "VALUES (:c, 'slack', :s, 'channel')"), {"c": setup.company, "s": scope})
+    calls = []
+
+    def not_connected(_engine, _user, source):
+        calls.append(source)
+        raise store.NotConnected(source)
+
+    monkeypatch.setattr(store, "client", not_connected)
+    sync.sync_company(engine, setup.company, llm=FakeLLM())
+    assert calls == ["slack"]
+    warnings = [r.getMessage() for r in caplog.records if "not connected" in r.getMessage()]
+    assert warnings == [f"company {setup.company}: slack not connected: 3 scopes not synced"]
+
+
 def live_docs():
     with engine.connect() as c:
         return dict(c.execute(text("SELECT source_id, deleted_at IS NULL FROM documents")).all())
@@ -171,6 +190,17 @@ def test_embeddings_missed_during_an_outage_are_filled_later(setup):
         assert c.execute(text("SELECT count(*) FROM chunks WHERE embedding IS NULL")).scalar() == 2
     assert sync.embed_missing(engine, FakeLLM()) == 2
     assert sync.embed_missing(engine, FakeLLM()) == 0
+
+
+def test_keyword_only_chunks_are_never_embedded_by_the_worker(setup):
+    # e.g. the development seed's ~20,000 filler chunks (app/seed_scale.py): the worker must not spend tokens on them.
+    with engine.begin() as c:
+        doc = c.execute(text("INSERT INTO documents (company_id, source, source_id, scope_id, updated_at) "
+                             "VALUES (:c, 'slack', 'C9:1', 'C9', now()) RETURNING id"), {"c": setup.company}).scalar()
+        c.execute(text("INSERT INTO chunks (document_id, ordinal, text, text_hash, keyword_only) "
+                       "VALUES (:d, 0, 'filler', 'h', true)"), {"d": doc})
+    llm = FakeLLM()
+    assert sync.embed_missing(engine, llm) == 0 and llm.embed_calls == []
 
 
 @pytest.mark.security

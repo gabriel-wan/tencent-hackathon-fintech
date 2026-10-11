@@ -11,7 +11,7 @@ they are actually done and checked by a second team member.
 
 - [ ] **Project title** decided (chosen: **KnowBuddy**; tick once a second member confirms)
 - [ ] **Short blurb** – under 10 words, counted
-- [ ] **Project description** written, covering:
+- [ ] **Project description** written (draft: [description.md](description.md)), covering:
   - [ ] Target users / scenarios
   - [ ] Real-world pain points and core problems solved
   - [ ] Business value – quantifiable metrics or clearly defined impact
@@ -20,7 +20,8 @@ they are actually done and checked by a second team member.
 - [ ] **GitHub repository** – complete source code, README accurate, no secrets in history
 - [ ] **CodeBuddy / WorkBuddy proof** – minimum 3 screenshots or a screen
       recording of development chat logs (see [tool-usage.md](tool-usage.md))
-- [ ] **16:9 cover image** (recommended 380×216 px)
+- [x] **16:9 cover image** (recommended 380×216 px): [cover.png](cover.png), 1280×720, made with Miora
+      ([tool-usage.md](tool-usage.md), session 4)
 
 ## Optional items
 

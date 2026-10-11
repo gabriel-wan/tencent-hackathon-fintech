@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.auth.principals import identity_for
+from app.auth.principals import IDENTITY_PREFIX, identity_for
 
 log = logging.getLogger(__name__)
 
@@ -111,9 +111,11 @@ def stored_acl_stub(candidates: Sequence[CandidateLike], principals: list[str]) 
 
 def default_checkers(candidates: Sequence[CandidateLike], principals: list[str]) -> dict[str, CanRead]:
     log.warning("live check is using the STUB (%s)", STUB_MODE)
+    # Every source there is (the registry in app/auth/principals.py), not a list kept here: a source without a
+    # checker denies all its documents, which is how Jira and Confluence were once left out.
     return {
         source: stored_acl_stub([c for c in candidates if c.source == source], principals)
-        for source in ("slack", "drive")
+        for source in IDENTITY_PREFIX
     }
 
 

@@ -241,6 +241,7 @@ erDiagram
         text text
         tsvector tsv
         vector embedding
+        boolean keyword_only
     }
     audit_events {
         bigint id
@@ -261,7 +262,7 @@ erDiagram
 | `user_principals` | Sign-in | A person's identities in each tool; search matches them against `documents.acl` |
 | `boundary` | Admin (`PUT`/`DELETE /api/admin/boundary/…`), audited | Content outside it is never synced or searched |
 | `documents` | Sync | `acl` may list extra people but must never leave out a real reader; deleted items are soft-deleted (`deleted_at`) |
-| `chunks` | Sync | Pieces of at most 2,000 characters, with full-text and vector indexes |
+| `chunks` | Sync | Pieces of at most 2,000 characters, with full-text and vector indexes. `keyword_only` chunks are never embedded by sync (migration 0008; today only the development seed's filler) |
 | `sync_state` | Sync | Each scope's last complete sync, shown as `synced_at` |
 | `audit_events` | Every question and admin action | Read-and-add only for the app; each record holds its company and the previous record's hash. No foreign keys, so the log outlives a deleted company |
 

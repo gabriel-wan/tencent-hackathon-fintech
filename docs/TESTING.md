@@ -45,6 +45,7 @@ docker compose run --rm --build --user root -e POSTGRES_DB=brain_test -v ./backe
 | `test_sync.py` | Chunking, upserts, soft deletes, embedding catch-up, live checks as the user |
 | `test_admin.py` | Admin-only boundary and sync API, scoped to the admin's company, audited |
 | `test_audit.py` | Per-company hash chains, tampering detected, the app role can't change the log, concurrent writes, admin search and verify |
+| `test_seed.py` | The demo seed's permission cases (who finds which story document: the private `#db-team` thread, the contract terms, the breach report, the other company's ticket) and the Company A filler (its size, the same every run, added once, removed cleanly) |
 
 ## 2. Frontend checks
 
@@ -81,6 +82,16 @@ table ([CONTRIBUTING.md](../CONTRIBUTING.md) §8).
 ## 4. Manual checks
 
 Things the automated tests can't show: the real LLM, the real tools, and how it looks.
+
+**Search at Company A's size** (11 Oct, laptop, Docker): after `python -m app.seed --scale --embed` (21,009
+MerlionPay documents, 2,567 chunks with embeddings), permission-filtered search per question, median of 15:
+
+| Person | Keyword only | Keyword + meaning |
+|---|---|---|
+| Alice (wide access) | 21 ms | 109 ms (162 ms at most) |
+| Charlie (narrow access) | 3 ms | 4 ms |
+
+The demo questions still return their story documents first. The LLM call (about 2 s) dominates a question's time.
 
 **With the demo personas** ([RUNNING.md](RUNNING.md) §4). Answers come from the real LLM, so check the state and the
 sources, not the exact wording:
