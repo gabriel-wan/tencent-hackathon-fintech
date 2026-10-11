@@ -57,12 +57,20 @@ function Synced({ syncedAt }: { syncedAt: string | null }) {
   );
 }
 
-function CitationItem({ citation }: { citation: Citation }) {
+function CitationItem({ citation, n, id }: { citation: Citation; n: number; id: string }) {
   // Source URLs are untrusted: only absolute http(s) URLs become links.
   const href = safeHttpUrl(citation.url);
   const exact = formatExact(citation.updated_at);
   return (
-    <li className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+    // data-flash: set for a moment when its chip in the answer is pressed (answer-card.tsx showSource).
+    <li
+      id={id}
+      tabIndex={-1}
+      className="-mx-2 flex scroll-mt-24 scroll-mb-40 flex-wrap items-baseline gap-x-2 gap-y-1 rounded-md px-2 py-1 text-sm outline-none transition-colors duration-500 data-flash:bg-primary/15"
+    >
+      <span aria-hidden="true" className="w-4 shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
+        {n}
+      </span>
       <SourceBadge source={citation.source} />
       {href ? (
         <a
@@ -92,18 +100,18 @@ function CitationItem({ citation }: { citation: Citation }) {
 }
 
 /** The sources an answer was built from, in the order the answer first cites them. */
-export function CitationList({ citations }: { citations: Citation[] }) {
+export function CitationList({ citations, sourceId }: { citations: Citation[]; sourceId: (n: number) => string }) {
   return (
     // A plain group, not a landmark: every answer has one, and a page of
     // identical "Sources" landmarks is noise. The heading still lets screen
     // reader users jump between them.
     <div className="grid gap-2 border-t pt-3">
       <h2 className="text-sm font-medium text-muted-foreground">Sources</h2>
-      <ul className="grid gap-2">
-        {citations.map((citation) => (
-          <CitationItem key={citation.id} citation={citation} />
+      <ol className="grid gap-1">
+        {citations.map((citation, i) => (
+          <CitationItem key={citation.id} citation={citation} n={i + 1} id={sourceId(i + 1)} />
         ))}
-      </ul>
+      </ol>
     </div>
   );
 }

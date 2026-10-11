@@ -129,7 +129,11 @@ DEVELOPMENT ONLY, and labelled as such on screen. Identity is not verified.
 
 ## Chat (`/`)
 
-Code: `components/chat/`. Each question is answered on its own: the backend
+Code: `components/chat/`. **Empty chat:** the icon, "Good morning / afternoon /
+evening, <first name>" (the viewer's own clock, so it appears once the page is
+in the browser), what KnowBuddy does, the question box in the middle and the
+example questions under it; the first question moves the box to the bottom.
+**New chat** in the sidebar empties the thread. Each question is answered on its own: the backend
 receives only `{question}`, never earlier questions or answers, so a follow-up
 such as "what about last week?" has no context. History exists only in the
 browser's memory for this page load (never `localStorage`) and is wiped by the
@@ -138,8 +142,8 @@ full page load on sign-out or user switch (SECURITY.md T6).
 | State | When | What the user sees |
 |---|---|---|
 | Pending | Request in flight (about 3–5 s with the real LLM since hy3's hidden reasoning was turned off) | "Searching your sources…" with a skeleton. No invented progress steps |
-| Answered | 200, not a fixed sentence | Answer as plain text (`[S1]` markers removed); a notice when `instructions_removed` is above 0 ("KnowBuddy ignored instructions hidden in the sources", ADR-011); Sources list, each with the tool's logo and name, "N masked" when the Shield masked something for this reader (`redacted`, ADR-010; the kinds on hover and for screen readers), "updated …" and "synced …" (red with "may be out of date" after 15 minutes; nothing for data that never synced); `Ref #<audit_id>`, a link to `/admin/audit?record=N` for admins |
-| Not found | 200, the fixed "I could not find this…" sentence | Muted card. **Identical whether nothing exists or nothing is permitted** (INV-5): never the injection notice, whatever the response says |
+| Answered | 200, not a fixed sentence | Beside the KnowBuddy icon, no card. Answer as plain text, each `[S<n>]` marker a small numbered chip (matched by the citation's `label`, numbered by its place in the Sources list) that scrolls to that source, highlights it for a moment and moves focus to its link; hover shows the title; a **trust line** of chips, each with an ⓘ: "N masked for you" (all sources' `redacted`, merged) and "Synced …" from the oldest source (red "May be out of date" after 15 minutes; nothing for data that never synced; `lib/citations.ts` `answerSummary`); numbered Sources list, each with the tool's logo and name, "N masked" when the Shield masked something for this reader (`redacted`, ADR-010; the kinds on hover and for screen readers), "updated …" and "synced …" (red with "may be out of date" after 15 minutes; nothing for data that never synced); **Copy** (the answer text; "Couldn't copy" if the browser refuses or doesn't reply within 1.5 s); `Ref #<audit_id>`, a link to `/admin/audit?record=N` for admins |
+| Not found | 200, the fixed "I could not find this…" sentence | Muted text beside the icon, and Ref #. **Identical whether nothing exists or nothing is permitted** (INV-5): no trust line, whatever the response says |
 | Unavailable | 200, the fixed "The assistant is unavailable…" sentence | Warning with Try again |
 | Failed | 422, 503, other 5xx, backend unreachable | Short message with Try again (re-sends the same question in place) |
 | Signed out | 401 | Full page load to `/login`; the draft is not kept |
@@ -318,8 +322,9 @@ Rerun it whenever a backend route or response changes, and commit the result.
 - `lib/answers.ts`: the backend's two fixed replies, copied exactly, and
   `classifyAnswer()` (`answered` / `notFound` / `unavailable`). The only file
   to change if the backend wording changes.
-- `lib/citations.ts`: `stripCitationMarkers()` removes `[S1]` markers (citations
-  do not yet say which label they are); `safeHttpUrl()` returns a URL only if
+- `lib/citations.ts`: `splitAnswer()` turns the answer into text and numbered
+  source markers by each citation's `label` (unknown labels dropped, the rest
+  stays text); `stripCitationMarkers()` removes them (for Copy); `safeHttpUrl()` returns a URL only if
   it is absolute `http(s)`. Answer text and source URLs are untrusted: render
   answers as plain text and link only what `safeHttpUrl` accepts.
 - `lib/format.ts`: relative and exact timestamps, in the viewer's locale

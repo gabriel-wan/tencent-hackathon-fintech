@@ -8,7 +8,7 @@ import { ApiError, BackendUnreachableError, NotSignedInError } from "@/lib/api/e
 
 import { announcementFor } from "./answer-card";
 import { Composer, type ComposerHandle } from "./composer";
-import { EmptyState } from "./empty-state";
+import { Examples, Greeting } from "./empty-state";
 import { ExchangeView } from "./exchange-view";
 import type { Exchange, FailureKind } from "./types";
 
@@ -89,13 +89,13 @@ export function ChatPanel() {
     void ask(exchange.id, exchange.question);
   }
 
+  const empty = exchanges.length === 0;
+  // One tree in both states, the composer always second, so React keeps the same composer (and its text and
+  // focus) when the first question moves it from the middle of the page to the bottom.
   return (
-    <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col px-4">
-      {exchanges.length === 0 ? (
-        // Fills the composer; does not send, so the question can be edited first.
-        <div className="flex-1">
-          <EmptyState onPick={(question) => composer.current?.fill(question)} />
-        </div>
+    <div className={`mx-auto flex w-full max-w-[760px] flex-1 flex-col px-4 ${empty ? "justify-center gap-8 py-10" : ""}`}>
+      {empty ? (
+        <Greeting />
       ) : (
         <ol aria-label="Conversation" className="grid flex-1 content-start gap-6 py-8">
           {exchanges.map((exchange) => (
@@ -108,13 +108,15 @@ export function ChatPanel() {
           ))}
         </ol>
       )}
+      <div className={empty ? "" : "sticky bottom-0 bg-background pt-2 pb-4"}>
+        <Composer ref={composer} sending={sending} onSend={send} />
+      </div>
+      {/* Fills the composer; does not send, so the question can be edited first. */}
+      {empty ? <Examples onPick={(question) => composer.current?.fill(question)} /> : null}
       {/* Scroll target; the margin keeps the newest answer clear of the sticky composer. */}
       <div ref={bottom} aria-hidden="true" className="scroll-mb-40" />
       <div aria-live="polite" className="sr-only">
         {announcement}
-      </div>
-      <div className="sticky bottom-0 bg-background pt-2 pb-4">
-        <Composer ref={composer} sending={sending} onSend={send} />
       </div>
     </div>
   );
