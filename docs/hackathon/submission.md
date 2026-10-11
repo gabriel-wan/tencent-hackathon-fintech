@@ -11,7 +11,7 @@ they are actually done and checked by a second team member.
 
 - [ ] **Project title** decided (chosen: **KnowBuddy**; tick once a second member confirms)
 - [ ] **Short blurb** – under 10 words, counted
-- [ ] **Project description** written, covering:
+- [ ] **Project description** written (draft: [description.md](description.md)), covering:
   - [ ] Target users / scenarios
   - [ ] Real-world pain points and core problems solved
   - [ ] Business value – quantifiable metrics or clearly defined impact
