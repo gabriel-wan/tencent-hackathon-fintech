@@ -204,6 +204,15 @@ def test_re_adding_a_scope_that_is_already_there_writes_no_audit_event(db):
     assert resp.json() == {"added": 1, "removed": 0} and events() == ["boundary_added"]
 
 
+
+def test_the_boundary_lock_takes_company_ids_past_32_bits():
+    from types import SimpleNamespace
+    from app.connectors.admin import _lock
+
+    with engine.begin() as c:
+        _lock(c, SimpleNamespace(company_id=3_000_000_000))  # would be "integer out of range" unfolded
+
+
 class RateLimited(Tree):
     """Drive answering 403 (rate limit) for one parent."""
 

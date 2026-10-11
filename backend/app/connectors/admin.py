@@ -112,7 +112,10 @@ BOUNDARY_LOCK = 4747  # first key of the per-company advisory lock on boundary c
 def _lock(db, admin: User) -> None:
     """One boundary change per company at a time, until its transaction ends: the overlap check and the write
     see the same boundary, so two adds (a folder and its parent) can't both pass."""
-    db.execute(text("SELECT pg_advisory_xact_lock(:k, CAST(:c AS integer))"), {"k": BOUNDARY_LOCK, "c": admin.company_id})
+    # Postgres lock keys are 32-bit: fold the id in, as the audit chain's lock does, so huge ids don't fail (a
+    # shared key only means two companies' changes wait for each other).
+    db.execute(text("SELECT pg_advisory_xact_lock(:k, CAST(:c AS integer))"),
+               {"k": BOUNDARY_LOCK, "c": admin.company_id % 2147483647})
 
 
 def _drive_overlaps(db, engine, admin: User, adding: dict[str, str], removing: set[str] = frozenset()) -> None:

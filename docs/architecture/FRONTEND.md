@@ -285,12 +285,13 @@ menu (name and email, theme, Sign out).
     and locked, "Included with *Parent*" (`coveredBy`), since sync includes
     subfolders and the backend refuses overlapping folders (409, shown under
     the row). Jira with the project key.
-  - **Bulk:** "Add all N shown" and "Remove all N shown" per section, on what
-    the search and Show leave (`bulkRows`: adding skips folders already
+  - **Bulk:** "Add all N" and "Remove all N" per section ("… matching" with a
+    search or a Show filter), on everything the search and Show leave, not only
+    the rows on screen (`bulkRows`: adding skips folders already
     included, folders with one below them in, and folders under another being
     added). Over 50 (`BULK_LIMIT`) they are disabled with "Search to narrow
-    it". A confirmation names the first five, says what happens, and how many
-    are private channels; one request, all or nothing, each scope audited on
+    it". A confirmation lists every one (scrolling; private channels marked,
+    Drive paths), says what happens, and how many are private channels; one request, all or nothing, each scope audited on
     its own; adding starts a sync, like a tick.
   - **A checkbox per scope.** Ticking adds it and starts a sync at once.
     Unticking asks first ("its content stops appearing in answers immediately,
