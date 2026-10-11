@@ -4,9 +4,10 @@
 **You'll:** set up one HTTPS address, the production settings and sign-in apps, deploy, and check it works.
 **Not here:** running it locally → [RUNNING.md](RUNNING.md) · how it's built → [ARCHITECTURE.md](ARCHITECTURE.md).
 
-> **Status (10 Oct): live at <https://knowbuddy.xyz>.** One Lighthouse server in Singapore (2 vCPU, 2 GB RAM, Docker
-> image, 6-month plan) runs the setup on this page, with a Let's Encrypt certificate and Slack sign-in. Google Drive and
-> Jira/Confluence sign-in are not configured on the server yet.
+> **Status (11 Oct): live at <https://knowbuddy.xyz>.** One Lighthouse server in Singapore (2 vCPU, 2 GB RAM, Docker
+> image, 6-month plan) runs the setup on this page, with a Let's Encrypt certificate and Slack, Google Drive and
+> Jira/Confluence sign-in. Google is in Testing mode (only listed test users can connect); the Atlassian app is not
+> shared, so only its owner, the demo admin, can connect Jira and Confluence (section 4).
 
 **Contents:** 1. The shape · 2. One HTTPS address · 3. Server settings · 4. Production sign-in apps · 5. Deploy and
 update · 6. Check it works · 7. Never on the live site · 8. Automatic deploys
