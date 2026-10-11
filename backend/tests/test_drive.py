@@ -1,6 +1,7 @@
 """Drive connector: fetch (files and ACL) and the live access check. No real API calls."""
 
 import json
+from types import SimpleNamespace
 import re
 from urllib.parse import unquote
 
@@ -172,13 +173,18 @@ class FolderTree:
 
     FOLDERS = {"FIN": ("Finance", None), "Y26": ("2026", "FIN"), "PAY": ("Payroll", "Y26"), "ENG": ("Eng", None),
                "HID": ("Hidden child", "SECRET")}
+    WHERE = {"ENG": {"driveId": "SD1"}, "HID": {"ownedByMe": False}}  # Eng in a shared drive; HID shared with me
 
     def files(self):
         return self
 
+    def drives(self):
+        return SimpleNamespace(list=lambda **_: Call({"drives": [{"id": "SD1", "name": "Engineering team"}]}))
+
     def list(self, q, fields, **kwargs):
-        assert "parents" in fields  # the listing must ask for parents
-        return Call({"files": [{"id": i, "name": n, **({"parents": [p]} if p else {})}
+        assert "parents" in fields and "driveId" in fields  # the listing must ask for parents and drives
+        return Call({"files": [{"id": i, "name": n, **({"parents": [p]} if p else {}),
+                                **self.WHERE.get(i, {"ownedByMe": True})}
                                for i, (n, p) in self.FOLDERS.items()]})
 
     def get(self, fileId, fields, **kwargs):
@@ -190,7 +196,10 @@ class FolderTree:
 
 def test_scopes_carry_each_folders_parent_and_path():
     by_id = {s["id"]: s for s in drive.scopes(FolderTree())}
-    assert by_id["PAY"] == {"id": "PAY", "title": "Payroll", "parent": "Y26", "path": "Finance / 2026"}
+    assert by_id["PAY"] == {"id": "PAY", "title": "Payroll", "parent": "Y26", "path": "Finance / 2026",
+                            "drive_id": "my-drive", "drive": "My Drive"}
+    assert (by_id["ENG"]["drive_id"], by_id["ENG"]["drive"]) == ("SD1", "Engineering team")
+    assert by_id["HID"]["drive"] == "Shared with me"
     assert by_id["FIN"]["parent"] is None and by_id["FIN"]["path"] == ""
     assert by_id["HID"]["parent"] is None  # its parent isn't one this person can see: shown at the top
 
@@ -221,3 +230,14 @@ def test_ancestors_share_one_cache_and_a_403_is_not_a_no():
 
     with pytest.raises(HttpError):
         drive.ancestors(Limited(), "PAY")
+
+
+def test_folders_still_list_when_shared_drive_names_fail():
+    class NoNames(FolderTree):
+        def drives(self):
+            def fail(**_):
+                raise HttpError(httplib2.Response({"status": 403}), b"forbidden")
+            return SimpleNamespace(list=lambda **_: SimpleNamespace(execute=lambda **__: fail()))
+
+    by_id = {s["id"]: s for s in drive.scopes(NoNames())}
+    assert by_id["ENG"]["drive"] == "Shared drive" and len(by_id) == 5
