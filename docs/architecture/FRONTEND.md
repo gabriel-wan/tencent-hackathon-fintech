@@ -66,9 +66,11 @@ site, and a user with only Google has no company and sees nothing.
   `ambient-background.tsx`, `lib/use-pointer-motion.ts`): the card plays once
   on load (the question, the answer typing, the sources, the shield), tilts up
   to 6° toward the mouse with a soft highlight, and faint brand-coloured light
-  drifts behind the page, leaning toward the mouse. Only `transform` and
+  flows behind the page: three shapes wander, turn and swell on loops of
+  different lengths, shift with the mouse by different amounts (eased, so they
+  glide), and a soft glow trails the pointer. Only `transform` and
   `opacity` move; the pointer is read at most once a frame into CSS variables
-  (no React re-render); no tilt on touch screens; everything still and the card
+  (no React re-render; the frame loop stops once the shapes catch up); no tilt on touch screens; everything still and the card
   shown complete under reduced motion. "Sign in with Slack" is the main
   button because Slack is the only sign-in that can start a company; Google and
   Atlassian follow as logo-only buttons ("Alternatively, sign in with"), each
