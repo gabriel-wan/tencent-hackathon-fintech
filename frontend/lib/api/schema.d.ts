@@ -340,6 +340,8 @@ export interface components {
             redacted: {
                 [key: string]: number;
             };
+            /** Label */
+            label: string;
         };
         /** DevSessionRequest */
         DevSessionRequest: {

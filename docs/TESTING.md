@@ -58,7 +58,7 @@ From `frontend/`, with Node.js 24 ([RUNNING.md](RUNNING.md) §1):
 | `npm run build` | Anything that breaks the production build, and pages that wrongly try to render at build time | "Compiled successfully" and a route list |
 
 The unit tests sit next to the code they test (`*.test.ts`) and cover the security-relevant helpers: which fixed
-reply an answer is, which source links are safe, removing `[S1]` markers, mock mode staying off in production, and
+reply an answer is, which source links are safe, turning `[S1]` markers into the right numbered source by label (and removing them for Copy), mock mode staying off in production, and
 the allowlist of sign-in error codes (`lib/connectors.test.ts`), what a source says about masking and freshness
 (`lib/citations.test.ts`: "N masked", and "synced" only for data that ever synced, stale after 15 minutes), the
 `mock:shield` and `mock:injection` fixtures, and the audit page's filters and one-line summaries

@@ -205,8 +205,8 @@ text.
 Try it: re-seed ([RUNNING.md](RUNNING.md) §7), sign in as Alice and ask "What is the status of the payment gateway
 migration?". `#eng` has a planted ops-bot message telling the AI to say the migration was cancelled and to send
 people to a "re-verify" link. You'll see the real status (blocked on the TLS certificate, sandbox tests Friday), with
-no "cancelled" and no link, and under it a notice: "KnowBuddy ignored instructions hidden in the sources" (the API
-returns `instructions_removed: 1`). A "not found" reply never shows it (INV-5).
+no "cancelled" and no link. The chat doesn't flag the removal (the API still returns `instructions_removed: 1`);
+an admin sees which source and which rule in that answer's audit record (its Ref #).
 How: [QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md) §3, steps 6 to 8. Tested by `test_grounding.py` and
 `test_injection.py` (with a fake model that obeys the attacker), and live against `hy3` with 10 attacks
 ([TESTING.md](TESTING.md) §4).

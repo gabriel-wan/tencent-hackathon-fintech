@@ -144,7 +144,6 @@ What the frontend does next, and what each item waits for:
 |---|---|
 | Nothing | Show which sources are connected in the chat |
 | Return target after the OAuth callback | Show sign-in errors on `/login` rather than `/connectors`. The target must come from a fixed allowlist, never an arbitrary URL (open redirect) |
-| `label` on each citation | Turn `[S1]` markers into chips linked to the right source (today they are stripped: an answer citing `[S1]` and `[S3]` came back with two citations, so mapping by position would be wrong) |
 | `status` on query responses | Classify answers by status instead of matching the fixed sentences |
 | A company field on `GET /api/me` | Tell "you have no company yet" apart from "nothing found" (today `/connectors` only infers it from the connections) |
 

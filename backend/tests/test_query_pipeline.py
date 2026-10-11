@@ -79,6 +79,21 @@ def test_answer_cites_documents_and_is_audited(conn, make_user, add_doc, fake_ll
     assert payload["live_check_mode"].startswith("stub")
 
 
+def test_each_citation_carries_the_label_the_answer_uses(conn, make_user, add_doc, fake_llm):
+    # The model lists S2 before S1 and cites them in the text in another order: each citation keeps its own
+    # label, so the UI links every [S<n>] to the right source whatever the list order.
+    alice = make_user("alice@co.example", ALICE)
+    add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked on the certificate")
+    add_doc("slack", "C2:1", ["slack:user:U001"], "gateway migration sandbox tests on Friday")
+    llm = fake_llm(reply=json.dumps({"answer": "Tests Friday [S1]. Blocked [S2].", "citations": ["S2", "S1"]}))
+
+    result = answer_question(within(conn), alice, "gateway migration", llm)
+
+    assert {c.label for c in result.citations} == {"S1", "S2"}
+    sent = audit_payload(conn, result.audit_id)["sent_to_llm"]
+    assert {c.label: c.id for c in result.citations} == {f"S{i}": key for i, key in enumerate(sent, start=1)}
+
+
 def test_invented_citation_is_removed_before_answering(conn, make_user, add_doc, fake_llm):
     alice = make_user("alice@co.example", ALICE)
     add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")

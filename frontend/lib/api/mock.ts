@@ -32,7 +32,10 @@ export function isMockResponse(response: Pick<QueryResponse, "audit_id">): boole
 
 export const MOCK_DELAY_MS = 6_000;
 
-const SLACK_ONCALL: Citation = {
+/** A source without its label: `reply` labels the sources S1, S2… in list order, as the answer's markers use them. */
+type MockSource = Omit<Citation, "label">;
+
+const SLACK_ONCALL: MockSource = {
   id: "slack:C_PAYONCALL:1727741000.000100",
   title: "#payments-oncall",
   url: "https://merlionpay.slack.example/archives/C_PAYONCALL/p1727741000000100",
@@ -41,7 +44,7 @@ const SLACK_ONCALL: Citation = {
   synced_at: null, // like seeded data: never synced from a real tool
   redacted: {}, // nothing masked in the mock sources
 };
-const DRIVE_RUNBOOK: Citation = {
+const DRIVE_RUNBOOK: MockSource = {
   id: "drive:D_RUNBOOK",
   title: "Payments on-call runbook",
   url: "https://docs.google.example/document/d/D_RUNBOOK",
@@ -50,7 +53,7 @@ const DRIVE_RUNBOOK: Citation = {
   synced_at: null, // like seeded data: never synced from a real tool
   redacted: {}, // nothing masked in the mock sources
 };
-const SLACK_ENG: Citation = {
+const SLACK_ENG: MockSource = {
   id: "slack:C_ENG:1727827400.000200",
   title: "#eng",
   url: "https://merlionpay.slack.example/archives/C_ENG/p1727827400000200",
@@ -59,7 +62,7 @@ const SLACK_ENG: Citation = {
   synced_at: null, // like seeded data: never synced from a real tool
   redacted: {}, // nothing masked in the mock sources
 };
-const JIRA_TICKET: Citation = {
+const JIRA_TICKET: MockSource = {
   id: "jira:PAY-412",
   title: "PAY-412 Migrate to the new payment gateway",
   url: "https://merlionpay.atlassian.example/browse/PAY-412",
@@ -68,7 +71,7 @@ const JIRA_TICKET: Citation = {
   synced_at: null, // like seeded data: never synced from a real tool
   redacted: {}, // nothing masked in the mock sources
 };
-const CONFLUENCE_DOC: Citation = {
+const CONFLUENCE_DOC: MockSource = {
   id: "confluence:98765",
   title: "Gateway migration decision record",
   url: "https://merlionpay.atlassian.example/wiki/spaces/ENG/pages/98765",
@@ -78,7 +81,8 @@ const CONFLUENCE_DOC: Citation = {
   redacted: {}, // nothing masked in the mock sources
 };
 
-function reply(answer: string, citations: Citation[]): QueryResponse {
+function reply(answer: string, sources: MockSource[]): QueryResponse {
+  const citations = sources.map((source, i) => ({ ...source, label: `S${i + 1}` }));
   return { answer, citations, audit_id: MOCK_AUDIT_ID, instructions_removed: 0 };
 }
 
