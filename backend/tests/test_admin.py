@@ -191,6 +191,19 @@ def test_removing_a_scope_that_is_not_there_writes_no_audit_event(db):
     assert resp.json() == {"added": 0, "removed": 0} and events() == ["boundary_removed"]
 
 
+
+def test_re_adding_a_scope_that_is_already_there_writes_no_audit_event(db):
+    admin = signed_in(db["admin"])
+    events = lambda: [r[0] for r in rows("SELECT event_type FROM audit_events WHERE user_id = :u ORDER BY id",  # noqa: E731
+                                         u=db["admin"])]
+    assert admin.put("/api/admin/boundary/slack/C1", json={"title": "#renamed"}).status_code == 204  # already in
+    assert events() == []
+    assert rows("SELECT title FROM boundary WHERE company_id = :c", c=db["acme"]) == [("#renamed",)]  # title kept fresh
+    resp = admin.post("/api/admin/boundary/slack/bulk",
+                      json={"add": [{"scope_id": "C1", "title": "#renamed"}, {"scope_id": "C2", "title": "#new"}]})
+    assert resp.json() == {"added": 1, "removed": 0} and events() == ["boundary_added"]
+
+
 class RateLimited(Tree):
     """Drive answering 403 (rate limit) for one parent."""
 
