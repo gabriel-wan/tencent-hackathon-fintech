@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerSummary, freshness, maskedSummary, safeHttpUrl, splitAnswer, stripCitationMarkers } from "./citations";
+import { answerSummary, freshness, safeHttpUrl, splitAnswer, stripCitationMarkers } from "./citations";
 
 describe("safeHttpUrl", () => {
   it.each([
@@ -48,18 +48,6 @@ describe("stripCitationMarkers", () => {
 
   it("square brackets that are not citation labels are kept", () => {
     expect(stripCitationMarkers("See ticket [PAY-412] and step [2].")).toBe("See ticket [PAY-412] and step [2].");
-  });
-});
-
-describe("maskedSummary", () => {
-  it("is null when nothing was masked (or the reader is a handler)", () => {
-    expect(maskedSummary({})).toBeNull();
-    expect(maskedSummary(undefined)).toBeNull();
-    expect(maskedSummary({ card: 0 })).toBeNull();
-  });
-
-  it("totals the kinds and lists them in a stable order", () => {
-    expect(maskedSummary({ phone: 2, card: 1, nric: 1 })).toEqual({ total: 4, text: "card 1, nric 1, phone 2" });
   });
 });
 

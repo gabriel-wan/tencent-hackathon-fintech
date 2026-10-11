@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleAlert, Clock, Copy, RotateCcw, TriangleAlert } from "lucide-react";
+import { Check, CircleAlert, Clock, Copy, EyeOff, RotateCcw, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState, type ReactNode } from "react";
 
@@ -15,6 +15,7 @@ import { isMockResponse } from "@/lib/api/mock";
 import type { QueryResponse } from "@/lib/api/types";
 import { answerSummary, splitAnswer, stripCitationMarkers } from "@/lib/citations";
 import { formatExact, formatRelative } from "@/lib/format";
+import { firstMaskedValue } from "@/lib/masking";
 
 import { CitationList } from "./citation-list";
 import type { Exchange, FailureKind } from "./types";
@@ -68,6 +69,22 @@ function AnswerText({ response, sourceId }: { response: QueryResponse; sourceId:
         })}
       </p>
     </TooltipProvider>
+  );
+}
+
+/**
+ * A quiet line under the answer, only when the reader can actually see a hidden value (in the answer or a
+ * source's name): what the bracketed text means, with the first one as the example. Nothing otherwise, so
+ * readers who see no brackets are never told about masking (ADR-010).
+ */
+function MaskedNote({ response }: { response: QueryResponse }) {
+  const example = firstMaskedValue(response.answer, ...response.citations.map((c) => c.title));
+  if (!example) return null;
+  return (
+    <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+      <EyeOff aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+      <span>Details in brackets, like {example}, are sensitive and hidden from view.</span>
+    </p>
   );
 }
 
@@ -207,6 +224,7 @@ export function AnswerCard({ exchange, onRetry, retryDisabled }: Props) {
       return (
         <AnswerFrame label="Answer">
           <AnswerText response={exchange.response} sourceId={sourceId} />
+          <MaskedNote response={exchange.response} />
           <TrustLine response={exchange.response} />
           {exchange.response.citations.length > 0 ? (
             <CitationList citations={exchange.response.citations} sourceId={sourceId} />
