@@ -12,7 +12,6 @@ import {
   eventLabel,
   filtersFromParams,
   formatMs,
-  hasMaskedValues,
   isStubCheck,
   liveCheckLabel,
   pageUrl,
@@ -95,28 +94,6 @@ describe("timingRows", () => {
 
   it("formats with a thousands separator", () => {
     expect(formatMs(1633.4)).toBe("1,633 ms");
-  });
-});
-
-describe("hasMaskedValues", () => {
-  it.each([
-    "[secret]",
-    "card [card ending 1111]",
-    "to [account ending 6789]",
-    "[IBAN ending 4321]",
-    "NRIC [NRIC *****567D]",
-    "call [phone 1]",
-    "[email 2]",
-    "customer [name 1]",
-    "[passport 1]",
-    "[date of birth]",
-    "[address]",
-  ])("%j has a masked value", (text) => {
-    expect(hasMaskedValues(text)).toBe(true);
-  });
-
-  it.each(["Blocked [S1][S2].", "see [draft] notes", "[link removed]", "", undefined])("%j has none", (text) => {
-    expect(hasMaskedValues(text)).toBe(false);
   });
 });
 

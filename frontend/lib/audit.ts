@@ -209,15 +209,6 @@ export function formatMs(ms: number): string {
   return `${new Intl.NumberFormat("en").format(Math.round(ms))} ms`;
 }
 
-// The tags the Need-to-Know Shield writes in place of a value (backend/app/redaction.py Shield._tag).
-const MASK_TAG =
-  /\[(?:secret|date of birth|address|(?:card|account|IBAN) ending [A-Za-z0-9]{1,4}|NRIC \*+[A-Za-z0-9]{1,4}|(?:phone|email|name|passport) \d+)\]/;
-
-/** Whether stored text has values the Shield masked ("[card ending 1111]", "[name 1]"…), not "[S1]" or "[draft]". */
-export function hasMaskedValues(text: string | undefined): boolean {
-  return !!text && MASK_TAG.test(text);
-}
-
 /** The live check in plain words: "live", the development stand-in, or the raw value. */
 export function liveCheckLabel(mode: string | undefined): { text: string; kind: "live" | "stub" | "other" } {
   if (mode?.startsWith("live")) return { text: "Live, with each tool", kind: "live" };

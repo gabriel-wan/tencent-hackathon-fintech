@@ -1,9 +1,9 @@
-import { BookOpen, ExternalLink, EyeOff, FileText, Link2, MessageSquare, SquareKanban, type LucideIcon } from "lucide-react";
+import { BookOpen, ExternalLink, FileText, Link2, MessageSquare, SquareKanban, type LucideIcon } from "lucide-react";
 
 import { PlatformLogo } from "@/components/platform-logo";
 import { StatusChip } from "@/components/status-chip";
 import type { Citation } from "@/lib/api/types";
-import { freshness, maskedSummary, safeHttpUrl } from "@/lib/citations";
+import { freshness, safeHttpUrl } from "@/lib/citations";
 import { formatExact, formatRelative } from "@/lib/format";
 
 // Each tool's logo, with a generic icon if it can't load; the text label always carries the meaning.
@@ -20,20 +20,6 @@ function SourceBadge({ source }: { source: string }) {
     <StatusChip>
       <PlatformLogo source={source} size={12} fallback={<Icon aria-hidden="true" className="size-3" />} />
       {label}
-    </StatusChip>
-  );
-}
-
-/** "3 masked": what the Need-to-Know Shield hid in this source for you (ADR-010). Neutral: it's working. */
-function MaskedChip({ redacted }: { redacted: Record<string, number> }) {
-  const masked = maskedSummary(redacted);
-  if (!masked) return null;
-  const detail = `Masked for you: ${masked.text} (Need-to-Know Shield)`;
-  return (
-    <StatusChip title={detail}>
-      <EyeOff aria-hidden="true" />
-      <span aria-hidden="true">{masked.total} masked</span>
-      <span className="sr-only">{detail}</span>
     </StatusChip>
   );
 }
@@ -86,7 +72,6 @@ function CitationItem({ citation, n, id }: { citation: Citation; n: number; id: 
       ) : (
         <span className="font-medium break-words">{citation.title}</span>
       )}
-      <MaskedChip redacted={citation.redacted} />
       <span className="text-xs text-muted-foreground">
         updated{" "}
         {/* title: exact time on hover; assistive tech also reads it as the name. */}

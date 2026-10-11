@@ -29,18 +29,6 @@ export function safeHttpUrl(url: string): string | null {
 }
 
 /**
- * What the Need-to-Know Shield masked in one source for this reader (`redacted`, ADR-010): the total and
- * "card 1, phone 2", or null when nothing was. A handler sees the item unmasked, so gets null.
- */
-export function maskedSummary(redacted: Record<string, number> | undefined): { total: number; text: string } | null {
-  const kinds = Object.entries(redacted ?? {})
-    .filter(([, n]) => n > 0)
-    .sort(([a], [b]) => a.localeCompare(b));
-  const total = kinds.reduce((sum, [, n]) => sum + n, 0);
-  return total ? { total, text: kinds.map(([kind, n]) => `${kind} ${n}`).join(", ") } : null;
-}
-
-/**
  * How current our copy of a source is (`synced_at`: its scope's last complete sync). Null when it has never
  * synced (e.g. seeded demo data): nothing pretends it was. Stale after three missed 5-minute syncs.
  */

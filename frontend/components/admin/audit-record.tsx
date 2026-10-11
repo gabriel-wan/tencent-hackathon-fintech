@@ -11,12 +11,12 @@ import {
   documentRows,
   eventLabel,
   formatMs,
-  hasMaskedValues,
   liveCheckLabel,
   searchLabel,
   timingRows,
 } from "@/lib/audit";
 import { formatExact } from "@/lib/format";
+import { hasMaskedValues } from "@/lib/masking";
 
 // The content of one audit record's dialog on /admin/audit (ADR-007). Explanations live behind ⓘ
 // buttons, not in headings; per-document facts are one table.
