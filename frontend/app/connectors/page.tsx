@@ -114,9 +114,9 @@ export default async function ConnectionsPage({ searchParams }: Props) {
         ) : null}
 
         {connectors ? (
-          <ul className="grid gap-4 sm:grid-cols-2">
+          <ul className="divide-y rounded-xl bg-card ring-1 ring-foreground/10">
             {connectors.map((connector) => (
-              <li key={connector.id} className="grid">
+              <li key={connector.id}>
                 <ConnectorCard connector={connector} connectHref={connectUrl(connector.id)} />
               </li>
             ))}

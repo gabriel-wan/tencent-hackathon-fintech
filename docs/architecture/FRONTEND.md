@@ -88,9 +88,10 @@ site, and a user with only Google has no company and sees nothing.
 
 ### Connections (`/connectors`)
 
-`app/connectors/page.tsx`, `components/connectors/`. One card per tool: status
-and the connected account, then **Connect** (a link to the backend), or **Test**
-and **Disconnect**.
+`app/connectors/page.tsx`, `components/connectors/`. One list, a row per tool:
+its logo and name, a status chip (green "Connected", or "Not connected"), what
+KnowBuddy reads there and the connected account, then **Connect** (a link to
+the backend), or **Test** and **Disconnect**, on the right.
 
 - **Own session check, not the `(app)` layout.** The layout would send a
   signed-out visitor to `/login` and lose the `?error=` code. The page shares
