@@ -6,7 +6,8 @@
 [CONTRIBUTING.md](../CONTRIBUTING.md) §8.
 
 **Contents:** 1. Backend tests · 2. Frontend checks · 3. Security invariants · 4. Manual checks · 5. Accessibility ·
-6. Mock mode · 7. Before a pull request, before submitting · 8. When tests go wrong · 9. Not covered yet
+6. Mock mode · 7. Before a pull request, before submitting · 8. When tests go wrong · 9. Search at scale ·
+10. Not covered yet
 
 ## 1. Backend tests
 
@@ -194,7 +195,51 @@ end-to-end run on a clean machine.
 | Port 3000 is already in use when starting the dev server | The Docker frontend holds it: `npm run dev -- -p 3001` |
 | A test passes alone but fails with the others | A committing test left rows behind: check it empties the tables it touches (section 1) |
 
-## 9. Not covered yet
+## 9. Search at scale
+
+How fast search is at about Company A's size (issue #31). `backend/scripts/load_search.py` drops and recreates a
+database whose name must end in `_loadtest`, seeds synthetic chunks (random 1,024-d unit vectors, Zipf-distributed
+words, ACLs shaped like the connectors': team user lists, workspace-wide, a security team, 1% public), and times
+`hybrid_search` and the audit-only `restricted_matches` for three personas, 8 questions × 5 runs each:
+
+```bash
+docker compose run --rm --build -e POSTGRES_DB=brain_loadtest -v ./backend/scripts:/app/scripts     backend python -m scripts.load_search --chunks 100000
+```
+
+Add `--measure-only` to time an already seeded database again, and `-e PLANS=1` to print each persona's
+EXPLAIN ANALYZE. Seeding 100k chunks takes about 12 minutes.
+
+Measured 11 Oct 2026 on a laptop (Docker Desktop on Windows, 7.4 GB for the VM), the `pgvector/pgvector:pg17`
+image with its default settings, warm cache:
+
+| Chunks | Persona (sees) | Search p50 | Search p95 | Audit-only search p50 | p95 |
+|---|---|---|---|---|---|
+| 10k | employee (42%) | 218 ms | 481 ms | 50 ms | 167 ms |
+| 10k | security (51%) | 151 ms | 377 ms | 24 ms | 146 ms |
+| 10k | contractor (1.3%) | 7 ms | 16 ms | 12 ms | 95 ms |
+| 100k | employee (42%) | 427 ms | 901 ms | 123 ms | 757 ms |
+| 100k | security (51%) | 462 ms | 1,147 ms | 103 ms | 722 ms |
+| 100k | contractor (1.5%) | 33 ms | 126 ms | 102 ms | 748 ms |
+
+What the plans show (the four questions in #31):
+
+1. **Vector search** uses the HNSW index at 100k chunks for the broad personas, even though `pool` is materialised.
+   At 10k, and for the contractor at 100k, Postgres computes exact distances over the permitted chunks instead,
+   which is cheaper there.
+2. **Narrow ACLs still fill the result**: every persona, the contractor included, gets the full 50 vector rows
+   (iterative scan does not stop early at this size).
+3. **Keyword search is the main cost.** Common question words ("status", "payment") match about 45% of chunks, so
+   the query reads the whole `chunks` table and ranks 16,000–19,000 permitted matches with `ts_rank_cd` before its
+   LIMIT.
+4. **The audit-only search** adds 100–140 ms at p50 to every question, and up to 0.75 s at p95, for the same reason.
+
+The boundary check costs a few milliseconds (a hash join against `boundary`), so a `documents.in_boundary` column is
+not needed. At 100k chunks the working set is about 2.5 GB (`chunks` 1.7 GB, its HNSW index 0.8 GB) against
+Postgres's default 128 MB `shared_buffers`, so a cold cache was much slower (one 5.6 s p95 on the first pass).
+Follow-ups: cheaper keyword ranking for common words, and sizing `shared_buffers` and memory for the production
+database before it holds this much.
+
+## 10. Not covered yet
 
 - No component tests for the chat page: its states are checked by hand (sections 4 and 6).
 - Signing in with real Google, Slack and Atlassian accounts is only checked by hand (section 4), never automatically.

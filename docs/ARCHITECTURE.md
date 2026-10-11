@@ -269,7 +269,7 @@ erDiagram
 
 | We chose | Over | Because | What it costs |
 |---|---|---|---|
-| PostgreSQL for documents, vectors, full-text and ACLs | A separate search engine or vector store | One transaction keeps content and permissions consistent; one thing to run | Search at very large scale would need more; not our corpus size |
+| PostgreSQL for documents, vectors, full-text and ACLs | A separate search engine or vector store | One transaction keeps content and permissions consistent; one thing to run | Measured at 100k chunks (about Company A's size): search p95 0.9–1.1 s on a laptop, mostly keyword ranking of common words ([TESTING.md §9](TESTING.md#9-search-at-scale)). Much larger corpora would need more |
 | Polling every 5 minutes, plus "sync now" | Webhooks | No public https endpoint or signature checks needed; works locally | New content can take up to ~5 minutes to appear |
 | Re-checking with each tool at question time | Trusting stored permissions alone | Revocations apply on the very next question | Up to 2 s added per question; a tool outage makes answers less complete, never leaky |
 | One role for admin and compliance | Separate roles | One fewer persona to build and demo (ADR-007) | No separation of duties; mitigated because admin actions are themselves in the hash chain |
