@@ -7,7 +7,7 @@ import { Wordmark } from "@/components/brand";
 import { SlackTokenForm } from "@/components/connectors/slack-token-form";
 import { DevSignInList } from "@/components/dev-sign-in-list";
 import { Disclosure } from "@/components/disclosure";
-import { HeroIllustration } from "@/components/login/hero-illustration";
+import { LoginHero } from "@/components/login/login-hero";
 import { PageContainer } from "@/components/page-container";
 import { PlatformLogo } from "@/components/platform-logo";
 import { ServerUnavailable } from "@/components/server-unavailable";
@@ -49,7 +49,7 @@ export default async function LoginPage({ searchParams }: Props) {
       <div className="grid gap-10">
         {session === "unreachable" ? <ServerUnavailable /> : null}
 
-        <section className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:py-10">
+        <LoginHero>
           <div className="grid gap-6">
             <Wordmark size="lg" tagline />
             <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
@@ -95,10 +95,7 @@ export default async function LoginPage({ searchParams }: Props) {
             </Disclosure>
           </div>
 
-          <div className="hidden sm:block">
-            <HeroIllustration />
-          </div>
-        </section>
+        </LoginHero>
 
         <div className="grid max-w-md gap-6">
         {devUsers && devUsers.length > 0 ? (
