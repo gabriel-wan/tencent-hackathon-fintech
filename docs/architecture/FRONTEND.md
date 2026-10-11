@@ -17,7 +17,7 @@ are ADR-009 in [DECISIONS.md](../decisions/DECISIONS.md).
 | Route | What it shows |
 |---|---|
 | `/` | Signed in only. The chat (see below) |
-| `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box and Slack token form when the backend is in development mode |
+| `/login` | Sign-in: "Sign in with Slack" first, Google and Atlassian as logo buttons (links to the backend's OAuth), a collapsed "How accounts work"; development sign-in box and Slack token form when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
 | `/admin/audit` | Admins only. Search the audit trail, read each record, verify the hash chain (see "Admin pages") |
 | `/admin/boundary` | Admins only. Choose which channels, folders, projects and spaces KnowBuddy may read; sync now (see "Admin pages") |
@@ -59,12 +59,17 @@ site, and a user with only Google has no company and sees nothing.
   the server" (not a redirect, which would look like being signed out). The
   user is passed to client components through `MeProvider` (`useMe()`), for
   display only. This gate is UX: the backend checks the session on every call.
-- **`/login`.** Signed-in visitors go to `/`. "Sign in with Google", "Slack"
-  and "Atlassian" are plain links to
-  `${BACKEND_LOCAL_URL}/connectors/{drive,slack,jira}/connect`: a full-page
-  navigation, never a `fetch`, because the OAuth redirect has to start and end
-  on the backend. If a provider is not configured the backend answers 503 and
-  names the missing variable.
+- **`/login`.** Signed-in visitors go to `/`. The logo, a headline and, on
+  wider screens, a decorative answer card (`components/login/hero-illustration.tsx`,
+  made-up content, hidden from screen readers). "Sign in with Slack" is the main
+  button because Slack is the only sign-in that can start a company; Google and
+  Atlassian follow as logo-only buttons ("Alternatively, sign in with"), each
+  with an accessible name and a tooltip on hover and keyboard focus. "How
+  accounts work" is a native `<details>`, collapsed by default. All three are
+  plain links to `${BACKEND_LOCAL_URL}/connectors/{slack,drive,jira}/connect`: a
+  full-page navigation, never a `fetch`, because the OAuth redirect has to start
+  and end on the backend. If a provider is not configured the backend answers
+  503 and names the missing variable.
 - **Errors.** The backend's OAuth callback redirects to
   `/connectors?connected=<provider>` or `/connectors?error=<code>` (the target
   is fixed in the backend). Only the codes in `lib/connectors.ts`

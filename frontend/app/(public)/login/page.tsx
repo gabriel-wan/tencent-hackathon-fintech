@@ -1,19 +1,22 @@
-import { CircleAlert } from "lucide-react";
+import { ChevronRight, CircleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 
+import { Wordmark } from "@/components/brand";
 import { SlackTokenForm } from "@/components/connectors/slack-token-form";
 import { DevSignInList } from "@/components/dev-sign-in-list";
+import { HeroIllustration } from "@/components/login/hero-illustration";
 import { PageContainer } from "@/components/page-container";
+import { PlatformLogo } from "@/components/platform-logo";
 import { ServerUnavailable } from "@/components/server-unavailable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotSignedInError } from "@/lib/api/errors";
 import { getMe, listDevUsers } from "@/lib/api/server";
-import { connectUrl, oauthErrorMessage } from "@/lib/connectors";
+import { connectUrl, oauthErrorMessage, type ConnectorId } from "@/lib/connectors";
 
 export const metadata: Metadata = { title: "Sign in · KnowBuddy" };
 
@@ -41,46 +44,66 @@ export default async function LoginPage({ searchParams }: Props) {
   const devUsers = session === "signedOut" ? await listDevUsers() : null;
 
   return (
-    <PageContainer className="max-w-md">
-      <div className="grid gap-6">
+    <PageContainer className="max-w-5xl">
+      <div className="grid gap-10">
         {session === "unreachable" ? <ServerUnavailable /> : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h1 className="text-xl font-semibold tracking-tight">Sign in to KnowBuddy</h1>
-            </CardTitle>
-            <CardDescription>
+        <section className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:py-10">
+          <div className="grid gap-6">
+            <Wordmark size="lg" tagline />
+            <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
+              <span className="block">Know what you need.</span>{" "}
+              <span className="block">No-buddy sees what they shouldn&apos;t.</span>
+            </h1>
+            <p className="max-w-prose text-lg text-muted-foreground">
               Answers from your company&apos;s Slack, Drive, Jira and Confluence, limited to what you can already see.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+            </p>
+
             {errorMessage ? (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="max-w-prose">
                 <CircleAlert aria-hidden="true" />
                 <AlertDescription>{errorMessage}</AlertDescription>
               </Alert>
             ) : null}
-            {/* Plain links: the sign-in redirect has to start and end on the backend. Signing in
-                connects that tool to your account; there is no separate password. */}
-            <Button asChild size="lg" className="w-full">
-              <a href={connectUrl("drive")}>Sign in with Google</a>
-            </Button>
-            <div className="grid grid-cols-2 gap-3">
-              <Button asChild variant="outline" size="lg">
-                <a href={connectUrl("slack")}>Slack</a>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <a href={connectUrl("jira")}>Atlassian</a>
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Signing in connects that tool, and only what you can already see there is used. Your company comes from
-              your Slack workspace, so connect Slack too. Jira and Confluence join it once your admin has added them.
-            </p>
-          </CardContent>
-        </Card>
 
+            {/* Plain links: the sign-in redirect has to start and end on the backend. Signing in
+                connects that tool to your account; there is no separate password. Slack first: it is
+                the only sign-in that can start a company (backend/app/connectors/oauth.py account()). */}
+            <div className="grid gap-4">
+              <Button asChild variant="outline" size="xl" className="w-full sm:w-fit">
+                <a href={connectUrl("slack")}>
+                  <PlatformLogo source="slack" size={20} />
+                  Sign in with Slack
+                </a>
+              </Button>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span>Alternatively, sign in with</span>
+                <TooltipProvider>
+                  <LogoSignIn connector="drive" logo="google" name="Google" />
+                  <LogoSignIn connector="jira" logo="atlassian" name="Atlassian" />
+                </TooltipProvider>
+              </div>
+            </div>
+
+            <details className="group max-w-prose text-sm">
+              <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <ChevronRight aria-hidden="true" className="size-4 transition-transform group-open:rotate-90" />
+                How accounts work
+              </summary>
+              <ul className="mt-3 grid list-disc gap-2 pl-10 text-muted-foreground">
+                <li>Signing in connects that tool. Only what you can already see there is used, and there&apos;s no separate password.</li>
+                <li>Your company comes from your Slack workspace, so sign in with Slack first, or connect it later.</li>
+                <li>Jira and Confluence join once your admin has added your company&apos;s Atlassian site.</li>
+              </ul>
+            </details>
+          </div>
+
+          <div className="hidden sm:block">
+            <HeroIllustration />
+          </div>
+        </section>
+
+        <div className="grid max-w-md gap-6">
         {devUsers && devUsers.length > 0 ? (
           <section
             aria-labelledby="dev-sign-in-heading"
@@ -104,7 +127,24 @@ export default async function LoginPage({ searchParams }: Props) {
             connected with a pasted token, and connecting it is also how a new person signs in and how a
             company starts. Signed-out visitors can't reach /connectors, so the form must be here too. */}
         {devUsers !== null ? <SlackTokenForm /> : null}
+        </div>
       </div>
     </PageContainer>
+  );
+}
+
+/** A logo-only sign-in link: the name is its accessible label and its tooltip (hover and keyboard focus). */
+function LogoSignIn({ connector, logo, name }: { connector: ConnectorId; logo: string; name: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button asChild variant="outline" size="icon-xl" className="rounded-full">
+          <a href={connectUrl(connector)} aria-label={`Sign in with ${name}`}>
+            <PlatformLogo source={logo} size={22} />
+          </a>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Sign in with {name}</TooltipContent>
+    </Tooltip>
   );
 }
