@@ -65,22 +65,29 @@ def scopes(drive) -> list[dict]:
     return [{"id": f["id"], "title": f["name"], "parent": parent(f), "path": path(f)} for f in folders]
 
 
-def ancestors(drive, folder_id: str) -> list[str]:
+def ancestors(drive, folder_id: str, parent_of: dict[str, str | None] | None = None) -> list[str]:
     """The folders above this one, nearest first, as far as this person can see. Used to keep the boundary from
-    holding a folder and a folder inside it (sync already includes subfolders; both would fight over the files)."""
+    holding a folder and a folder inside it (sync already includes subfolders; both would fight over the files).
+
+    `parent_of`: a cache shared by every chain in one request, so a parent several folders share is asked once.
+    Only a 404 (a parent this person can't see) ends the chain. A 403 is not a "no": Drive also uses it for rate
+    limits, so it raises, and the caller refuses the change rather than let an overlap through unchecked."""
+    parent_of = {} if parent_of is None else parent_of
     found: list[str] = []
     current = folder_id
     for _ in range(MAX_DEPTH):
-        try:
-            meta = drive.files().get(fileId=current, fields="parents", supportsAllDrives=True).execute(num_retries=3)
-        except HttpError as e:
-            if e.status_code in (403, 404):  # a parent this person can't see: the chain ends here for them
-                break
-            raise
-        parents = meta.get("parents") or []
-        if not parents or parents[0] in found or parents[0] == folder_id:
+        if current not in parent_of:
+            try:
+                meta = drive.files().get(fileId=current, fields="parents", supportsAllDrives=True).execute(num_retries=3)
+            except HttpError as e:
+                if e.status_code != 404:
+                    raise
+                meta = {}
+            parent_of[current] = (meta.get("parents") or [None])[0]
+        parent = parent_of[current]
+        if not parent or parent in found or parent == folder_id:
             break
-        current = parents[0]
+        current = parent
         found.append(current)
     return found
 

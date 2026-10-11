@@ -199,3 +199,25 @@ def test_ancestors_walk_up_as_far_as_this_person_can_see():
     assert drive.ancestors(FolderTree(), "PAY") == ["Y26", "FIN"]
     assert drive.ancestors(FolderTree(), "FIN") == []
     assert drive.ancestors(FolderTree(), "HID") == ["SECRET"]  # the hidden parent ends the chain, no error
+
+
+def test_ancestors_share_one_cache_and_a_403_is_not_a_no():
+    tree, calls = FolderTree(), []
+    get = tree.get
+
+    def counted(fileId, fields, **kwargs):
+        calls.append(fileId)
+        return get(fileId, fields, **kwargs)
+
+    tree.get = counted
+    cache: dict = {}
+    drive.ancestors(tree, "PAY", cache)
+    drive.ancestors(tree, "Y26", cache)  # its chain is already known
+    assert calls == ["PAY", "Y26", "FIN"]
+
+    class Limited(FolderTree):
+        def get(self, fileId, fields, **kwargs):
+            raise HttpError(httplib2.Response({"status": 403}), b"rate limit")
+
+    with pytest.raises(HttpError):
+        drive.ancestors(Limited(), "PAY")

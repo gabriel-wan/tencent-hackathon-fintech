@@ -85,28 +85,42 @@ def _insert(db, admin: User, source: str, scope_id: str, title: str) -> None:
     record_event(db, admin.id, "boundary_added", {"source": source, "scope_id": scope_id, "title": title})
 
 
-def _delete(db, admin: User, source: str, scope_id: str) -> None:
+def _delete(db, admin: User, source: str, scope_id: str) -> bool:
+    """Removes a scope. Audited only when it was in the boundary: a second removal (two admins at once, a stale
+    page) changes nothing, so it must not appear in the trail as if it had (review of the UI revamp PR)."""
     key = {"c": admin.company_id, "s": source, "i": scope_id}
-    db.execute(text("DELETE FROM boundary WHERE company_id = :c AND source = :s AND scope_id = :i"), key)
+    removed = db.execute(text("DELETE FROM boundary WHERE company_id = :c AND source = :s AND scope_id = :i"),
+                         key).rowcount
     db.execute(text("DELETE FROM sync_state WHERE company_id = :c AND source = :s AND key = :i"), key)
     db.execute(text("UPDATE documents SET deleted_at = now() WHERE company_id = :c AND source = :s "
                     "AND scope_id = :i AND deleted_at IS NULL"), key)
-    record_event(db, admin.id, "boundary_removed", {"source": source, "scope_id": scope_id})
+    if removed:
+        record_event(db, admin.id, "boundary_removed", {"source": source, "scope_id": scope_id})
+    return bool(removed)
 
 
-def _drive_overlaps(engine, admin: User, adding: dict[str, str], removing: set[str] = frozenset()) -> None:
+BOUNDARY_LOCK = 4747  # first key of the per-company advisory lock on boundary changes (the second is the company)
+
+
+def _lock(db, admin: User) -> None:
+    """One boundary change per company at a time, until its transaction ends: the overlap check and the write
+    see the same boundary, so two adds (a folder and its parent) can't both pass."""
+    db.execute(text("SELECT pg_advisory_xact_lock(:k, CAST(:c AS integer))"), {"k": BOUNDARY_LOCK, "c": admin.company_id})
+
+
+def _drive_overlaps(db, engine, admin: User, adding: dict[str, str], removing: set[str] = frozenset()) -> None:
     """Refuses (409) Drive folders that sit above or below another folder in the boundary, or in the same
-    request. `adding`: folder ID -> its title. Asks Drive, as the admin, for the ancestors of each folder
-    involved (a few calls each)."""
-    with engine.connect() as db:
-        titles = dict(db.execute(text("SELECT scope_id, title FROM boundary WHERE company_id = :c "
-                                      "AND source = 'drive'"), {"c": admin.company_id}).all())
+    request. `adding`: folder ID -> its title. Reads the boundary in the caller's locked transaction, and asks
+    Drive, as the admin, for the ancestors of each folder involved, sharing one parent cache across them."""
+    titles = dict(db.execute(text("SELECT scope_id, title FROM boundary WHERE company_id = :c "
+                                  "AND source = 'drive'"), {"c": admin.company_id}).all())
     others = {i: t for i, t in titles.items() if i not in removing}
     if not others and len(adding) < 2:
         return
     try:
         client = store.client(engine, admin.id, "drive")
-        chains = {i: drive.ancestors(client, i) for i in {*others, *adding}}
+        parent_of: dict[str, str | None] = {}
+        chains = {i: drive.ancestors(client, i, parent_of) for i in {*others, *adding}}
     except store.NotConnected as e:
         raise HTTPException(404, "connect drive first") from e
     except store.ReconnectNeeded as e:
@@ -128,9 +142,10 @@ def _drive_overlaps(engine, admin: User, adding: dict[str, str], removing: set[s
 
 @router.put("/boundary/{source}/{scope_id}", status_code=204)
 def add_scope(source: str, scope_id: ScopeId, body: Scope, engine: Db, admin: User = Depends(require_admin)):
-    if _source(source) == "drive":
-        _drive_overlaps(engine, admin, {scope_id: body.title})
     with engine.begin() as db:
+        _lock(db, admin)
+        if _source(source) == "drive":
+            _drive_overlaps(db, engine, admin, {scope_id: body.title})
         _insert(db, admin, source, scope_id, body.title)
     return Response(status_code=204)
 
@@ -138,6 +153,7 @@ def add_scope(source: str, scope_id: ScopeId, body: Scope, engine: Db, admin: Us
 @router.delete("/boundary/{source}/{scope_id}", status_code=204)
 def remove_scope(source: str, scope_id: str, engine: Db, admin: User = Depends(require_admin)):
     with engine.begin() as db:
+        _lock(db, admin)
         _delete(db, admin, _source(source), scope_id)
     return Response(status_code=204)
 
@@ -166,14 +182,14 @@ def bulk(source: str, body: Bulk, engine: Db, admin: User = Depends(require_admi
         raise HTTPException(422, f"at most {BULK_LIMIT} scopes at once")
     if removing & set(adding):
         raise HTTPException(422, "a scope can't be added and removed at once")
-    if source == "drive" and adding:
-        _drive_overlaps(engine, admin, adding, removing)
     with engine.begin() as db:  # one transaction: a failure changes nothing
-        for scope_id in sorted(removing):
-            _delete(db, admin, source, scope_id)
+        _lock(db, admin)
+        if source == "drive" and adding:
+            _drive_overlaps(db, engine, admin, adding, removing)
+        removed = sum(_delete(db, admin, source, scope_id) for scope_id in sorted(removing))
         for scope_id, title in adding.items():
             _insert(db, admin, source, scope_id, title)
-    return {"added": len(adding), "removed": len(removing)}
+    return {"added": len(adding), "removed": removed}  # removed: only scopes that were in the boundary
 
 
 @router.post("/sync", status_code=202)

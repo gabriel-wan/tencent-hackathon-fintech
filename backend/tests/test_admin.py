@@ -178,3 +178,34 @@ def test_bulk_is_capped_checked_and_admin_only(db, monkeypatch):
                         json={"add": [{"scope_id": "FIN", "title": "Finance"}, {"scope_id": "PAY", "title": "Payroll"}]})
     assert nested.status_code == 409  # two overlapping folders in one request
     assert rows("SELECT scope_id FROM boundary WHERE source = 'drive'") == []  # nothing written
+
+
+def test_removing_a_scope_that_is_not_there_writes_no_audit_event(db):
+    admin = signed_in(db["admin"])
+    events = lambda: [r[0] for r in rows("SELECT event_type FROM audit_events WHERE user_id = :u ORDER BY id",  # noqa: E731
+                                         u=db["admin"])]
+    assert admin.delete("/api/admin/boundary/slack/C1").status_code == 204
+    assert admin.delete("/api/admin/boundary/slack/C1").status_code == 204  # again: nothing left to remove
+    assert events() == ["boundary_removed"]
+    resp = admin.post("/api/admin/boundary/slack/bulk", json={"remove": ["C1", "C9"]})  # neither is in
+    assert resp.json() == {"added": 0, "removed": 0} and events() == ["boundary_removed"]
+
+
+class RateLimited(Tree):
+    """Drive answering 403 (rate limit) for one parent."""
+
+    def get(self, fileId, **_):
+        if fileId == "Y26":
+            from googleapiclient.errors import HttpError
+            import httplib2
+
+            raise HttpError(httplib2.Response({"status": 403}), b'{"error": {"message": "Rate Limit Exceeded"}}')
+        return super().get(fileId)
+
+
+def test_a_rate_limit_refuses_the_folder_instead_of_skipping_the_check(db, monkeypatch):
+    monkeypatch.setattr(store, "client", lambda *_: RateLimited())
+    drive_scope(db, "FIN", "Finance")
+    resp = signed_in(db["admin"]).put("/api/admin/boundary/drive/PAY", json={"title": "Payroll"})
+    assert resp.status_code == 502 and resp.json()["detail"] == "drive API call failed"  # never added unchecked
+    assert rows("SELECT scope_id FROM boundary WHERE source = 'drive'") == [("FIN",)]
