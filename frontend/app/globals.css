@@ -146,23 +146,6 @@
 }
 
 /* The sign-in page's motion (components/login/): drifting light, and the question bubble rising in. */
-/* The sign-in page's flowing light (components/login/ambient-background.tsx): each shape wanders a loop,
-   turning and swelling, and comes back to where it started. */
-@keyframes kb-flow-a {
-    0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
-    33% { transform: translate3d(-18%, 14%, 0) rotate(35deg) scale(1.15); }
-    66% { transform: translate3d(8%, 26%, 0) rotate(-20deg) scale(0.9); }
-}
-@keyframes kb-flow-b {
-    0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
-    40% { transform: translate3d(24%, -12%, 0) rotate(-40deg) scale(1.2); }
-    70% { transform: translate3d(10%, 18%, 0) rotate(25deg) scale(0.95); }
-}
-@keyframes kb-flow-c {
-    0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
-    30% { transform: translate3d(-14%, -22%, 0) rotate(30deg) scale(1.1); }
-    65% { transform: translate3d(16%, -8%, 0) rotate(-30deg) scale(1.2); }
-}
 @keyframes kb-rise {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: none; }
