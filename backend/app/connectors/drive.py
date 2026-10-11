@@ -39,10 +39,50 @@ def _list(drive, q: str, fields: str) -> Iterator[dict]:
             return
 
 
+MAX_DEPTH = 30  # folder nesting followed when looking for a folder's ancestors (Drive allows ~100; real ones are shallow)
+
+
 def scopes(drive) -> list[dict]:
-    """Folders this person can see, for the admin to choose the boundary from."""
-    return [{"id": f["id"], "title": f["name"]}
-            for f in _list(drive, f"mimeType = '{FOLDER}' and trashed = false", "nextPageToken, files(id, name)")]
+    """Folders this person can see, for the admin to choose the boundary from. Each has its `parent` (None at
+    the top, or when the parent isn't one of these folders) and its `path`, the names of the folders above it
+    ("Finance / 2026"), so same-named folders can be told apart. One listing, no extra API calls."""
+    folders = list(_list(drive, f"mimeType = '{FOLDER}' and trashed = false",
+                         "nextPageToken, files(id, name, parents)"))
+    by_id = {f["id"]: f for f in folders}
+
+    def parent(f: dict) -> str | None:
+        p = (f.get("parents") or [None])[0]
+        return p if p in by_id else None
+
+    def path(f: dict) -> str:
+        names, seen, p = [], {f["id"]}, parent(f)
+        while p and p not in seen and len(names) < MAX_DEPTH:  # `seen`: never loop on odd data
+            seen.add(p)
+            names.append(by_id[p]["name"])
+            p = parent(by_id[p])
+        return " / ".join(reversed(names))
+
+    return [{"id": f["id"], "title": f["name"], "parent": parent(f), "path": path(f)} for f in folders]
+
+
+def ancestors(drive, folder_id: str) -> list[str]:
+    """The folders above this one, nearest first, as far as this person can see. Used to keep the boundary from
+    holding a folder and a folder inside it (sync already includes subfolders; both would fight over the files)."""
+    found: list[str] = []
+    current = folder_id
+    for _ in range(MAX_DEPTH):
+        try:
+            meta = drive.files().get(fileId=current, fields="parents", supportsAllDrives=True).execute(num_retries=3)
+        except HttpError as e:
+            if e.status_code in (403, 404):  # a parent this person can't see: the chain ends here for them
+                break
+            raise
+        parents = meta.get("parents") or []
+        if not parents or parents[0] in found or parents[0] == folder_id:
+            break
+        current = parents[0]
+        found.append(current)
+    return found
 
 
 def acl(permissions: list[dict]) -> list[str]:

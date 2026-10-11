@@ -27,8 +27,9 @@ def client(token: str) -> WebClient:
 
 
 def scopes(c: WebClient) -> list[dict]:
-    """Channels this person can see, for the admin to choose the boundary from."""
-    return [{"id": ch["id"], "title": f"#{ch['name']}"}
+    """Channels this person can see, for the admin to choose the boundary from. `private`: the page groups and
+    warns about these. DMs and group DMs are never listed: they stay out of the boundary on purpose."""
+    return [{"id": ch["id"], "title": f"#{ch['name']}", "private": bool(ch.get("is_private"))}
             for page in c.conversations_list(types="public_channel,private_channel", exclude_archived=True, limit=200)
             for ch in page["channels"]]
 
