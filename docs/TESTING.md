@@ -142,11 +142,11 @@ Target: WCAG 2.2 AA. On 4 Oct every page and every chat state, light and dark, h
 
 - **Automated:** install the free **axe DevTools** browser extension (or use Chrome's Lighthouse → Accessibility) and
   run it on `/login`, the chat (empty, and with an answer), `/connectors`, and both admin pages (an audit
-  record open, and the boundary's removal dialog open). Check light and dark (the theme button in the header). ✅ No violations.
+  record open, and the boundary's removal dialog open). Check light and dark (Theme in the account menu at the bottom of the sidebar; the top-bar button on the sign-in page). ✅ No violations.
 - **Keyboard:** press Tab from the top of a page. ✅ The first stop is "Skip to content", every control shows a
   focus ring, menus open with Enter and close with Escape, and dialogs return focus to what opened them.
 - **Phone width:** in the browser's developer tools, set the width to 375 px. ✅ Nothing scrolls sideways, the
-  header links move into the account menu, and buttons are at least 44 px tall on touch screens.
+  sidebar becomes a top bar whose menu button opens it in a sheet, and buttons are at least 44 px tall on touch screens.
 - **Not yet checked:** a full pass with a screen reader (VoiceOver or NVDA).
 
 The accessibility rules the frontend follows: [architecture/FRONTEND.md](architecture/FRONTEND.md) ("Accessibility").
@@ -162,7 +162,7 @@ Shows every chat state without spending LLM tokens. Development only.
    `mock:bad-url`, `mock:no-citations`, `mock:not-found`, `mock:unavailable`, `mock:401`, `mock:422`, `mock:503`,
    `mock:offline`. Replies take about 6 seconds; add `mock:fast` to skip the wait.
 
-✅ A **MOCK DATA** badge shows in the header, and mocked answers say "Ref # — (mock)". Fixtures are in
+✅ A **MOCK DATA** badge shows at the top of the sidebar (in the top bar on phones), and mocked answers say "Ref # — (mock)". Fixtures are in
 `frontend/lib/api/mock.ts`. Remove the setting when you're done.
 
 ## 7. Before a pull request, before submitting
