@@ -19,8 +19,9 @@ EXPORT = {  # Google-native type -> plain-text export
     "application/vnd.google-apps.presentation": "text/plain",
     "application/vnd.google-apps.spreadsheet": "text/csv",
 }
-FILE_FIELDS = ("nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, "
-               "permissions(type, emailAddress, domain, role))")
+PERMISSION = "type, emailAddress, domain, role, view, inheritedPermissionsDisabled, permissionDetails(inherited)"
+FILE_FIELDS = f"nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, driveId, permissions({PERMISSION}))"
+PERMISSION_FIELDS = f"nextPageToken, permissions({PERMISSION})"
 HANDLER_ROLES = {"owner", "organizer", "fileOrganizer", "writer"}  # may change the file, not only read it
 
 
@@ -69,6 +70,58 @@ def handlers(permissions: list[dict]) -> list[str]:
                    if p["type"] == "user" and p.get("role") in HANDLER_ROLES and p.get("emailAddress")})
 
 
+def _opens(p: dict) -> bool:
+    """Whether a permission lets its holder open the file. In a limited-access folder, inherited entries stay on
+    the list but only show the folder's name; owners, organizers and people added directly still open it."""
+    if p.get("view") == "metadata":
+        return False
+    if p.get("inheritedPermissionsDisabled") and p.get("role") not in ("owner", "organizer"):
+        return any(d.get("inherited") is False for d in p.get("permissionDetails", []))
+    return True
+
+
+def _indexable(f: dict) -> bool:
+    return f["mimeType"] in EXPORT or f["mimeType"].startswith("text/")
+
+
+def _shared_drive_permissions(drive, file_ids: list[str]) -> dict[str, list[dict]]:
+    """Full sharing lists (GOOGLE_DRIVE.md 4.5) of shared-drive files, which files.list never fills: drive
+    members (inherited) and people the file is shared with directly; fetch keeps only those who can open it.
+    Batched like can_read. A refused list (403/404) leaves the file out; any other error fails the folder,
+    so it is retried next run instead of its files being dropped."""
+    found: dict[str, list[dict]] = {}
+    pages: dict[str, str] = {}
+    failures: list[Exception] = []
+
+    def collect(file_id, response, error):
+        if error is None:
+            found[file_id] = response.get("permissions", [])
+            if token := response.get("nextPageToken"):
+                pages[file_id] = token
+        elif isinstance(error, HttpError) and error.status_code in (403, 404):
+            log.info("Drive file %s skipped: its sharing is not visible", file_id)
+        else:
+            failures.append(error)
+
+    def request(file_id, token=None):
+        return drive.permissions().list(fileId=file_id, fields=PERMISSION_FIELDS, pageSize=100, pageToken=token,
+                                        supportsAllDrives=True)
+
+    for start in range(0, len(file_ids), BATCH_LIMIT):
+        batch = drive.new_batch_http_request(callback=collect)
+        for file_id in file_ids[start : start + BATCH_LIMIT]:
+            batch.add(request(file_id), request_id=file_id)
+        batch.execute()
+    if failures:
+        raise failures[0]
+    for file_id, token in pages.items():  # rare: more than 100 entries
+        while token:
+            resp = request(file_id, token).execute(num_retries=3)
+            found[file_id] += resp.get("permissions", [])
+            token = resp.get("nextPageToken")
+    return found
+
+
 def _text(drive, f: dict) -> str | None:
     try:
         if f["mimeType"] in EXPORT:
@@ -89,19 +142,24 @@ def fetch(drive, folder: str, changed: Callable[[str, str], bool] = lambda *_: T
           scope: str | None = None) -> Iterator[dict]:
     """One document per file in the folder and its subfolders. Text is downloaded only for files that
     `changed(source_id, updated_at)`; the others get `text` None (sharing is refreshed either way)."""
-    for f in _list(drive, f"'{folder}' in parents and trashed = false", FILE_FIELDS):
+    files = list(_list(drive, f"'{folder}' in parents and trashed = false", FILE_FIELDS))
+    shared = _shared_drive_permissions(drive, [f["id"] for f in files if f.get("driveId") and "permissions" not in f
+                                               and f["mimeType"] != FOLDER and _indexable(f)])
+    for f in files:
         if f["mimeType"] == FOLDER:
             yield from fetch(drive, f["id"], changed, scope or folder)
             continue
-        # No sharing list: the admin may not share this file, or it is in a shared drive (Drive never lists
-        # permissions there). Never guess an ACL.
-        if "permissions" not in f:
-            log.info("Drive file %s skipped: its sharing is not visible", f["id"])
+        # No sharing list: the admin may not share this file (or, in a shared drive, may not read its list).
+        # Never guess an ACL.
+        if (permissions := f.get("permissions", shared.get(f["id"]))) is None:
+            if "driveId" not in f:
+                log.info("Drive file %s skipped: its sharing is not visible", f["id"])
             continue
+        permissions = [p for p in permissions if _opens(p)]
         text = None
         if changed(f["id"], f["modifiedTime"]) and not (text := _text(drive, f)):
             continue
-        principals = acl(f["permissions"])
+        principals = acl(permissions)
         yield {
             "source": "drive",
             "source_id": f["id"],
@@ -111,7 +169,7 @@ def fetch(drive, folder: str, changed: Callable[[str, str], bool] = lambda *_: T
             "updated_at": f["modifiedTime"],
             "acl": principals,
             "text": text,
-            "metadata": {"overshared": "public" in principals, "need_to_know": handlers(f["permissions"])},
+            "metadata": {"overshared": "public" in principals, "need_to_know": handlers(permissions)},
         }
 
 
