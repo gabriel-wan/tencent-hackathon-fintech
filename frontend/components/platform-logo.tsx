@@ -6,12 +6,15 @@ import { cn } from "@/lib/utils";
 
 // Each tool's official logo, only to name the integration (frontend/README.md "Icons"). Files in
 // public/logos/, from the vendors' own brand pages, unaltered: Slack's media kit, Google's Drive
-// branding guidelines, Atlassian's logo library (the app icons).
+// branding guidelines, Atlassian's logo library (the app icons and the Atlassian mark), and the "G"
+// from Google's sign-in button assets (the button's circle removed, the G itself unchanged).
 const LOGOS: Record<string, string> = {
   slack: "/logos/slack.svg",
   drive: "/logos/google-drive.png",
   jira: "/logos/jira.svg",
   confluence: "/logos/confluence.svg",
+  google: "/logos/google.svg",
+  atlassian: "/logos/atlassian.svg",
 };
 
 /**

@@ -1,28 +1,38 @@
 "use client";
 
-import { ChevronDown, CircleUser, LogOut } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { ChevronsUpDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
-import { isCurrent, useNavItems } from "@/components/main-nav";
 import { useMe } from "@/components/me-provider";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { signOut } from "@/lib/api/client";
+import { initials } from "@/lib/people";
+import { cn } from "@/lib/utils";
 
-export function UserMenu() {
+const THEMES = [
+  { value: "system", label: "System", Icon: Monitor },
+  { value: "light", label: "Light", Icon: Sun },
+  { value: "dark", label: "Dark", Icon: Moon },
+] as const;
+
+/** The sidebar's footer: who is signed in, the theme and sign-out. */
+export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
   const me = useMe();
-  const navItems = useNavItems();
-  const pathname = usePathname();
+  const { theme, setTheme } = useTheme();
+  // The stored theme is only known in the browser.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [state, setState] = useState<"idle" | "signingOut" | "failed">("idle");
 
   async function handleSignOut(event: Event) {
@@ -38,34 +48,58 @@ export function UserMenu() {
     }
   }
 
+  const trigger = (
+    <DropdownMenuTrigger
+      aria-label={`Account: ${me.name}`}
+      className={cn(
+        "flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 active:bg-[color-mix(in_oklch,var(--accent),var(--foreground)_10%)] aria-expanded:bg-accent",
+        collapsed && "justify-center",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className="grid size-7 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
+      >
+        {initials(me.name)}
+      </span>
+      {collapsed ? null : (
+        <>
+          <span className="grid min-w-0 flex-1">
+            <span className="truncate font-medium">{me.name}</span>
+            <span className="truncate text-xs text-muted-foreground">{me.is_admin ? "Admin" : me.email}</span>
+          </span>
+          <ChevronsUpDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        </>
+      )}
+    </DropdownMenuTrigger>
+  );
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="min-w-0 max-w-56 gap-1.5" aria-label={`Account: ${me.name}`}>
-          {/* Phones: icon only; the name is in the menu and the label. */}
-          <CircleUser aria-hidden="true" className="sm:hidden" />
-          <span className="hidden truncate sm:inline">{me.name}</span>
-          {me.is_admin ? <Badge variant="secondary">ADMIN</Badge> : null}
-          <ChevronDown aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
+      {collapsed ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipContent side="right">{me.name}</TooltipContent>
+        </Tooltip>
+      ) : (
+        trigger
+      )}
+      <DropdownMenuContent align="start" side={collapsed ? "right" : "top"} className="min-w-60">
         <DropdownMenuLabel className="grid gap-0.5">
           <span className="text-sm font-medium text-foreground">{me.name}</span>
           <span className="text-xs font-normal text-muted-foreground">{me.email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {/* Phones: the header links live here (MainNav is hidden below 640 px). */}
-        <div className="sm:hidden">
-          {navItems.map((item) => (
-            <DropdownMenuItem key={item.href} asChild>
-              <Link href={item.href} aria-current={isCurrent(pathname, item.href) ? "page" : undefined}>
-                {item.label}
-              </Link>
-            </DropdownMenuItem>
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={mounted ? (theme ?? "system") : "system"} onValueChange={setTheme}>
+          {THEMES.map(({ value, label, Icon }) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              <Icon aria-hidden="true" />
+              {label}
+            </DropdownMenuRadioItem>
           ))}
-          <DropdownMenuSeparator />
-        </div>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleSignOut} disabled={state === "signingOut"}>
           <LogOut aria-hidden="true" />
           {state === "signingOut" ? "Signing out…" : "Sign out"}

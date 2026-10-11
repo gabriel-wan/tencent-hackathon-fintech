@@ -1,8 +1,8 @@
 "use client";
 
-import { Info, RefreshCw, ShieldAlert } from "lucide-react";
+import { ChevronRight, Info, ListMinus, ListPlus, Lock, RefreshCw, Search, ShieldAlert } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AlertDialog,
@@ -15,29 +15,40 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Disclosure } from "@/components/disclosure";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PlatformLogo } from "@/components/platform-logo";
-import { addScope, listBoundary, listScopes, removeScope, syncNow } from "@/lib/api/client";
+import { addScope, bulkScopes, listBoundary, listScopes, removeScope, syncNow } from "@/lib/api/client";
 import { ApiError, BackendUnreachableError, NotSignedInError } from "@/lib/api/errors";
 import type { SourceName } from "@/lib/api/types";
 import {
+  BULK_LIMIT,
   type BoundaryEntry,
   type Scope,
   type ScopeRow,
   type ScopesProblem,
+  type ShowMode,
   TOOLS,
   blockedReason,
-  filterRows,
+  bulkRows,
+  containsAllowed,
+  coveredBy,
+  driveGroups,
+  foldTree,
+  indexRows,
+  matchRows,
   rowState,
   rowsFor,
   scopeKey,
   stillSyncing,
   syncSnapshot,
+  treeOrder,
 } from "@/lib/boundary";
 import { formatRelative } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 // /admin/boundary (ADR-002): the admin chooses which channels, folders,
 // projects and spaces KnowBuddy may read at all. Ticking one adds it and syncs
@@ -47,7 +58,6 @@ import { formatRelative } from "@/lib/format";
 
 const POLL_EVERY_MS = 3_000;
 const POLL_FOR_MS = 60_000;
-const FILTER_FROM = 10; // show a filter box above this many rows
 
 type Tool = (typeof TOOLS)[number];
 
@@ -75,15 +85,15 @@ function failureOf(error: unknown): string {
   }
   if (error instanceof BackendUnreachableError) return "Can't reach the server. Please try again in a moment.";
   if (error instanceof ApiError && error.status === 403) return "Only admins can change the boundary.";
+  if (error instanceof ApiError && error.status === 409) return `${error.detail}.`; // overlapping Drive folders
   if (error instanceof ApiError) return `Something went wrong (HTTP ${error.status}).`;
   return "Something went wrong.";
 }
 
 function HowItWorks() {
   return (
-    <details className="rounded-lg border bg-card px-4 py-3 text-sm">
-      <summary className="cursor-pointer font-medium">How the boundary works</summary>
-      <div className="mt-3 grid gap-2 text-muted-foreground">
+    <Disclosure summary="How the boundary works">
+      <div className="grid max-w-prose gap-2 text-muted-foreground">
         <p>
           A document can appear in an answer only if <strong className="text-foreground">both</strong> say yes: the
           tool (the person asking may read it there) and this boundary (the company lets KnowBuddy use it).
@@ -111,7 +121,7 @@ function HowItWorks() {
           </li>
         </ul>
       </div>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -209,112 +219,322 @@ function ProblemNotice({ tool, problem, onRetry }: { tool: Tool; problem: Scopes
   );
 }
 
+/** The search text in a title, highlighted. Plain text otherwise. */
+function Highlight({ text, query }: { text: string; query: string }) {
+  const q = query.trim().toLowerCase();
+  const at = q ? text.toLowerCase().indexOf(q) : -1;
+  if (at < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="rounded-sm bg-primary/15 text-foreground">{text.slice(at, at + q.length)}</mark>
+      {text.slice(at + q.length)}
+    </>
+  );
+}
+
+const PAGE = 50; // rows shown per tool before "Show more"
+
+function ScopeItem({
+  tool,
+  row,
+  depth,
+  covered,
+  contains,
+  fold,
+  query,
+  now,
+  syncing,
+  problem,
+  pending,
+  error,
+  onToggle,
+}: {
+  tool: Tool;
+  row: ScopeRow;
+  depth: number;
+  covered: ScopeRow | null;
+  contains: ScopeRow | null; // a folder below this one already in: adding this one would overlap
+  // Drive tree only: the arrow that opens or folds this folder (null: no subfolders, a spacer keeps rows aligned).
+  fold: { expanded: boolean; onToggle: () => void } | null | undefined;
+  query: string;
+  now: number;
+  syncing: boolean;
+  problem: ScopesProblem | null;
+  pending: boolean;
+  error: string | undefined;
+  onToggle: () => void;
+}) {
+  const id = `scope-${tool.source}-${row.id}`;
+  return (
+    <li className="flex min-h-11 items-start gap-2 py-1" style={depth ? { paddingLeft: `${depth * 1.25}rem` } : undefined}>
+      {fold === undefined ? null : fold === null ? (
+        <span aria-hidden="true" className="size-6 shrink-0" />
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="-mt-0.5 size-6 shrink-0 text-muted-foreground"
+          onClick={fold.onToggle}
+          aria-expanded={fold.expanded}
+          aria-label={`${fold.expanded ? "Hide" : "Show"} the folders in ${row.title}`}
+        >
+          <ChevronRight aria-hidden="true" className={cn("transition-transform", fold.expanded && "rotate-90")} />
+        </Button>
+      )}
+      <Checkbox
+        id={id}
+        className="mt-0.5"
+        checked={row.inBoundary || covered !== null}
+        disabled={pending || covered !== null || contains !== null}
+        aria-describedby={error ? `${id}-error` : undefined}
+        onCheckedChange={onToggle}
+      />
+      <div className="grid min-w-0 flex-1 gap-0.5">
+        <label htmlFor={id} className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+          {row.private ? <Lock aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+          <span className="truncate">
+            <Highlight text={row.title} query={query} />
+          </span>
+          {tool.source === "jira" ? (
+            <span className="shrink-0 font-mono text-xs font-normal text-muted-foreground">{row.id}</span>
+          ) : null}
+        </label>
+        {tool.source === "drive" && row.path && (query || depth === 0) ? (
+          <span className="truncate text-xs text-muted-foreground">
+            <Highlight text={row.path} query={query} />
+          </span>
+        ) : null}
+        {covered ? (
+          <span className="text-xs text-muted-foreground">Included with {covered.title}</span>
+        ) : contains ? (
+          <span className="text-xs text-muted-foreground">
+            Contains {contains.title}, already in the boundary. Remove it first to add this whole folder.
+          </span>
+        ) : (
+          <RowStatusLine row={row} tool={tool} now={now} syncing={syncing} problem={problem} />
+        )}
+        {error ? (
+          <span id={`${id}-error`} role="alert" className="text-xs text-destructive">
+            {error}
+          </span>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
 function ToolSection({
   tool,
   scopes,
   boundary,
+  query,
+  show,
   now,
   syncing,
   pending,
   rowErrors,
+  sectionError,
   onToggle,
   onRetry,
+  onBulk,
 }: {
   tool: Tool;
   scopes: ScopesState;
   boundary: BoundaryEntry[];
+  query: string;
+  show: ShowMode;
   now: number;
   syncing: boolean;
   pending: Set<string>;
   rowErrors: Record<string, string>;
+  sectionError: string | undefined;
   onToggle: (tool: Tool, row: ScopeRow) => void;
   onRetry: (tool: Tool) => void;
+  onBulk: (tool: Tool, mode: "add" | "remove", rows: ScopeRow[]) => void;
 }) {
-  const [filter, setFilter] = useState("");
-  const rows = rowsFor(tool.source, scopes.status === "ready" ? scopes.scopes : null, boundary);
-  const shown = filterRows(rows, filter);
+  const [open, setOpen] = useState(true);
+  const [limit, setLimit] = useState(PAGE);
+  // Memoised on what they depend on (not the 30 s clock or the sync poll), so hundreds of rows don't redo the
+  // folder tree on every render (review of the UI revamp PR).
+  const list = scopes.status === "ready" ? scopes.scopes : null;
+  const rows = useMemo(() => rowsFor(tool.source, list, boundary), [tool.source, list, boundary]);
+  const index = useMemo(() => indexRows(rows), [rows]);
+  const shown = useMemo(() => matchRows(rows, query, show, index), [rows, query, show, index]);
+  const filtering = query.trim() !== "" || show !== "all";
   const allowed = rows.filter((r) => r.inBoundary).length;
   const headingId = `tool-${tool.source}`;
+  const problem = scopes.status === "problem" ? scopes.problem : null;
+  // Drive with no search and Show "All": a tree per drive (My Drive, each shared drive, Shared with me), its
+  // folders folded until opened. Otherwise a flat list, each folder with its path.
+  const treeMode = tool.source === "drive" && !query.trim() && show === "all";
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const drives = useMemo(
+    () => (treeMode ? driveGroups(rows).map((g) => ({ ...g, tree: treeOrder(g.rows) })) : []),
+    [treeMode, rows],
+  );
+  const parents = useMemo(() => drives.flatMap((g) => g.tree.filter((e) => e.hasChildren).map((e) => e.row.id)), [drives]);
+  const ordered = useMemo(
+    () =>
+      treeMode
+        ? drives.flatMap((g) => foldTree(g.tree, expanded).map((e) => ({ ...e, group: g.id })))
+        : shown.map((row) => ({ row, depth: 0, hasChildren: false, group: null as string | null })),
+    [treeMode, drives, expanded, shown],
+  );
+  const visible = ordered.slice(0, limit);
+  const toggleFold = (id: string) =>
+    setExpanded((open) => {
+      const next = new Set(open);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const toAdd = useMemo(() => bulkRows(shown, index, "add"), [shown, index]);
+  const toRemove = useMemo(() => bulkRows(shown, index, "remove"), [shown, index]);
+
+  const item = ({ row, depth, hasChildren }: { row: ScopeRow; depth: number; hasChildren: boolean }) => {
+    const key = scopeKey(tool.source, row.id);
+    return (
+      <ScopeItem
+        key={row.id}
+        tool={tool}
+        row={row}
+        depth={depth}
+        covered={tool.source === "drive" && !row.inBoundary ? coveredBy(row, index) : null}
+        contains={tool.source === "drive" && !row.inBoundary ? containsAllowed(row, index) : null}
+        fold={
+          treeMode
+            ? hasChildren
+              ? { expanded: expanded.has(row.id), onToggle: () => toggleFold(row.id) }
+              : null
+            : undefined
+        }
+        query={query}
+        now={now}
+        syncing={syncing}
+        problem={problem}
+        pending={pending.has(key)}
+        error={rowErrors[key]}
+        onToggle={() => onToggle(tool, row)}
+      />
+    );
+  };
+  // Headings: Drive's drives in the tree (when there is more than one); Slack's public, then private channels.
+  const groups: { key: string; label: string | null; items: typeof visible }[] =
+    treeMode && drives.length > 1
+      ? drives.map((g) => ({ key: g.id, label: g.label, items: visible.filter((e) => e.group === g.id) }))
+      : tool.source === "slack" && visible.some(({ row }) => row.private) && visible.some(({ row }) => !row.private)
+        ? [
+            { key: "public", label: "Public channels", items: visible.filter(({ row }) => !row.private) },
+            { key: "private", label: "Private channels", items: visible.filter(({ row }) => row.private) },
+          ]
+        : [{ key: "all", label: null, items: visible }];
+
   return (
-    <section aria-labelledby={headingId} className="grid gap-3 rounded-lg border bg-card p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id={headingId} className="flex items-center gap-2 font-medium">
-          <PlatformLogo source={tool.source} size={18} />
-          {tool.label}
+    <section aria-labelledby={headingId} className="grid gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id={headingId} className="min-w-0">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="flex cursor-pointer items-center gap-2 rounded-md font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronRight aria-hidden="true" className={cn("size-4 shrink-0 transition-transform", open && "rotate-90")} />
+            <PlatformLogo source={tool.source} size={18} />
+            {tool.label}
+          </button>
         </h2>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground tabular-nums">
           {scopes.status === "ready"
             ? `${allowed} of ${rows.length} ${tool.scopes} in the boundary`
             : `${allowed} in the boundary`}
+          {filtering && scopes.status === "ready" ? ` · ${shown.length} shown` : ""}
         </p>
       </div>
-      {scopes.status === "loading" ? (
-        <div className="grid gap-2">
-          <Skeleton className="h-5 w-2/3" />
-          <Skeleton className="h-5 w-1/2" />
-        </div>
-      ) : null}
-      {scopes.status === "problem" ? (
-        <ProblemNotice tool={tool} problem={scopes.problem} onRetry={() => onRetry(tool)} />
-      ) : null}
-      {scopes.status === "failed" ? (
-        <p role="alert" className="text-sm text-destructive">
-          {scopes.message}
-        </p>
-      ) : null}
-      {rows.length > FILTER_FROM ? (
-        <Input
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder={`Filter ${tool.scopes}`}
-          aria-label={`Filter ${tool.label} ${tool.scopes}`}
-          className="max-w-xs"
-        />
-      ) : null}
-      {scopes.status === "ready" && rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          You can&apos;t see any {tool.scopes} in {tool.label}.
-        </p>
-      ) : null}
-      {shown.length ? (
-        <ul className="grid gap-1">
-          {shown.map((row) => {
-            const key = scopeKey(tool.source, row.id);
-            const id = `scope-${tool.source}-${row.id}`;
-            return (
-              <li key={row.id} className="flex min-h-11 items-start gap-3 py-1">
-                <Checkbox
-                  id={id}
-                  className="mt-0.5"
-                  checked={row.inBoundary}
-                  disabled={pending.has(key)}
-                  aria-describedby={rowErrors[key] ? `${id}-error` : undefined}
-                  onCheckedChange={() => onToggle(tool, row)}
-                />
-                <div className="grid flex-1 gap-0.5">
-                  <label htmlFor={id} className="text-sm font-medium">
-                    {row.title}
-                  </label>
-                  <RowStatusLine
-                    row={row}
-                    tool={tool}
-                    now={now}
-                    syncing={syncing}
-                    problem={scopes.status === "problem" ? scopes.problem : null}
-                  />
-                  {rowErrors[key] ? (
-                    <span id={`${id}-error`} role="alert" className="text-xs text-destructive">
-                      {rowErrors[key]}
-                    </span>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-      {rows.length > 0 && shown.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No {tool.scopes} match &quot;{filter}&quot;.</p>
+      {open ? (
+        <>
+          {scopes.status === "loading" ? (
+            <div className="grid gap-2">
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-5 w-1/2" />
+            </div>
+          ) : null}
+          {problem ? <ProblemNotice tool={tool} problem={problem} onRetry={() => onRetry(tool)} /> : null}
+          {scopes.status === "failed" ? (
+            <p role="alert" className="text-sm text-destructive">
+              {scopes.message}
+            </p>
+          ) : null}
+          {scopes.status === "ready" && rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              You can&apos;t see any {tool.scopes} in {tool.label}.
+            </p>
+          ) : null}
+          {toAdd.length > 1 || toRemove.length > 1 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {toAdd.length > 1 ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={toAdd.length > BULK_LIMIT}
+                  onClick={() => onBulk(tool, "add", toAdd)}
+                >
+                  <ListPlus aria-hidden="true" />
+                  Add all {toAdd.length}
+                  {filtering ? " matching" : ""}
+                </Button>
+              ) : null}
+              {toRemove.length > 1 ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={toRemove.length > BULK_LIMIT}
+                  onClick={() => onBulk(tool, "remove", toRemove)}
+                >
+                  <ListMinus aria-hidden="true" />
+                  Remove all {toRemove.length}
+                  {filtering ? " matching" : ""}
+                </Button>
+              ) : null}
+              {toAdd.length > BULK_LIMIT || toRemove.length > BULK_LIMIT ? (
+                <span className="text-xs text-muted-foreground">
+                  Search to narrow it to {BULK_LIMIT} or fewer to change them all at once.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          {treeMode && parents.length ? (
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" onClick={() => setExpanded(new Set(parents))}>
+                Expand all
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setExpanded(new Set())} disabled={expanded.size === 0}>
+                Collapse all
+              </Button>
+            </div>
+          ) : null}
+          {sectionError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {sectionError}
+            </p>
+          ) : null}
+          {groups.map((group) =>
+            group.items.length ? (
+              <div key={group.key} className="grid gap-1">
+                {group.label ? <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3> : null}
+                <ul className="grid gap-1">{group.items.map(item)}</ul>
+              </div>
+            ) : null,
+          )}
+          {ordered.length > visible.length ? (
+            <Button variant="ghost" size="sm" className="justify-self-start" onClick={() => setLimit((n) => n + 100)}>
+              Show {Math.min(100, ordered.length - visible.length)} more of {ordered.length - visible.length}
+            </Button>
+          ) : null}
+          {rows.length > 0 && shown.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No {tool.scopes} match.</p>
+          ) : null}
+        </>
       ) : null}
     </section>
   );
@@ -330,6 +550,11 @@ export function BoundaryEditor() {
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [removing, setRemoving] = useState<{ tool: Tool; row: ScopeRow } | null>(null);
+  const [query, setQuery] = useState("");
+  const [show, setShow] = useState<ShowMode>("all");
+  const [bulk, setBulk] = useState<{ tool: Tool; mode: "add" | "remove"; rows: ScopeRow[] } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [sectionErrors, setSectionErrors] = useState<Partial<Record<SourceName, string>>>({});
   const [now, setNow] = useState(() => Date.now());
   // The latest scope lists, for startSync (called from add() and the button) to judge what can sync.
   const scopesRef = useRef(scopes);
@@ -457,6 +682,25 @@ export function BoundaryEditor() {
     }
   }
 
+  /** "Add / Remove all N shown", after the confirmation: one request, all or nothing. */
+  async function runBulk(tool: Tool, mode: "add" | "remove", rows: ScopeRow[]) {
+    setBulkBusy(true);
+    setSectionErrors(({ [tool.source]: _old, ...rest }) => rest);
+    try {
+      await bulkScopes(
+        tool.source,
+        mode === "add" ? { add: rows.map((r) => ({ scope_id: r.id, title: r.title })) } : { remove: rows.map((r) => r.id) },
+      );
+      setBoundary(await listBoundary());
+      if (mode === "add") void startSync(); // as with one tick: copy them straight away
+    } catch (error) {
+      setSectionErrors((e) => ({ ...e, [tool.source]: `Nothing changed: ${failureOf(error)}` }));
+    } finally {
+      setBulkBusy(false);
+      setBulk(null);
+    }
+  }
+
   function toggle(tool: Tool, row: ScopeRow) {
     if (row.inBoundary) setRemoving({ tool, row }); // removing asks first
     else void add(tool, row);
@@ -473,21 +717,56 @@ export function BoundaryEditor() {
   }
 
   const syncing = sync.status === "syncing";
+  const privateCount = bulk?.mode === "add" ? bulk.rows.filter((r) => r.private).length : 0;
   return (
     <div className="grid gap-4">
       <HowItWorks />
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Sticky from 768 px: stays in view while scrolling long lists, below the development strip. On a phone it
+          would take a fifth of the screen, so there it scrolls away. */}
+      <div className="z-20 -mx-4 grid gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur md:sticky md:top-[var(--dev-banner,0px)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-56 flex-1">
+            <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find a channel, folder, project or space"
+              aria-label="Find a channel, folder, project or space"
+              className="pl-8"
+            />
+          </div>
+          <div role="group" aria-label="Show" className="inline-flex rounded-lg border p-0.5">
+            {(
+              [
+                ["all", "All"],
+                ["in", "In the boundary"],
+                ["out", "Not in it"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                variant={show === value ? "secondary" : "ghost"}
+                size="sm"
+                aria-pressed={show === value}
+                onClick={() => setShow(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => void startSync()}
+            disabled={syncing || boundary === null || boundary.length === 0}
+            aria-busy={syncing}
+            className="ml-auto"
+          >
+            <RefreshCw aria-hidden="true" className={syncing ? "animate-spin" : undefined} />
+            {syncing ? "Syncing…" : "Sync now"}
+          </Button>
+        </div>
         <SyncStatus state={sync} />
-        <Button
-          variant="outline"
-          onClick={() => void startSync()}
-          disabled={syncing || boundary === null || boundary.length === 0}
-          aria-busy={syncing}
-          className="ml-auto"
-        >
-          <RefreshCw aria-hidden="true" className={syncing ? "animate-spin" : undefined} />
-          {syncing ? "Syncing…" : "Sync now"}
-        </Button>
       </div>
       {boundary === null ? (
         <div className="grid gap-2">
@@ -501,15 +780,79 @@ export function BoundaryEditor() {
             tool={tool}
             scopes={scopes[tool.source]}
             boundary={boundary}
+            query={query}
+            show={show}
             now={now}
             syncing={syncing}
             pending={pending}
             rowErrors={rowErrors}
+            sectionError={sectionErrors[tool.source]}
             onToggle={toggle}
             onRetry={loadScopes}
+            onBulk={(tool, mode, rows) => setBulk({ tool, mode, rows })}
           />
         ))
       )}
+
+      <AlertDialog open={bulk !== null} onOpenChange={(open) => !open && !bulkBusy && setBulk(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {bulk?.mode === "add" ? "Add" : "Remove"} {bulk?.rows.length} {bulk?.tool.label} {bulk?.tool.scopes}{" "}
+              {bulk?.mode === "add" ? "to" : "from"} the boundary?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="grid gap-2">
+                {bulk?.mode === "add" ? (
+                  <p>
+                    KnowBuddy will copy them and answer from them, for people who can see them in {bulk.tool.label}.
+                    {privateCount
+                      ? ` ${privateCount} ${privateCount === 1 ? "is a private channel" : "are private channels"}.`
+                      : ""}
+                  </p>
+                ) : (
+                  <p>Their content stops appearing in answers immediately, for everyone.</p>
+                )}
+                <p>Each change is recorded in the audit trail.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {/* Every one, not the first few: the list on the page shows 50 rows and folds Drive folders, so this is
+              where the admin sees exactly what changes (review of the UI revamp PR). */}
+          {bulk ? (
+            <ul
+              aria-label={`The ${bulk.rows.length} ${bulk.tool.scopes}`}
+              className="grid max-h-[min(15rem,30vh)] gap-1.5 overflow-y-auto rounded-md border p-3 text-sm"
+            >
+              {bulk.rows.map((r) => (
+                <li key={r.id} className="grid min-w-0 gap-0.5">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {r.private ? <Lock aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+                    <span className="truncate">{r.title}</span>
+                    {bulk.tool.source === "jira" ? (
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">{r.id}</span>
+                    ) : null}
+                  </span>
+                  {r.path ? <span className="truncate text-xs text-muted-foreground">{r.path}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant={bulk?.mode === "remove" ? "destructive" : "default"}
+              disabled={bulkBusy}
+              onClick={(event) => {
+                event.preventDefault(); // stay open until the request finishes
+                if (bulk) void runBulk(bulk.tool, bulk.mode, bulk.rows);
+              }}
+            >
+              {bulkBusy ? "Working…" : bulk?.mode === "add" ? `Add ${bulk?.rows.length}` : `Remove ${bulk?.rows.length}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>

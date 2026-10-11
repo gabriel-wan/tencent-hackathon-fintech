@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { freshness, maskedSummary, safeHttpUrl, stripCitationMarkers } from "./citations";
+import { answerSummary, freshness, safeHttpUrl, splitAnswer, stripCitationMarkers } from "./citations";
 
 describe("safeHttpUrl", () => {
   it.each([
@@ -51,18 +51,6 @@ describe("stripCitationMarkers", () => {
   });
 });
 
-describe("maskedSummary", () => {
-  it("is null when nothing was masked (or the reader is a handler)", () => {
-    expect(maskedSummary({})).toBeNull();
-    expect(maskedSummary(undefined)).toBeNull();
-    expect(maskedSummary({ card: 0 })).toBeNull();
-  });
-
-  it("totals the kinds and lists them in a stable order", () => {
-    expect(maskedSummary({ phone: 2, card: 1, nric: 1 })).toEqual({ total: 4, text: "card 1, nric 1, phone 2" });
-  });
-});
-
 describe("freshness", () => {
   const now = Date.parse("2026-10-09T10:00:00Z");
 
@@ -76,5 +64,68 @@ describe("freshness", () => {
     expect(freshness("2026-10-09T09:57:00Z", now)).toEqual({ stale: false });
     expect(freshness("2026-10-09T09:45:00Z", now)).toEqual({ stale: false });
     expect(freshness("2026-10-09T09:44:59Z", now)).toEqual({ stale: true });
+  });
+});
+
+describe("answerSummary", () => {
+  const now = Date.parse("2026-10-11T12:00:00Z");
+  it("has no sync time when no source has synced (seeded data)", () => {
+    expect(answerSummary([{ synced_at: null }, { synced_at: null }], now)).toEqual({ oldestSync: null, stale: false });
+  });
+  it("uses the oldest sync, and flags it stale after the window", () => {
+    const s = answerSummary(
+      [
+        { synced_at: "2026-10-11T11:58:00Z" },
+        { synced_at: "2026-10-11T11:30:00Z" },
+        { synced_at: "not a date" },
+      ],
+      now,
+    );
+    expect(s.oldestSync).toBe("2026-10-11T11:30:00Z");
+    expect(s.stale).toBe(true);
+  });
+  it("is empty for no citations", () => {
+    expect(answerSummary([], now)).toEqual({ oldestSync: null, stale: false });
+  });
+});
+
+describe("splitAnswer", () => {
+  it("numbers markers by the citation's place in the list, not by its label", () => {
+    // The backend listed S2 first, so S2 is source 1 and S1 is source 2.
+    expect(splitAnswer("Tests Friday [S1]. Blocked [S2].", ["S2", "S1"])).toEqual([
+      { kind: "text", text: "Tests Friday" },
+      { kind: "cite", n: 2 },
+      { kind: "text", text: ". Blocked" },
+      { kind: "cite", n: 1 },
+      { kind: "text", text: "." },
+    ]);
+  });
+  it("keeps a run of markers, without repeating one", () => {
+    expect(splitAnswer("Blocked [S1][S3][S3].", ["S1", "S3"])).toEqual([
+      { kind: "text", text: "Blocked" },
+      { kind: "cite", n: 1 },
+      { kind: "cite", n: 2 },
+      { kind: "text", text: "." },
+    ]);
+  });
+  it("drops markers no citation has, and leaves other brackets as text", () => {
+    expect(splitAnswer("See [S9] and [card ending 1111] [S1]", ["S1"])).toEqual([
+      { kind: "text", text: "See and [card ending 1111]" },
+      { kind: "cite", n: 1 },
+    ]);
+  });
+  it("keeps markup as plain text", () => {
+    expect(splitAnswer("<b>x</b> [S1]", ["S1"])).toEqual([
+      { kind: "text", text: "<b>x</b>" },
+      { kind: "cite", n: 1 },
+    ]);
+  });
+  it("handles an answer that starts with a marker and line breaks", () => {
+    expect(splitAnswer("[S1] Failover.\n\nNext [S1].", ["S1"])).toEqual([
+      { kind: "cite", n: 1 },
+      { kind: "text", text: " Failover.\n\nNext" },
+      { kind: "cite", n: 1 },
+      { kind: "text", text: "." },
+    ]);
   });
 });

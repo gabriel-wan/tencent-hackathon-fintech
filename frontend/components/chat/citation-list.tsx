@@ -1,8 +1,9 @@
-import { BookOpen, ExternalLink, EyeOff, FileText, Link2, MessageSquare, SquareKanban, type LucideIcon } from "lucide-react";
+import { BookOpen, ExternalLink, FileText, Link2, MessageSquare, SquareKanban, type LucideIcon } from "lucide-react";
 
 import { PlatformLogo } from "@/components/platform-logo";
+import { StatusChip } from "@/components/status-chip";
 import type { Citation } from "@/lib/api/types";
-import { freshness, maskedSummary, safeHttpUrl } from "@/lib/citations";
+import { freshness, safeHttpUrl } from "@/lib/citations";
 import { formatExact, formatRelative } from "@/lib/format";
 
 // Each tool's logo, with a generic icon if it can't load; the text label always carries the meaning.
@@ -16,27 +17,10 @@ const SOURCES: Record<string, { label: string; Icon: LucideIcon }> = {
 function SourceBadge({ source }: { source: string }) {
   const { label, Icon } = SOURCES[source] ?? { label: source, Icon: Link2 };
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
+    <StatusChip>
       <PlatformLogo source={source} size={12} fallback={<Icon aria-hidden="true" className="size-3" />} />
       {label}
-    </span>
-  );
-}
-
-/** "3 masked": what the Need-to-Know Shield hid in this source for you (ADR-010). Neutral: it's working. */
-function MaskedChip({ redacted }: { redacted: Record<string, number> }) {
-  const masked = maskedSummary(redacted);
-  if (!masked) return null;
-  const detail = `Masked for you: ${masked.text} (Need-to-Know Shield)`;
-  return (
-    <span
-      title={detail}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground"
-    >
-      <EyeOff aria-hidden="true" className="size-3" />
-      <span aria-hidden="true">{masked.total} masked</span>
-      <span className="sr-only">{detail}</span>
-    </span>
+    </StatusChip>
   );
 }
 
@@ -59,12 +43,20 @@ function Synced({ syncedAt }: { syncedAt: string | null }) {
   );
 }
 
-function CitationItem({ citation }: { citation: Citation }) {
+function CitationItem({ citation, n, id }: { citation: Citation; n: number; id: string }) {
   // Source URLs are untrusted: only absolute http(s) URLs become links.
   const href = safeHttpUrl(citation.url);
   const exact = formatExact(citation.updated_at);
   return (
-    <li className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+    // data-flash: set for a moment when its chip in the answer is pressed (answer-card.tsx showSource).
+    <li
+      id={id}
+      tabIndex={-1}
+      className="-mx-2 flex scroll-mt-24 scroll-mb-40 flex-wrap items-baseline gap-x-2 gap-y-1 rounded-md px-2 py-1 text-sm outline-none transition-colors duration-500 data-flash:bg-primary/15"
+    >
+      <span aria-hidden="true" className="w-4 shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
+        {n}
+      </span>
       <SourceBadge source={citation.source} />
       {href ? (
         <a
@@ -80,7 +72,6 @@ function CitationItem({ citation }: { citation: Citation }) {
       ) : (
         <span className="font-medium break-words">{citation.title}</span>
       )}
-      <MaskedChip redacted={citation.redacted} />
       <span className="text-xs text-muted-foreground">
         updated{" "}
         {/* title: exact time on hover; assistive tech also reads it as the name. */}
@@ -94,18 +85,18 @@ function CitationItem({ citation }: { citation: Citation }) {
 }
 
 /** The sources an answer was built from, in the order the answer first cites them. */
-export function CitationList({ citations }: { citations: Citation[] }) {
+export function CitationList({ citations, sourceId }: { citations: Citation[]; sourceId: (n: number) => string }) {
   return (
     // A plain group, not a landmark: every answer has one, and a page of
     // identical "Sources" landmarks is noise. The heading still lets screen
     // reader users jump between them.
     <div className="grid gap-2 border-t pt-3">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Sources</h2>
-      <ul className="grid gap-2">
-        {citations.map((citation) => (
-          <CitationItem key={citation.id} citation={citation} />
+      <h2 className="text-sm font-medium text-muted-foreground">Sources</h2>
+      <ol className="grid gap-1">
+        {citations.map((citation, i) => (
+          <CitationItem key={citation.id} citation={citation} n={i + 1} id={sourceId(i + 1)} />
         ))}
-      </ul>
+      </ol>
     </div>
   );
 }

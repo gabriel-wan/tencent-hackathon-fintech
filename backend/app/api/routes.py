@@ -38,6 +38,7 @@ class CitationOut(BaseModel):
     updated_at: datetime
     synced_at: datetime | None
     redacted: dict[str, int]  # identifiers masked in this source for you, by kind (ADR-010)
+    label: str  # the [S<n>] marker in `answer` that cites this source (per answer, not a document ID)
 
 
 class QueryResponse(BaseModel):

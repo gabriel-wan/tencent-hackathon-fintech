@@ -17,11 +17,12 @@ are ADR-009 in [DECISIONS.md](../decisions/DECISIONS.md).
 | Route | What it shows |
 |---|---|
 | `/` | Signed in only. The chat (see below) |
-| `/login` | Sign-in with Google, Slack or Atlassian (links to the backend's OAuth); development sign-in box and Slack token form when the backend is in development mode |
+| `/login` | Sign-in: "Sign in with Slack" first, Google and Atlassian as logo buttons (links to the backend's OAuth), a collapsed "How accounts work"; development sign-in box and Slack token form when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
 | `/admin/audit` | Admins only. Search the audit trail, read each record, verify the hash chain (see "Admin pages") |
 | `/admin/boundary` | Admins only. Choose which channels, folders, projects and spaces KnowBuddy may read; sync now (see "Admin pages") |
-| `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`. For developers |
+| `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`, a green or red dot per value. For developers. The deploy's live check reads `Database</dt><dd …>ok</dd>` here (`.github/workflows/deploy.yml`), so the value stays plain text in its `<dd>` |
+| Any other URL | "Page not found" (`app/not-found.tsx`, HTTP 404) with "Back to KnowBuddy". A page that throws shows "Something went wrong" (`app/error.tsx`) with Try again; the error goes to the console and server log, never onto the page |
 | `/healthz` | `200 ok` without calling the backend. Used by the Docker health check |
 | `/api/*` | Not a page: forwards to the backend (see below) |
 
@@ -59,12 +60,27 @@ site, and a user with only Google has no company and sees nothing.
   the server" (not a redirect, which would look like being signed out). The
   user is passed to client components through `MeProvider` (`useMe()`), for
   display only. This gate is UX: the backend checks the session on every call.
-- **`/login`.** Signed-in visitors go to `/`. "Sign in with Google", "Slack"
-  and "Atlassian" are plain links to
-  `${BACKEND_LOCAL_URL}/connectors/{drive,slack,jira}/connect`: a full-page
-  navigation, never a `fetch`, because the OAuth redirect has to start and end
-  on the backend. If a provider is not configured the backend answers 503 and
-  names the missing variable.
+- **`/login`.** Signed-in visitors go to `/`. The logo, a headline and, on
+  wider screens, a decorative answer card (`components/login/hero-illustration.tsx`,
+  made-up content, hidden from screen readers). **Motion** (`login-hero.tsx`,
+  `ambient-background.tsx`, `lib/lava.ts`, `lib/use-pointer-motion.ts`): the
+  card plays once on load (the question, the answer typing, the sources, the
+  shield) and tilts up to 6° toward the mouse with a soft highlight. Behind the
+  page, a lava lamp of faint brand-coloured light: five soft blobs rise while
+  "warm" and sink as they cool, wander, turn back at the screen's edges, blend
+  where they overlap, and glide away from the mouse when it comes within about
+  250 px. Only `transform` and `opacity` move, written straight onto the
+  elements each frame (no React re-render). Touch screens: three blobs, no tilt,
+  nothing reacts to touch. Reduced motion: the blobs stay put and the card is
+  shown complete. "Sign in with Slack" is the main
+  button because Slack is the only sign-in that can start a company; Google and
+  Atlassian follow as logo-only buttons ("Alternatively, sign in with"), each
+  with an accessible name and a tooltip on hover and keyboard focus. "How
+  accounts work" is a native `<details>`, collapsed by default. All three are
+  plain links to `${BACKEND_LOCAL_URL}/connectors/{slack,drive,jira}/connect`: a
+  full-page navigation, never a `fetch`, because the OAuth redirect has to start
+  and end on the backend. If a provider is not configured the backend answers
+  503 and names the missing variable.
 - **Errors.** The backend's OAuth callback redirects to
   `/connectors?connected=<provider>` or `/connectors?error=<code>` (the target
   is fixed in the backend). Only the codes in `lib/connectors.ts`
@@ -83,9 +99,10 @@ site, and a user with only Google has no company and sees nothing.
 
 ### Connections (`/connectors`)
 
-`app/connectors/page.tsx`, `components/connectors/`. One card per tool: status
-and the connected account, then **Connect** (a link to the backend), or **Test**
-and **Disconnect**.
+`app/connectors/page.tsx`, `components/connectors/`. One list, a row per tool:
+its logo and name, a status chip (green "Connected", or "Not connected"), what
+KnowBuddy reads there and the connected account, then **Connect** (a link to
+the backend), or **Test** and **Disconnect**, on the right.
 
 - **Own session check, not the `(app)` layout.** The layout would send a
   signed-out visitor to `/login` and lose the `?error=` code. The page shares
@@ -124,7 +141,11 @@ DEVELOPMENT ONLY, and labelled as such on screen. Identity is not verified.
 
 ## Chat (`/`)
 
-Code: `components/chat/`. Each question is answered on its own: the backend
+Code: `components/chat/`. **Empty chat:** the icon, "Good morning / afternoon /
+evening, <first name>" (the viewer's own clock, so it appears once the page is
+in the browser), what KnowBuddy does, the question box in the middle and the
+example questions under it; the first question moves the box to the bottom.
+**New chat** in the sidebar empties the thread. Each question is answered on its own: the backend
 receives only `{question}`, never earlier questions or answers, so a follow-up
 such as "what about last week?" has no context. History exists only in the
 browser's memory for this page load (never `localStorage`) and is wiped by the
@@ -133,8 +154,8 @@ full page load on sign-out or user switch (SECURITY.md T6).
 | State | When | What the user sees |
 |---|---|---|
 | Pending | Request in flight (about 3–5 s with the real LLM since hy3's hidden reasoning was turned off) | "Searching your sources…" with a skeleton. No invented progress steps |
-| Answered | 200, not a fixed sentence | Answer as plain text (`[S1]` markers removed); a notice when `instructions_removed` is above 0 ("KnowBuddy ignored instructions hidden in the sources", ADR-011); Sources list, each with the tool's logo and name, "N masked" when the Shield masked something for this reader (`redacted`, ADR-010; the kinds on hover and for screen readers), "updated …" and "synced …" (red with "may be out of date" after 15 minutes; nothing for data that never synced); `Ref #<audit_id>`, a link to `/admin/audit?record=N` for admins |
-| Not found | 200, the fixed "I could not find this…" sentence | Muted card. **Identical whether nothing exists or nothing is permitted** (INV-5): never the injection notice, whatever the response says |
+| Answered | 200, not a fixed sentence | Beside the KnowBuddy icon, no card. Answer as plain text, each `[S<n>]` marker a small numbered chip (matched by the citation's `label`, numbered by its place in the Sources list) that scrolls to that source, highlights it for a moment and moves focus to its link; hover shows the title; only when the reader can see a masked value (in the answer or a source's name), a quiet line under the answer: "Details in brackets, like [card ending 1111], are sensitive and hidden from view" (`MaskedNote`, `lib/masking.ts`; nothing when nothing visible was masked); a "Synced …" chip with an ⓘ, from the oldest source (red "May be out of date" after 15 minutes; nothing for data that never synced; `lib/citations.ts` `answerSummary`); numbered Sources list, each with the tool's logo and name, "updated …" and "synced …" (red with "may be out of date" after 15 minutes; nothing for data that never synced); **Copy** (the answer text; "Couldn't copy" if the browser refuses or doesn't reply within 1.5 s); `Ref #<audit_id>`, a link to `/admin/audit?record=N` for admins |
+| Not found | 200, the fixed "I could not find this…" sentence | Muted text beside the icon, and Ref #. **Identical whether nothing exists or nothing is permitted** (INV-5): no freshness chip, whatever the response says |
 | Unavailable | 200, the fixed "The assistant is unavailable…" sentence | Warning with Try again |
 | Failed | 422, 503, other 5xx, backend unreachable | Short message with Try again (re-sends the same question in place) |
 | Signed out | 401 | Full page load to `/login`; the draft is not kept |
@@ -158,24 +179,51 @@ Rules:
 The persona-by-persona checks with expected answers, and the states that can only be triggered in mock mode:
 [docs/TESTING.md](../TESTING.md) sections 4 and 6.
 
+## The frame (sidebar)
+
+`components/signed-in-shell.tsx`, `app-sidebar.tsx`, `main-nav.tsx`,
+`user-menu.tsx`. Every signed-in page has a left sidebar: the logo and a
+collapse button, **New chat**, the links (Ask, Connections; for admins an
+"Admin" group with Audit trail and Boundary), and at the bottom the account
+menu (name and email, theme, Sign out).
+
+- **Collapsed** to icons (each with its name as label and tooltip) by the
+  button at the top; remembered in the `kb_sidebar` cookie, read on the server
+  so the first paint is right (`lib/sidebar.ts`).
+- **Below 768 px** a slim top bar with a menu button opens the same contents
+  in a sheet from the left.
+- **New chat** gives the chat page a fresh, empty thread
+  (`components/chat-session.tsx`); the thread was only ever in memory.
+- The development strip stays full width above everything, sticky on
+  desktop. The public pages (sign-in, status) keep the slim top bar.
+
 ## Admin pages
 
 `app/(app)/admin/`. ADR-007: one admin role, which also does compliance.
 
 - **Gate.** `app/(app)/admin/layout.tsx` sends non-admins back to the chat;
-  the header shows Chat and Connections for everyone and Audit / Boundary for
-  admins (in the user menu below 640 px). Both are UX only: every admin API
+  the sidebar shows Ask and Connections for everyone and an "Admin" group
+  (Audit trail, Boundary) for admins. Both are UX only: every admin API
   route checks `is_admin` itself and returns 403.
 - **Audit trail** (`/admin/audit`, `components/admin/audit-trail.tsx`). Calls
   `GET /api/admin/audit` and `POST /api/admin/audit/verify`
   (`backend/app/audit/api.py`) through the `/api` proxy.
-  - **Filters:** user, from and to (whole days in the viewer's time zone; "to"
-    is inclusive), event type, tool (+ channel, folder, project or space ID)
-    and document. They are kept in the URL (`/admin/audit?user=…&from=…`), so a
-    view can be bookmarked or shared.
+  - **Filter bar:** user, from and to (whole days in the viewer's time zone;
+    "to" is inclusive) in view; event type, tool (+ channel, folder, project or
+    space ID) and document behind **More filters** (a popover; its button
+    counts how many are set). Searching is explicit (Search or Enter), since
+    every search is recorded. Applied filters show as removable chips with
+    **Clear filters** (`filterChips`, `withoutFilter` in `lib/audit.ts`;
+    removing the tool also removes its scope). They are kept in the URL
+    (`/admin/audit?user=…&from=…`), so a view can be bookmarked or shared.
   - **Table:** one row per record, newest first, 50 at a time with **Load
-    older** (`before_id`). Each event type gets a one-line summary
-    (`summarise` in `lib/audit.ts`); a type the page doesn't know shows its name.
+    older** (`before_id`), fixed columns so long lines truncate. "What" is the
+    event as a chip, then the question in quotes (or the one-line `summarise`
+    for other events), then for questions their outcome chip (`outcomes`):
+    Answered (green), Not found, or LLM failed (red). Which documents were
+    denied is in the record. The whole row opens the record.
+  - **Empty:** "No records yet", or with filters "No records match these
+    filters" with Clear filters.
   - **Record dialog** (`components/admin/audit-record.tsx`): a centred dialog,
     titled "Audit record #N". The open record is in the URL (`?record=56`), so
     it can be linked or bookmarked, Back closes it, and Escape returns focus to
@@ -205,9 +253,10 @@ The persona-by-persona checks with expected answers, and the states that can onl
   - **One search, one request:** in development React runs effects twice on
     mount; the page reuses the request for each search, so a visit writes one
     `audit_searched` record, as in production.
-  - **Verify chain:** "intact" with the number checked and the latest record's
-    hash (**Copy hash**, to note it outside KnowBuddy, ADR-007), or the first
-    broken record with **Open record #N**.
+  - **Hash chain card** at the top: "Not verified on this visit", then a green
+    "Intact" chip with the number checked (the latest record's hash and **Copy
+    hash** in a collapsed section, to note it outside KnowBuddy, ADR-007), or a
+    red "Broken at #N" with the reason and **Open record #N**.
   - The API declares no response model, so the types are written by hand in
     `lib/audit.ts`; keep them in step with the payloads the backend writes.
     Every search and verification is itself recorded in the trail.
@@ -215,10 +264,35 @@ The persona-by-persona checks with expected answers, and the states that can onl
   Calls the admin API in `backend/app/connectors/admin.py`:
   `GET /api/admin/scopes/{source}` (what the admin can see in each tool, read
   with their own connection), `GET /api/admin/boundary`, `PUT` and `DELETE
-  /api/admin/boundary/{source}/{scope_id}`, and `POST /api/admin/sync`.
-  - **One section per tool** (Slack, Google Drive, Jira, Confluence), each
-    loading its own list, so one tool failing never blanks the others. A
-    filter box appears above 10 rows.
+  /api/admin/boundary/{source}/{scope_id}`, `POST
+  /api/admin/boundary/{source}/bulk` and `POST /api/admin/sync`. Built for
+  hundreds of channels and nested folders (the handbook's Company A).
+  - **A sticky bar** (from 768 px; on phones it scrolls away) stays in view while scrolling: one search across the four
+    tools ("Find a channel, folder, project or space", matching names and
+    Drive paths, the match highlighted), **Show** All / In the boundary / Not
+    in it (`matchRows` in `lib/boundary.ts`), Sync now and the sync status.
+  - **One collapsible section per tool** (Slack, Google Drive, Jira,
+    Confluence), each loading its own list, so one tool failing never blanks
+    the others; the heading says "4 of 73 channels in the boundary · 10
+    shown". The first 50 rows, then "Show 100 more".
+  - **Per tool:** Slack in Public and Private groups (a lock on private ones;
+    DMs are never offered). Drive as a **tree** (`treeOrder`) under a heading
+    per drive (My Drive, each shared drive by name, Shared with me, and Other
+    for boundary folders no longer listed; `driveGroups`), folders folded
+    until their arrow is pressed, with Expand all and Collapse all
+    (`foldTree`); with a search or a Show filter, a flat list with each
+    folder's path; a folder under a ticked one is shown ticked
+    and locked, "Included with *Parent*" (`coveredBy`), since sync includes
+    subfolders and the backend refuses overlapping folders (409, shown under
+    the row). Jira with the project key.
+  - **Bulk:** "Add all N" and "Remove all N" per section ("… matching" with a
+    search or a Show filter), on everything the search and Show leave, not only
+    the rows on screen (`bulkRows`: adding skips folders already
+    included, folders with one below them in, and folders under another being
+    added). Over 50 (`BULK_LIMIT`) they are disabled with "Search to narrow
+    it". A confirmation lists every one (scrolling; private channels marked,
+    Drive paths), says what happens, and how many are private channels; one request, all or nothing, each scope audited on
+    its own; adding starts a sync, like a tick.
   - **A checkbox per scope.** Ticking adds it and starts a sync at once.
     Unticking asks first ("its content stops appearing in answers immediately,
     for everyone"; for a scope that never synced, e.g. seeded demo data: "only
@@ -295,8 +369,9 @@ Rerun it whenever a backend route or response changes, and commit the result.
 - `lib/answers.ts`: the backend's two fixed replies, copied exactly, and
   `classifyAnswer()` (`answered` / `notFound` / `unavailable`). The only file
   to change if the backend wording changes.
-- `lib/citations.ts`: `stripCitationMarkers()` removes `[S1]` markers (citations
-  do not yet say which label they are); `safeHttpUrl()` returns a URL only if
+- `lib/citations.ts`: `splitAnswer()` turns the answer into text and numbered
+  source markers by each citation's `label` (unknown labels dropped, the rest
+  stays text); `stripCitationMarkers()` removes them (for Copy); `safeHttpUrl()` returns a URL only if
   it is absolute `http(s)`. Answer text and source URLs are untrusted: render
   answers as plain text and link only what `safeHttpUrl` accepts.
 - `lib/format.ts`: relative and exact timestamps, in the viewer's locale
@@ -316,8 +391,10 @@ than explaining it.
 
 1. **Provenance first.** Every answer shows where it came from (platform,
    title, last updated). Sources are not a footnote.
-2. **Calm, not chatty.** An enterprise tool: no avatar or personality for the
-   assistant, system fonts, thin borders, motion only for the pending state.
+2. **Calm, not chatty.** An enterprise tool: the KnowBuddy icon marks its
+   answers and the empty chat greets you by first name, but nothing more (no
+   persona, no jokes, no invented progress); system fonts, thin borders,
+   motion only for the pending state and small state changes.
 3. **Honest states.** "Not found" is a normal, neutral outcome: never red,
    never "denied", identical whatever the reason.
 4. **Development aids look like development aids.** The persona switcher and

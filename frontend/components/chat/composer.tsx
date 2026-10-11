@@ -56,7 +56,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ se
       <label htmlFor="question" className="sr-only">
         Ask a question
       </label>
-      <div className="flex items-end gap-2 rounded-xl border border-input bg-card p-2 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+      <div className="flex items-end gap-2 rounded-2xl border border-input bg-card p-2.5 shadow-sm focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
         <Textarea
           id="question"
           ref={textarea}
@@ -67,9 +67,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ se
           rows={1}
           aria-invalid={tooLong || undefined}
           aria-describedby="question-hint"
-          className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="max-h-48 min-h-11 resize-none border-0 bg-transparent px-2 text-base shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
         />
-        <Button type="submit" size="icon" disabled={!canSend} aria-label="Send question">
+        <Button type="submit" size="icon-lg" disabled={!canSend} aria-label="Send question" className="rounded-xl">
           <ArrowUp aria-hidden="true" />
         </Button>
       </div>

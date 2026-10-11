@@ -47,9 +47,9 @@ export function DevPersonaBanner({ users }: { users: DevUser[] }) {
     <div
       role="region"
       aria-label="Development tools"
-      className="border-b border-warning-foreground/30 bg-warning text-warning-foreground"
+      className="border-b border-warning-foreground/30 bg-warning text-warning-foreground md:sticky md:top-0 md:z-50"
     >
-      <div className="mx-auto flex min-h-9 w-full max-w-5xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1 text-xs">
+      <div className="mx-auto flex min-h-9 w-full max-w-5xl flex-wrap md:h-9 md:flex-nowrap items-center gap-x-3 gap-y-1 px-4 py-1 text-xs">
         <span className="font-semibold tracking-wide">DEVELOPMENT ONLY</span>
         <span className="min-w-0 truncate">
           Signed in as <span className="font-medium">{me.name}</span> (identity not verified)

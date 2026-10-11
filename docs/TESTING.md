@@ -60,9 +60,10 @@ From `frontend/`, with Node.js 24 ([RUNNING.md](RUNNING.md) §1):
 | `npm run build` | Anything that breaks the production build, and pages that wrongly try to render at build time | "Compiled successfully" and a route list |
 
 The unit tests sit next to the code they test (`*.test.ts`) and cover the security-relevant helpers: which fixed
-reply an answer is, which source links are safe, removing `[S1]` markers, mock mode staying off in production, and
-the allowlist of sign-in error codes (`lib/connectors.test.ts`), what a source says about masking and freshness
-(`lib/citations.test.ts`: "N masked", and "synced" only for data that ever synced, stale after 15 minutes), the
+reply an answer is, which source links are safe, turning `[S1]` markers into the right numbered source by label (and removing them for Copy), mock mode staying off in production, and
+the allowlist of sign-in error codes (`lib/connectors.test.ts`), how fresh a source is
+(`lib/citations.test.ts`: "synced" only for data that ever synced, stale after 15 minutes), which masked values a reader
+can see (`lib/masking.test.ts`: the Shield's tags, never `[S1]`), the
 `mock:shield` and `mock:injection` fixtures, and the audit page's filters and one-line summaries
 (`lib/audit.test.ts`: dates become a whole-day range, a scope ID is only sent with its tool, malformed values in the
 URL are dropped, the open record is read from and written to the URL, every event type gets a readable line, and
@@ -154,11 +155,11 @@ Target: WCAG 2.2 AA. On 4 Oct every page and every chat state, light and dark, h
 
 - **Automated:** install the free **axe DevTools** browser extension (or use Chrome's Lighthouse → Accessibility) and
   run it on `/login`, the chat (empty, and with an answer), `/connectors`, and both admin pages (an audit
-  record open, and the boundary's removal dialog open). Check light and dark (the theme button in the header). ✅ No violations.
+  record open, and the boundary's removal dialog open). Check light and dark (Theme in the account menu at the bottom of the sidebar; the top-bar button on the sign-in page). ✅ No violations.
 - **Keyboard:** press Tab from the top of a page. ✅ The first stop is "Skip to content", every control shows a
   focus ring, menus open with Enter and close with Escape, and dialogs return focus to what opened them.
 - **Phone width:** in the browser's developer tools, set the width to 375 px. ✅ Nothing scrolls sideways, the
-  header links move into the account menu, and buttons are at least 44 px tall on touch screens.
+  sidebar becomes a top bar whose menu button opens it in a sheet, and buttons are at least 44 px tall on touch screens.
 - **Not yet checked:** a full pass with a screen reader (VoiceOver or NVDA).
 
 The accessibility rules the frontend follows: [architecture/FRONTEND.md](architecture/FRONTEND.md) ("Accessibility").
@@ -174,7 +175,7 @@ Shows every chat state without spending LLM tokens. Development only.
    `mock:bad-url`, `mock:no-citations`, `mock:not-found`, `mock:unavailable`, `mock:401`, `mock:422`, `mock:503`,
    `mock:offline`. Replies take about 6 seconds; add `mock:fast` to skip the wait.
 
-✅ A **MOCK DATA** badge shows in the header, and mocked answers say "Ref # — (mock)". Fixtures are in
+✅ A **MOCK DATA** badge shows at the top of the sidebar (in the top bar on phones), and mocked answers say "Ref # — (mock)". Fixtures are in
 `frontend/lib/api/mock.ts`. Remove the setting when you're done.
 
 ## 7. Before a pull request, before submitting

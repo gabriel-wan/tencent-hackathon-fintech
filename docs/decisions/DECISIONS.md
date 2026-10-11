@@ -652,6 +652,10 @@ Deterministic layers, in the order a question meets them:
    removed from the sources the answer **cites**. Counting every source sent made the notice appear
    on answers that never used the source in question (e.g. a dispute answer that also retrieved
    the poisoned `#eng` thread). The audit record still lists every removal, cited or not.
+   *Amended 2026-10-11 (Zewei; agreed by @gabriel-wan and @v1-nce in the UI revamp PR):* the chat no longer
+   shows the notice. The removal itself is unchanged, the API still returns `instructions_removed`, and an
+   admin sees which source and which rule in the answer's audit record (its Ref #). Why: the notice
+   explained an attack the reader can do nothing about, on answers that were already safe.
 
 ### Rejected
 

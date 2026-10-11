@@ -209,15 +209,6 @@ export function formatMs(ms: number): string {
   return `${new Intl.NumberFormat("en").format(Math.round(ms))} ms`;
 }
 
-// The tags the Need-to-Know Shield writes in place of a value (backend/app/redaction.py Shield._tag).
-const MASK_TAG =
-  /\[(?:secret|date of birth|address|(?:card|account|IBAN) ending [A-Za-z0-9]{1,4}|NRIC \*+[A-Za-z0-9]{1,4}|(?:phone|email|name|passport) \d+)\]/;
-
-/** Whether stored text has values the Shield masked ("[card ending 1111]", "[name 1]"…), not "[S1]" or "[draft]". */
-export function hasMaskedValues(text: string | undefined): boolean {
-  return !!text && MASK_TAG.test(text);
-}
-
 /** The live check in plain words: "live", the development stand-in, or the raw value. */
 export function liveCheckLabel(mode: string | undefined): { text: string; kind: "live" | "stub" | "other" } {
   if (mode?.startsWith("live")) return { text: "Live, with each tool", kind: "live" };
@@ -346,4 +337,50 @@ export function summarise(record: AuditRecord): string {
     default:
       return record.event_type;
   }
+}
+
+/** The applied filters as removable chips ("User: alice@…"), in the form's order. Empty filters are left out. */
+export function filterChips(filters: AuditFilters): { key: keyof AuditFilters; label: string }[] {
+  const chips: { key: keyof AuditFilters; label: string }[] = [];
+  if (filters.user) chips.push({ key: "user", label: `User: ${filters.user}` });
+  if (filters.from) chips.push({ key: "from", label: `From ${filters.from}` });
+  if (filters.to) chips.push({ key: "to", label: `To ${filters.to}` });
+  if (filters.event_type) chips.push({ key: "event_type", label: `Event: ${eventLabel(filters.event_type)}` });
+  if (filters.source) chips.push({ key: "source", label: `Tool: ${SOURCE_LABEL[filters.source] ?? filters.source}` });
+  if (filters.scope_id) chips.push({ key: "scope_id", label: `In: ${filters.scope_id}` });
+  if (filters.document) chips.push({ key: "document", label: `Document: ${filters.document}` });
+  return chips;
+}
+
+/** Removes one filter; removing the tool also removes the scope ID, which only means something with its tool. */
+export function withoutFilter(filters: AuditFilters, key: keyof AuditFilters): AuditFilters {
+  return { ...filters, [key]: "", ...(key === "source" ? { scope_id: "" } : {}) };
+}
+
+/** How many of the filters behind "More filters" are set (event, tool, scope, document). */
+export function moreFiltersCount(filters: AuditFilters): number {
+  return [filters.event_type, filters.source, filters.scope_id, filters.document].filter(Boolean).length;
+}
+
+export type Outcome = { text: string; tone: "neutral" | "success" | "danger" };
+
+/**
+ * A question record's outcome, for the table: answered, not found or LLM failed. Other events have none. Which
+ * documents were denied is in the record itself, not the table (Zewei, 12 Oct).
+ */
+export function outcomes(record: AuditRecord): Outcome[] {
+  if (record.event_type !== "query") return [];
+  const p = record.payload as QueryPayload;
+  return [
+    p.llm_error
+      ? { text: "LLM failed", tone: "danger" }
+      : p.citations?.length
+        ? { text: "Answered", tone: "success" }
+        : { text: "Not found", tone: "neutral" },
+  ];
+}
+
+/** The table's line for a record: the question itself for questions (its outcome is shown as chips), else summarise. */
+export function rowText(record: AuditRecord): string {
+  return record.event_type === "query" ? `"${(record.payload as QueryPayload).question ?? ""}"` : summarise(record);
 }

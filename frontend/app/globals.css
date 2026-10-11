@@ -19,6 +19,9 @@
     --color-warning: var(--warning);
     --color-warning-foreground: var(--warning-foreground);
     --color-success: var(--success);
+    --color-sidebar: var(--sidebar);
+    --color-brand-know: var(--brand-know);
+    --color-brand-buddy: var(--brand-buddy);
     --color-success-foreground: var(--success-foreground);
     --color-destructive: var(--destructive);
     --color-accent-foreground: var(--accent-foreground);
@@ -51,8 +54,9 @@
     --card-foreground: #1c1c1e;
     --popover: #ffffff;
     --popover-foreground: #1c1c1e;
-    /* Brand accent. shadcn's own --accent is the hover background, below. */
-    --primary: #2457d6;
+    /* Brand accent: the app icon's indigo (6.3:1 with white). shadcn's own --accent is the hover
+       background, below. */
+    --primary: #4f46e5;
     --primary-foreground: #ffffff;
     --secondary: #f1f1ef;
     --secondary-foreground: #1c1c1e;
@@ -71,7 +75,12 @@
     --border: #e5e5e3;
     /* Input borders: 3:1 against the page, unlike --border. */
     --input: #8a8f98;
-    --ring: #2457d6;
+    --ring: #4f46e5;
+    /* The wordmark's two halves, from the app icon (app/icon.svg). "Buddy" is a darker teal than the
+       icon's #1dcbd4, which is 1.9:1 on the page; this is 4.5:1. */
+    --sidebar: #f3f3f1; /* one step below the page, so the frame reads as a frame */
+    --brand-know: #2239ad;
+    --brand-buddy: #0b7f88;
     --radius: 0.625rem;
 }
 
@@ -82,7 +91,7 @@
     --card-foreground: #ecedee;
     --popover: #171a21;
     --popover-foreground: #ecedee;
-    --primary: #7fa2ff;
+    --primary: #a5b4fc;
     --primary-foreground: #0f1115;
     --secondary: #222630;
     --secondary-foreground: #ecedee;
@@ -97,7 +106,10 @@
     --success-foreground: #4ade80;
     --border: #2a2f3a;
     --input: #6b7280;
-    --ring: #7fa2ff;
+    --ring: #a5b4fc;
+    --sidebar: #13161b;
+    --brand-know: #a2b0ef;
+    --brand-buddy: #1dcbd4;
 }
 
 @layer base {
@@ -131,6 +143,12 @@
         display: inline-flex;
         align-items: center;
     }
+}
+
+/* The sign-in page's motion (components/login/): drifting light, and the question bubble rising in. */
+@keyframes kb-rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
 }
 
 /* Motion is decoration only: switch it off for people who ask. */

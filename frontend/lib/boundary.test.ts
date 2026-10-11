@@ -4,7 +4,15 @@ import {
   type BoundaryEntry,
   STALE_AFTER_MS,
   blockedReason,
+  bulkRows,
+  driveGroups,
+  foldTree,
+  containsAllowed,
+  coveredBy,
   filterRows,
+  indexRows,
+  matchRows,
+  treeOrder,
   rowState,
   rowsFor,
   scopesProblem,
@@ -63,7 +71,9 @@ describe("rowsFor", () => {
 
   it("shows only the boundary when the tool's list couldn't load, flagging nothing", () => {
     const rows = rowsFor("slack", null, [entry("C1", null, "#payments-oncall")]);
-    expect(rows).toEqual([{ id: "C1", title: "#payments-oncall", inBoundary: true, lastSyncedAt: null, visible: true }]);
+    expect(rows).toEqual([
+      { id: "C1", title: "#payments-oncall", inBoundary: true, lastSyncedAt: null, visible: true, private: false, parent: null, path: "", driveId: null, drive: "" },
+    ]);
   });
 
   it("ignores other tools' entries", () => {
@@ -82,7 +92,8 @@ describe("filterRows", () => {
 describe("rowState", () => {
   const now = Date.parse("2026-10-09T05:00:00Z");
   const row = (over: Partial<ReturnType<typeof rowsFor>[number]>) => ({
-    id: "C1", title: "#x", inBoundary: true, lastSyncedAt: null, visible: true, ...over,
+    id: "C1", title: "#x", inBoundary: true, lastSyncedAt: null, visible: true, private: false, parent: null, path: "",
+    driveId: null, drive: "", ...over,
   });
 
   it.each([
@@ -138,5 +149,108 @@ describe("stillSyncing", () => {
     const before = syncSnapshot([entry("C1", "2026-10-09T04:00:00Z")]);
     const after = [entry("C1", "2026-10-09T04:00:31Z"), entry("C9", null)];
     expect(stillSyncing(before, after)).toEqual([]);
+  });
+});
+
+describe("Drive folders: tree, coverage, search and bulk", () => {
+  // Finance > 2026 > Payroll, Finance > Legal, Eng; 2026 is in the boundary.
+  const scopes = [
+    { id: "FIN", title: "Finance", parent: null, path: "" },
+    { id: "Y26", title: "2026", parent: "FIN", path: "Finance" },
+    { id: "PAY", title: "Payroll", parent: "Y26", path: "Finance / 2026" },
+    { id: "LEG", title: "Legal", parent: "FIN", path: "Finance" },
+    { id: "ENG", title: "Eng", parent: null, path: "" },
+  ];
+  const rows = rowsFor("drive", scopes, [entry("Y26", null, "2026", "drive")]);
+  const byId = (id: string) => rows.find((r) => r.id === id)!;
+
+  it("orders folders as a tree, each level by name", () => {
+    expect(treeOrder(rows).map(({ row, depth }) => `${depth}:${row.title}`)).toEqual([
+      "0:Eng", "0:Finance", "1:2026", "2:Payroll", "1:Legal",
+    ]);
+  });
+  it("a folder under one in the boundary is covered by it; its parent contains one", () => {
+    const index = indexRows(rows);
+    expect(coveredBy(byId("PAY"), index)?.id).toBe("Y26");
+    expect(coveredBy(byId("LEG"), index)).toBeNull();
+    expect(containsAllowed(byId("FIN"), index)?.id).toBe("Y26"); // its hint names the folder below
+    expect(containsAllowed(byId("ENG"), index)).toBeNull();
+  });
+  it("searches the path too, and Show counts covered folders as in", () => {
+    expect(matchRows(rows, "finance / 2026", "all").map((r) => r.id)).toEqual(["PAY"]);
+    expect(matchRows(rows, "", "in").map((r) => r.id).sort()).toEqual(["PAY", "Y26"]);
+    expect(matchRows(rows, "", "out").map((r) => r.id).sort()).toEqual(["ENG", "FIN", "LEG"]);
+  });
+  it("Add all leaves out covered folders, parents of allowed ones, and folders under another being added", () => {
+    expect(bulkRows(rows, indexRows(rows), "add").map((r) => r.id).sort()).toEqual(["ENG", "LEG"]);
+    const fresh = rowsFor("drive", scopes, []);
+    expect(bulkRows(fresh, indexRows(fresh), "add").map((r) => r.id).sort()).toEqual(["ENG", "FIN"]); // FIN covers the rest
+    expect(bulkRows(rows, indexRows(rows), "remove").map((r) => r.id)).toEqual(["Y26"]);
+  });
+  it("keeps Slack's private flag", () => {
+    const [row] = rowsFor("slack", [{ id: "C1", title: "#sec", private: true }], []);
+    expect(row.private).toBe(true);
+  });
+});
+
+describe("thousands of Drive folders stay fast", () => {
+  // Review of the UI revamp PR: one render took 77 s at 2,000 folders when every lookup re-walked the list.
+  const run = (scopes: { id: string; title: string; parent: string | null; path: string }[]) => {
+    const rows = rowsFor("drive", scopes, []);
+    const started = performance.now();
+    const index = indexRows(rows);
+    const shown = matchRows(rows, "", "all", index);
+    treeOrder(rows);
+    const toAdd = bulkRows(shown, index, "add");
+    return { ms: performance.now() - started, toAdd };
+  };
+
+  it("2,000 folders, wide (20 top folders, 3 levels)", () => {
+    const scopes = Array.from({ length: 2000 }, (_, i) => ({
+      id: `F${i}`, title: `Folder ${i}`, parent: i < 20 ? null : `F${Math.floor((i - 20) / 3)}`, path: "",
+    }));
+    const { ms, toAdd } = run(scopes);
+    expect(toAdd.map((r) => r.id).sort()).toEqual(scopes.slice(0, 20).map((s) => s.id).sort()); // the tops cover the rest
+    expect(ms).toBeLessThan(300);
+  });
+
+  it("2,000 folders in one deep chain", () => {
+    const scopes = Array.from({ length: 2000 }, (_, i) => ({
+      id: `F${i}`, title: `Folder ${i}`, parent: i === 0 ? null : `F${i - 1}`, path: "",
+    }));
+    const { ms, toAdd } = run(scopes.slice(0, 2000));
+    expect(toAdd.map((r) => r.id)).toEqual(["F0"]);
+    expect(ms).toBeLessThan(1500); // a 2,000-deep chain is the worst case: each folder walks its parents
+  });
+});
+
+describe("Drive folding and drive headings", () => {
+  const scopes = [
+    { id: "FIN", title: "Finance", parent: null, path: "", drive_id: "my-drive", drive: "My Drive" },
+    { id: "Y26", title: "2026", parent: "FIN", path: "Finance", drive_id: "my-drive", drive: "My Drive" },
+    { id: "PAY", title: "Payroll", parent: "Y26", path: "Finance / 2026", drive_id: "my-drive", drive: "My Drive" },
+    { id: "LEG", title: "Legal", parent: "FIN", path: "Finance", drive_id: "my-drive", drive: "My Drive" },
+    { id: "ENG", title: "Eng", parent: null, path: "", drive_id: "SD1", drive: "Engineering team" },
+    { id: "OUT", title: "From a partner", parent: null, path: "", drive_id: "shared-with-me", drive: "Shared with me" },
+    { id: "OPS", title: "Ops", parent: null, path: "", drive_id: "SD0", drive: "Ops team" },
+  ];
+  const rows = rowsFor("drive", scopes, []);
+
+  it("groups by drive: My Drive, shared drives by name, then Shared with me", () => {
+    expect(driveGroups(rows).map((g) => g.label)).toEqual(["My Drive", "Engineering team", "Ops team", "Shared with me"]);
+  });
+
+  it("folded folders hide everything below them; expanding shows one level more", () => {
+    const tree = treeOrder(driveGroups(rows)[0].rows);
+    expect(foldTree(tree, new Set()).map((e) => e.row.title)).toEqual(["Finance"]);
+    expect(foldTree(tree, new Set(["FIN"])).map((e) => e.row.title)).toEqual(["Finance", "2026", "Legal"]);
+    expect(foldTree(tree, new Set(["FIN", "Y26"])).map((e) => e.row.title)).toEqual(["Finance", "2026", "Payroll", "Legal"]);
+    expect(tree.find((e) => e.row.id === "Y26")?.hasChildren).toBe(true);
+    expect(tree.find((e) => e.row.id === "LEG")?.hasChildren).toBe(false);
+  });
+
+  it("a folder in the boundary but no longer listed goes under Other", () => {
+    const withGone = rowsFor("drive", scopes, [entry("GONE", null, "Old folder", "drive")]);
+    expect(driveGroups(withGone).at(-1)).toMatchObject({ label: "Other", rows: [{ id: "GONE" }] });
   });
 });

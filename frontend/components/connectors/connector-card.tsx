@@ -1,6 +1,6 @@
 "use client";
 
-import { Plug, Unplug } from "lucide-react";
+import { CheckCircle2, Plug, Unplug } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -15,10 +15,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PlatformLogo } from "@/components/platform-logo";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusChip } from "@/components/status-chip";
 import { CONNECTOR_BLURBS, type Connector } from "@/lib/connectors";
 
 type Props = {
@@ -27,7 +26,7 @@ type Props = {
   connectHref: string;
 };
 
-/** One tool: its status, and Connect, or Test and Disconnect. */
+/** One tool, as a row: its status, and Connect, or Test and Disconnect. */
 export function ConnectorCard({ connector, connectHref }: Props) {
   const router = useRouter();
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -54,53 +53,54 @@ export function ConnectorCard({ connector, connectHref }: Props) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle>
-            <h2 className="flex items-center gap-2 text-base font-semibold">
-              <PlatformLogo source={connector.id} size={20} />
-              {connector.name}
-            </h2>
-          </CardTitle>
-          {connector.connected ? <Badge variant="secondary">Connected</Badge> : <Badge variant="outline">Not connected</Badge>}
+    // One row of the Connections list: the tool, what KnowBuddy reads there, its status, and its actions.
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
+      <PlatformLogo source={connector.id} size={28} className="self-start" />
+      <div className="grid min-w-0 flex-1 basis-64 gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-semibold">{connector.name}</h2>
+          {connector.connected ? (
+            <StatusChip tone="success">
+              <CheckCircle2 aria-hidden="true" />
+              Connected
+            </StatusChip>
+          ) : (
+            <StatusChip>Not connected</StatusChip>
+          )}
         </div>
-        <CardDescription>{CONNECTOR_BLURBS[connector.id]}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
+        <p className="text-sm text-muted-foreground">{CONNECTOR_BLURBS[connector.id]}</p>
         {connector.connected ? (
-          <>
-            <p className="text-sm text-muted-foreground">
-              Connected as <span className="font-medium text-foreground">{connector.account?.email ?? "your account"}</span>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => run("test")} disabled={pending}>
-                {busy === "test" ? "Testing…" : "Test"}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setConfirming(true)} disabled={pending}>
-                <Unplug aria-hidden="true" />
-                Disconnect
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div>
-            <Button asChild size="sm">
-              {/* A plain link: the sign-in redirect has to start and end on the backend. */}
-              <a href={connectHref}>
-                <Plug aria-hidden="true" />
-                Connect
-              </a>
-            </Button>
-          </div>
-        )}
-
+          <p className="text-sm text-muted-foreground">
+            As <span className="font-medium text-foreground">{connector.account?.email ?? "your account"}</span>
+          </p>
+        ) : null}
         {result ? (
           <p role="status" className={result.ok ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
             {result.ok ? (result.detail ? `Works. The tool sees you as ${result.detail}.` : "Works.") : result.message}
           </p>
         ) : null}
-      </CardContent>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {connector.connected ? (
+          <>
+            <Button variant="outline" size="sm" onClick={() => run("test")} disabled={pending}>
+              {busy === "test" ? "Testing…" : "Test"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setConfirming(true)} disabled={pending}>
+              <Unplug aria-hidden="true" />
+              Disconnect
+            </Button>
+          </>
+        ) : (
+          <Button asChild size="sm">
+            {/* A plain link: the sign-in redirect has to start and end on the backend. */}
+            <a href={connectHref}>
+              <Plug aria-hidden="true" />
+              Connect
+            </a>
+          </Button>
+        )}
+      </div>
 
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
@@ -119,6 +119,6 @@ export function ConnectorCard({ connector, connectHref }: Props) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </div>
   );
 }
