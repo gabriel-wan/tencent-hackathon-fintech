@@ -109,6 +109,17 @@ export async function removeScope(source: SourceName, scopeId: string): Promise<
   await request<null>(`/admin/boundary/${source}/${encodeURIComponent(scopeId)}`, { method: "DELETE" });
 }
 
+/**
+ * POST /api/admin/boundary/{source}/bulk: up to 50 adds and removes in one transaction, all or nothing; each
+ * scope is audited on its own. 409: overlapping Drive folders (the detail names them).
+ */
+export async function bulkScopes(
+  source: SourceName,
+  change: { add?: { scope_id: string; title: string }[]; remove?: string[] },
+): Promise<{ added: number; removed: number }> {
+  return request<{ added: number; removed: number }>(`/admin/boundary/${source}/bulk`, { method: "POST", body: change });
+}
+
 /** POST /api/admin/sync: sync the whole company now, in the background (nothing to wait on). Audited. */
 export async function syncNow(): Promise<void> {
   await request<unknown>("/admin/sync", { method: "POST" });

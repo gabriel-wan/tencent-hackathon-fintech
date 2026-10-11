@@ -67,7 +67,7 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 | `DELETE /api/session` | | 204, signs out |
 | `GET /api/dev/users` | | Seeded users only (emails ending `.example`); real accounts are never listed. **Development only** |
 | `POST /api/dev/session` | `{"user_id": 1}` | Signs in as that seeded user (persona switcher); any other user is 404, so it can never act with a real account's tokens. **Development only** |
-| `GET /api/admin/boundary`, `PUT`/`DELETE /api/admin/boundary/{source}/{scope_id}`, `GET /api/admin/scopes/{source}`, `POST /api/admin/sync` | | The company's boundary and sync. **Admins only** ([CONNECTORS.md](CONNECTORS.md) §3) |
+| `GET /api/admin/boundary`, `PUT`/`DELETE /api/admin/boundary/{source}/{scope_id}`, `POST /api/admin/boundary/{source}/bulk`, `GET /api/admin/scopes/{source}`, `POST /api/admin/sync` | | The company's boundary and sync. **Admins only** ([CONNECTORS.md](CONNECTORS.md) §3) |
 | `GET /api/admin/audit` | Query: `user`, `since`, `until`, `event_type`, `document`, `source`, `scope_id`, `before_id`, `limit` | `{"records": [{"id", "ts", "user_email", "event_type", "payload", "prev_hash", "hash"}], "next_before_id"}`, newest first, own company only. **Admins only**; each search is itself audited |
 | `POST /api/admin/audit/verify` | | `{"ok", "checked", "first_broken_id", "reason", "head": {"id", "hash"}}`: recomputes the company's hash chain. **Admins only**; audited |
 

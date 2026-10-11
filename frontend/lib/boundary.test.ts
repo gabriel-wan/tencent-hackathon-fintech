@@ -4,7 +4,12 @@ import {
   type BoundaryEntry,
   STALE_AFTER_MS,
   blockedReason,
+  bulkRows,
+  containsAllowed,
+  coveredBy,
   filterRows,
+  matchRows,
+  treeOrder,
   rowState,
   rowsFor,
   scopesProblem,
@@ -63,7 +68,9 @@ describe("rowsFor", () => {
 
   it("shows only the boundary when the tool's list couldn't load, flagging nothing", () => {
     const rows = rowsFor("slack", null, [entry("C1", null, "#payments-oncall")]);
-    expect(rows).toEqual([{ id: "C1", title: "#payments-oncall", inBoundary: true, lastSyncedAt: null, visible: true }]);
+    expect(rows).toEqual([
+      { id: "C1", title: "#payments-oncall", inBoundary: true, lastSyncedAt: null, visible: true, private: false, parent: null, path: "" },
+    ]);
   });
 
   it("ignores other tools' entries", () => {
@@ -82,7 +89,8 @@ describe("filterRows", () => {
 describe("rowState", () => {
   const now = Date.parse("2026-10-09T05:00:00Z");
   const row = (over: Partial<ReturnType<typeof rowsFor>[number]>) => ({
-    id: "C1", title: "#x", inBoundary: true, lastSyncedAt: null, visible: true, ...over,
+    id: "C1", title: "#x", inBoundary: true, lastSyncedAt: null, visible: true, private: false, parent: null, path: "",
+    ...over,
   });
 
   it.each([
@@ -138,5 +146,45 @@ describe("stillSyncing", () => {
     const before = syncSnapshot([entry("C1", "2026-10-09T04:00:00Z")]);
     const after = [entry("C1", "2026-10-09T04:00:31Z"), entry("C9", null)];
     expect(stillSyncing(before, after)).toEqual([]);
+  });
+});
+
+describe("Drive folders: tree, coverage, search and bulk", () => {
+  // Finance > 2026 > Payroll, Finance > Legal, Eng; 2026 is in the boundary.
+  const scopes = [
+    { id: "FIN", title: "Finance", parent: null, path: "" },
+    { id: "Y26", title: "2026", parent: "FIN", path: "Finance" },
+    { id: "PAY", title: "Payroll", parent: "Y26", path: "Finance / 2026" },
+    { id: "LEG", title: "Legal", parent: "FIN", path: "Finance" },
+    { id: "ENG", title: "Eng", parent: null, path: "" },
+  ];
+  const rows = rowsFor("drive", scopes, [entry("Y26", null, "2026", "drive")]);
+  const byId = (id: string) => rows.find((r) => r.id === id)!;
+
+  it("orders folders as a tree, each level by name", () => {
+    expect(treeOrder(rows).map(({ row, depth }) => `${depth}:${row.title}`)).toEqual([
+      "0:Eng", "0:Finance", "1:2026", "2:Payroll", "1:Legal",
+    ]);
+  });
+  it("a folder under one in the boundary is covered by it; its parent contains one", () => {
+    expect(coveredBy(byId("PAY"), rows)?.id).toBe("Y26");
+    expect(coveredBy(byId("LEG"), rows)).toBeNull();
+    expect(containsAllowed(byId("FIN"), rows)).toBe(true);
+    expect(containsAllowed(byId("ENG"), rows)).toBe(false);
+  });
+  it("searches the path too, and Show counts covered folders as in", () => {
+    expect(matchRows(rows, "finance / 2026", "all").map((r) => r.id)).toEqual(["PAY"]);
+    expect(matchRows(rows, "", "in").map((r) => r.id).sort()).toEqual(["PAY", "Y26"]);
+    expect(matchRows(rows, "", "out").map((r) => r.id).sort()).toEqual(["ENG", "FIN", "LEG"]);
+  });
+  it("Add all leaves out covered folders, parents of allowed ones, and folders under another being added", () => {
+    expect(bulkRows(rows, rows, "add").map((r) => r.id).sort()).toEqual(["ENG", "LEG"]);
+    const fresh = rowsFor("drive", scopes, []);
+    expect(bulkRows(fresh, fresh, "add").map((r) => r.id).sort()).toEqual(["ENG", "FIN"]); // FIN covers the rest
+    expect(bulkRows(rows, rows, "remove").map((r) => r.id)).toEqual(["Y26"]);
+  });
+  it("keeps Slack's private flag", () => {
+    const [row] = rowsFor("slack", [{ id: "C1", title: "#sec", private: true }], []);
+    expect(row.private).toBe(true);
   });
 });

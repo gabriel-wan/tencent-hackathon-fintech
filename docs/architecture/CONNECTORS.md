@@ -80,10 +80,11 @@ Auth is the `ib_session` cookie (HttpOnly, 12 hours), set on first connect. Rout
 | `GET /connectors/{id}/ping` | user | `200 {"ok": true, "as": "<name or email>"}` | `404` not connected, `401` connect again, `502` tool API failed |
 | `DELETE /connectors/{id}` | user | `204`. Also revokes the grant at Google or Slack. Jira and Confluence share one sign-in, so this disconnects both. | none |
 | `DELETE /api/session` | optional | `204`, and clears the cookie (log out; `app/api/routes.py`) | none |
-| `GET /api/admin/scopes/{id}` | admin | `200 [{"id", "title"}]`: channels, folders, projects or spaces the admin can see | `403` not an admin, `404` not connected |
+| `GET /api/admin/scopes/{id}` | admin | `200 [{"id", "title"}]`: channels, folders, projects or spaces the admin can see. Slack adds `private`; Drive adds `parent` (null at the top or when the parent isn't listed) and `path` ("Finance / 2026") | `403` not an admin, `404` not connected |
 | `GET /api/admin/boundary` | admin | `200` your company's boundary | `403` |
-| `PUT /api/admin/boundary/{id}/{scope_id}` | admin | `{"title": "<name>"}` → `204`. Audited. | `403`, `404` unknown tool |
+| `PUT /api/admin/boundary/{id}/{scope_id}` | admin | `{"title": "<name>"}` → `204`. Audited. | `403`, `404` unknown tool, `409` a Drive folder above or below one already in the boundary (sync includes subfolders, so the two would overlap; the detail names it) |
 | `DELETE /api/admin/boundary/{id}/{scope_id}` | admin | `204`; its documents are hidden at once. Audited. | `403`, `404` |
+| `POST /api/admin/boundary/{id}/bulk` | admin | `{"add": [{"scope_id", "title"}], "remove": ["<scope_id>"]}` → `200 {"added", "removed"}`. At most 50 in all, one transaction (all or nothing), one audit event per scope as above | `403`, `404`, `409` overlapping Drive folders (also within the request), `422` empty, over 50, the same scope in both lists, or an odd ID |
 | `POST /api/admin/sync` | admin | `202`: syncs your company now, in the background | `403` |
 | `GET /api/admin/audit` | admin | `200 {"records": [...], "next_before_id"}`: your company's audit trail, newest first; filters `user`, `since`, `until`, `event_type`, `document`, `source`, `scope_id`, `before_id`, `limit` (ADR-007) | `403`, `422` bad filter |
 | `POST /api/admin/audit/verify` | admin | `200 {"ok", "checked", "first_broken_id", "reason", "head"}`: recomputes your company's hash chain | `403` |

@@ -6,8 +6,11 @@
 // every question. People still only ever see what each tool lets them read.
 import type { SourceName } from "@/lib/api/types";
 
-/** GET /api/admin/scopes/{source}: what the admin can see in that tool. */
-export type Scope = { id: string; title: string };
+/**
+ * GET /api/admin/scopes/{source}: what the admin can see in that tool. Slack adds `private`; Drive adds the
+ * folder's `parent` (null at the top or when it isn't listed) and its `path` ("Finance / 2026").
+ */
+export type Scope = { id: string; title: string; private?: boolean; parent?: string | null; path?: string };
 
 /** GET /api/admin/boundary: one allowed scope. `last_synced_at` null: never synced. */
 export type BoundaryEntry = {
@@ -60,9 +63,14 @@ export type ScopeRow = {
   lastSyncedAt: string | null;
   /** False: in the boundary, but no longer in the admin's own list (they left it, or it was archived). */
   visible: boolean;
+  private: boolean; // a private Slack channel
+  parent: string | null; // a Drive folder's parent, if listed
+  path: string; // a Drive folder's path of parent names, "" at the top
 };
 
 const byTitle = (a: { title: string }, b: { title: string }) => a.title.localeCompare(b.title);
+
+const details = (s: Scope | undefined) => ({ private: s?.private ?? false, parent: s?.parent ?? null, path: s?.path ?? "" });
 
 /**
  * A tool's rows: what's in the boundary first, then what the admin could add. `scopes`
@@ -80,21 +88,99 @@ export function rowsFor(source: string, scopes: Scope[] | null, boundary: Bounda
         inBoundary: true,
         lastSyncedAt: b.last_synced_at,
         visible: scopes === null || seen.has(b.scope_id),
+        ...details(listed),
       };
     })
     .sort(byTitle);
   const ids = new Set(allowed.map((b) => b.scope_id));
   const outside: ScopeRow[] = (scopes ?? [])
     .filter((s) => !ids.has(s.id))
-    .map((s) => ({ id: s.id, title: s.title || s.id, inBoundary: false, lastSyncedAt: null, visible: true }))
+    .map((s) => ({ id: s.id, title: s.title || s.id, inBoundary: false, lastSyncedAt: null, visible: true, ...details(s) }))
     .sort(byTitle);
   return [...inside, ...outside];
 }
 
-/** Rows whose name contains the typed text (any case). */
+/** Rows whose name (or Drive path) contains the typed text, any case. */
 export function filterRows(rows: ScopeRow[], text: string): ScopeRow[] {
   const wanted = text.trim().toLowerCase();
-  return wanted ? rows.filter((r) => r.title.toLowerCase().includes(wanted)) : rows;
+  return wanted ? rows.filter((r) => `${r.path} ${r.title}`.toLowerCase().includes(wanted)) : rows;
+}
+
+/** The page's "Show" choice. */
+export type ShowMode = "all" | "in" | "out";
+
+/** Rows matching the search and the Show choice. A Drive folder included with its parent counts as "in". */
+export function matchRows(rows: ScopeRow[], text: string, show: ShowMode): ScopeRow[] {
+  const inside = (r: ScopeRow) => r.inBoundary || coveredBy(r, rows) !== null;
+  return filterRows(rows, text).filter((r) => show === "all" || (show === "in") === inside(r));
+}
+
+/**
+ * The nearest folder above this one that is in the boundary, or null. Sync includes subfolders, so a folder
+ * under a ticked one is already in (the backend refuses adding it again, 409).
+ */
+export function coveredBy(row: ScopeRow, rows: ScopeRow[]): ScopeRow | null {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const seen = new Set([row.id]);
+  for (let p = row.parent; p && !seen.has(p); p = byId.get(p)?.parent ?? null) {
+    seen.add(p);
+    const up = byId.get(p);
+    if (!up) return null;
+    if (up.inBoundary) return up;
+  }
+  return null;
+}
+
+/** True when a folder below this one is in the boundary (adding this one would be refused, 409). */
+export function containsAllowed(row: ScopeRow, rows: ScopeRow[]): boolean {
+  return rows.some((r) => r.inBoundary && r.id !== row.id && isAbove(row.id, r, rows));
+}
+
+function isAbove(id: string, row: ScopeRow, rows: ScopeRow[]): boolean {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const seen = new Set([row.id]);
+  for (let p = row.parent; p && !seen.has(p); p = byId.get(p)?.parent ?? null) {
+    if (p === id) return true;
+    seen.add(p);
+  }
+  return false;
+}
+
+/** Drive folders as a tree, depth first, each level by name, with its depth (0 at the top). */
+export function treeOrder(rows: ScopeRow[]): { row: ScopeRow; depth: number }[] {
+  const ids = new Set(rows.map((r) => r.id));
+  const children = new Map<string | null, ScopeRow[]>();
+  for (const r of rows) {
+    const key = r.parent && ids.has(r.parent) ? r.parent : null;
+    children.set(key, [...(children.get(key) ?? []), r]);
+  }
+  const out: { row: ScopeRow; depth: number }[] = [];
+  const seen = new Set<string>();
+  const walk = (parent: string | null, depth: number) => {
+    for (const r of (children.get(parent) ?? []).sort(byTitle)) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push({ row: r, depth });
+      walk(r.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return out;
+}
+
+/** At most this many scopes change in one bulk action (the backend's BULK_LIMIT). */
+export const BULK_LIMIT = 50;
+
+/**
+ * What "Add all shown" adds: shown rows outside the boundary, leaving out Drive folders already included with
+ * a parent, folders with one below them already in, and folders inside another one being added (the parent
+ * covers them). What "Remove all shown" removes: the shown rows in the boundary.
+ */
+export function bulkRows(shown: ScopeRow[], all: ScopeRow[], mode: "add" | "remove"): ScopeRow[] {
+  if (mode === "remove") return shown.filter((r) => r.inBoundary);
+  const candidates = shown.filter((r) => !r.inBoundary && coveredBy(r, all) === null && !containsAllowed(r, all));
+  const ids = new Set(candidates.map((r) => r.id));
+  return candidates.filter((r) => !candidates.some((other) => other.id !== r.id && ids.has(other.id) && isAbove(other.id, r, all)));
 }
 
 /**
