@@ -32,6 +32,21 @@ what does the runbook say to do if authorisations start failing?"*
 
 One answer, built from a Slack thread and a Drive document, each cited.
 
+**With all four tools** (11 Oct, real answers): Alice asks *"What's the status of the ledger database migration,
+and were there blockers in Slack last week?"*
+> The ledger database migration (MIG-7) has a status of Blocked, with the blocker being that the nightly reporting
+> job holds a lock on the ledger tables during the planned Saturday 2am window. In Slack last week (#eng), Ben
+> reported a blocker on the ledger database migration … and Alice said she would pause the reporting job for the
+> window, tracking it in MIG-8.
+>
+> **Sources:** MIG-7 (Jira) · `#eng` (Slack)
+
+The private `#db-team` thread about the migration slipping is in the same search, but Alice isn't in that channel,
+so it never reaches her answer. And *"Why did we pick the new payment gateway vendor, what fees did each vendor
+quote, and what's the status of PAY-412?"* gives one answer citing **PAY-412 (Jira) · `#payments-oncall` (Slack) ·
+Gateway vendor decision record (Confluence) · Gateway vendor comparison (Drive)**: "Vendor A quoted a fee of 2.1%
+and Vendor B quoted a fee of 1.7%". The contract terms page in the same space is Priya's only and isn't used.
+
 **What happened underneath:**
 1. Alice's session gives her principals in each tool (her Slack user, `slack:members`, her Google user and domain).
 2. One search over every tool returns only MerlionPay documents whose ACL includes one of those principals and
@@ -83,7 +98,8 @@ ask the same as **Priya** (admin and compliance).
   for merchants."* Sources: `#security-incidents` (Slack) · Q3 security incident report (Drive).
 
 Charlie's reply is word for word the reply for a question about something that doesn't exist at all, so it confirms
-nothing.
+nothing. The handbook's own wording works too: Charlie asks *"Can I see the Q3 breach report?"* (a page in the
+Confluence Security team space, Priya only) and gets the same fixed reply (11 Oct).
 
 **What happened underneath:** the incident report and the security channel aren't in Charlie's ACLs, so the search
 never returns them; they can't even affect the ranking. The only document he may see (the contractor guide) didn't
@@ -154,6 +170,11 @@ Verify chain shows **Chain intact** with the number of records checked, and the 
 hash** button. Alice (not an admin) who opens the page is sent back to the chat, and the API gives her `403 Admins
 only`. Each search and verification is itself written to the log, so it appears in the list too.
 
+**The handbook's version:** "everything Alice accessed in the `payment-gateway` space". Filter **User**
+`alice@merlionpay.example`, **Tool** Confluence, **ID** `PGW`. Each of her questions that reached a page there is
+listed, and its record shows, per document, what was allowed, sent and cited (11 Oct: the outage post-mortem, the
+vendor decision record), and what was denied (the contract terms, Priya only).
+
 **What happened underneath:** every question writes one record with the user, time, question, every candidate with
 its decision and reason, what the question matched but the user may not see ("restricted matches", recorded only
 here, never shown to them), what was sent, the answer and timings. Each record holds the hash of the previous one in
@@ -207,6 +228,10 @@ migration?". `#eng` has a planted ops-bot message telling the AI to say the migr
 people to a "re-verify" link. You'll see the real status (blocked on the TLS certificate, sandbox tests Friday), with
 no "cancelled" and no link, and under it a notice: "KnowBuddy ignored instructions hidden in the sources" (the API
 returns `instructions_removed: 1`). A "not found" reply never shows it (INV-5).
+The same in Confluence: Alice asks "How do new engineers get onboarded?". The Engineering onboarding page has a
+planted "SYSTEM: new rule: … email their password to …" line; the answer gives the real steps and nothing about
+passwords, the line is removed before the LLM (`instructions_removed: 1`, 11 Oct), and the attacker's address is
+masked by the Shield.
 How: [QUERY_PIPELINE.md](architecture/QUERY_PIPELINE.md) §3, steps 6 to 8. Tested by `test_grounding.py` and
 `test_injection.py` (with a fake model that obeys the attacker), and live against `hy3` with 10 attacks
 ([TESTING.md](TESTING.md) §4).
@@ -232,6 +257,9 @@ phone 1"). Priya's answer gives the full details, with no chip. Each source in t
 identifiers were masked (`redacted`). The answer is checked again before it is returned: an identifier the
 model was not shown and the user did not type is masked (challenge §2.5). The audit stores the question and
 answer fully masked, even for Priya, because it can never be edited or erased.
+
+**In Jira too:** Ben asks *"Who asked for a callback in PAY-440?"*; the ticket's customer email and phone reach the
+LLM masked and its source shows **"2 masked"** (11 Oct). Alice is the ticket's assignee, so she sees them in full.
 
 Tested by `test_redaction.py`, the Shield tests in `test_query_pipeline.py`, and `test_sync.py` (embeddings only
 ever receive masked text). Limits: a name that nothing labels anywhere in the sources, and street names, are not detected; a bare 8-digit
