@@ -8,6 +8,7 @@ import {
   containsAllowed,
   coveredBy,
   filterRows,
+  indexRows,
   matchRows,
   treeOrder,
   rowState,
@@ -167,10 +168,11 @@ describe("Drive folders: tree, coverage, search and bulk", () => {
     ]);
   });
   it("a folder under one in the boundary is covered by it; its parent contains one", () => {
-    expect(coveredBy(byId("PAY"), rows)?.id).toBe("Y26");
-    expect(coveredBy(byId("LEG"), rows)).toBeNull();
-    expect(containsAllowed(byId("FIN"), rows)).toBe(true);
-    expect(containsAllowed(byId("ENG"), rows)).toBe(false);
+    const index = indexRows(rows);
+    expect(coveredBy(byId("PAY"), index)?.id).toBe("Y26");
+    expect(coveredBy(byId("LEG"), index)).toBeNull();
+    expect(containsAllowed(byId("FIN"), index)?.id).toBe("Y26"); // its hint names the folder below
+    expect(containsAllowed(byId("ENG"), index)).toBeNull();
   });
   it("searches the path too, and Show counts covered folders as in", () => {
     expect(matchRows(rows, "finance / 2026", "all").map((r) => r.id)).toEqual(["PAY"]);
@@ -178,13 +180,44 @@ describe("Drive folders: tree, coverage, search and bulk", () => {
     expect(matchRows(rows, "", "out").map((r) => r.id).sort()).toEqual(["ENG", "FIN", "LEG"]);
   });
   it("Add all leaves out covered folders, parents of allowed ones, and folders under another being added", () => {
-    expect(bulkRows(rows, rows, "add").map((r) => r.id).sort()).toEqual(["ENG", "LEG"]);
+    expect(bulkRows(rows, indexRows(rows), "add").map((r) => r.id).sort()).toEqual(["ENG", "LEG"]);
     const fresh = rowsFor("drive", scopes, []);
-    expect(bulkRows(fresh, fresh, "add").map((r) => r.id).sort()).toEqual(["ENG", "FIN"]); // FIN covers the rest
-    expect(bulkRows(rows, rows, "remove").map((r) => r.id)).toEqual(["Y26"]);
+    expect(bulkRows(fresh, indexRows(fresh), "add").map((r) => r.id).sort()).toEqual(["ENG", "FIN"]); // FIN covers the rest
+    expect(bulkRows(rows, indexRows(rows), "remove").map((r) => r.id)).toEqual(["Y26"]);
   });
   it("keeps Slack's private flag", () => {
     const [row] = rowsFor("slack", [{ id: "C1", title: "#sec", private: true }], []);
     expect(row.private).toBe(true);
+  });
+});
+
+describe("thousands of Drive folders stay fast", () => {
+  // Review of the UI revamp PR: one render took 77 s at 2,000 folders when every lookup re-walked the list.
+  const run = (scopes: { id: string; title: string; parent: string | null; path: string }[]) => {
+    const rows = rowsFor("drive", scopes, []);
+    const started = performance.now();
+    const index = indexRows(rows);
+    const shown = matchRows(rows, "", "all", index);
+    treeOrder(rows);
+    const toAdd = bulkRows(shown, index, "add");
+    return { ms: performance.now() - started, toAdd };
+  };
+
+  it("2,000 folders, wide (20 top folders, 3 levels)", () => {
+    const scopes = Array.from({ length: 2000 }, (_, i) => ({
+      id: `F${i}`, title: `Folder ${i}`, parent: i < 20 ? null : `F${Math.floor((i - 20) / 3)}`, path: "",
+    }));
+    const { ms, toAdd } = run(scopes);
+    expect(toAdd.map((r) => r.id).sort()).toEqual(scopes.slice(0, 20).map((s) => s.id).sort()); // the tops cover the rest
+    expect(ms).toBeLessThan(300);
+  });
+
+  it("2,000 folders in one deep chain", () => {
+    const scopes = Array.from({ length: 2000 }, (_, i) => ({
+      id: `F${i}`, title: `Folder ${i}`, parent: i === 0 ? null : `F${i - 1}`, path: "",
+    }));
+    const { ms, toAdd } = run(scopes.slice(0, 2000));
+    expect(toAdd.map((r) => r.id)).toEqual(["F0"]);
+    expect(ms).toBeLessThan(1500); // a 2,000-deep chain is the worst case: each folder walks its parents
   });
 });

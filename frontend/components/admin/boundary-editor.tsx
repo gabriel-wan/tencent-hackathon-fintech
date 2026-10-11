@@ -2,7 +2,7 @@
 
 import { ChevronRight, Info, ListMinus, ListPlus, Lock, RefreshCw, Search, ShieldAlert } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AlertDialog,
@@ -34,7 +34,9 @@ import {
   TOOLS,
   blockedReason,
   bulkRows,
+  containsAllowed,
   coveredBy,
+  indexRows,
   matchRows,
   rowState,
   rowsFor,
@@ -236,6 +238,7 @@ function ScopeItem({
   row,
   depth,
   covered,
+  contains,
   query,
   now,
   syncing,
@@ -248,6 +251,7 @@ function ScopeItem({
   row: ScopeRow;
   depth: number;
   covered: ScopeRow | null;
+  contains: ScopeRow | null; // a folder below this one already in: adding this one would overlap
   query: string;
   now: number;
   syncing: boolean;
@@ -263,7 +267,7 @@ function ScopeItem({
         id={id}
         className="mt-0.5"
         checked={row.inBoundary || covered !== null}
-        disabled={pending || covered !== null}
+        disabled={pending || covered !== null || contains !== null}
         aria-describedby={error ? `${id}-error` : undefined}
         onCheckedChange={onToggle}
       />
@@ -284,6 +288,10 @@ function ScopeItem({
         ) : null}
         {covered ? (
           <span className="text-xs text-muted-foreground">Included with {covered.title}</span>
+        ) : contains ? (
+          <span className="text-xs text-muted-foreground">
+            Contains {contains.title}, already in the boundary. Remove it first to add this whole folder.
+          </span>
         ) : (
           <RowStatusLine row={row} tool={tool} now={now} syncing={syncing} problem={problem} />
         )}
@@ -328,19 +336,26 @@ function ToolSection({
 }) {
   const [open, setOpen] = useState(true);
   const [limit, setLimit] = useState(PAGE);
-  const rows = rowsFor(tool.source, scopes.status === "ready" ? scopes.scopes : null, boundary);
-  const shown = matchRows(rows, query, show);
+  // Memoised on what they depend on (not the 30 s clock or the sync poll), so hundreds of rows don't redo the
+  // folder tree on every render (review of the UI revamp PR).
+  const list = scopes.status === "ready" ? scopes.scopes : null;
+  const rows = useMemo(() => rowsFor(tool.source, list, boundary), [tool.source, list, boundary]);
+  const index = useMemo(() => indexRows(rows), [rows]);
+  const shown = useMemo(() => matchRows(rows, query, show, index), [rows, query, show, index]);
   const filtering = query.trim() !== "" || show !== "all";
   const allowed = rows.filter((r) => r.inBoundary).length;
   const headingId = `tool-${tool.source}`;
   const problem = scopes.status === "problem" ? scopes.problem : null;
   // Drive without a search: a tree. Otherwise flat (search results show each folder's path instead).
-  const ordered = tool.source === "drive" && !query.trim()
-    ? treeOrder(rows).filter(({ row }) => shown.includes(row))
-    : shown.map((row) => ({ row, depth: 0 }));
+  const tree = useMemo(() => (tool.source === "drive" ? treeOrder(rows) : []), [tool.source, rows]);
+  const ordered = useMemo(() => {
+    if (tool.source !== "drive" || query.trim()) return shown.map((row) => ({ row, depth: 0 }));
+    const wanted = new Set(shown);
+    return tree.filter(({ row }) => wanted.has(row));
+  }, [tool.source, query, shown, tree]);
   const visible = ordered.slice(0, limit);
-  const toAdd = bulkRows(shown, rows, "add");
-  const toRemove = bulkRows(shown, rows, "remove");
+  const toAdd = useMemo(() => bulkRows(shown, index, "add"), [shown, index]);
+  const toRemove = useMemo(() => bulkRows(shown, index, "remove"), [shown, index]);
 
   const item = ({ row, depth }: { row: ScopeRow; depth: number }) => {
     const key = scopeKey(tool.source, row.id);
@@ -350,7 +365,8 @@ function ToolSection({
         tool={tool}
         row={row}
         depth={depth}
-        covered={tool.source === "drive" && !row.inBoundary ? coveredBy(row, rows) : null}
+        covered={tool.source === "drive" && !row.inBoundary ? coveredBy(row, index) : null}
+        contains={tool.source === "drive" && !row.inBoundary ? containsAllowed(row, index) : null}
         query={query}
         now={now}
         syncing={syncing}
