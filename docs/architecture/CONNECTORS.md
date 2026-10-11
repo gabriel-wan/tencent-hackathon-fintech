@@ -184,7 +184,7 @@ Each source's `fetch` yields one document per Drive file, Slack thread, Jira tic
 
 An `acl` may include extra people but never leaves out a real reader: `can_read` removes the extras. Known widenings, all trimmed by the live check: a Drive group becomes its domain, Jira issue security levels are not applied, Confluence space permissions are not applied.
 
-Not synced yet: Drive files in shared drives (Drive doesn't list their sharing), PDFs and Office files (no text extraction), and Google Docs over Drive's 10 MB export limit. Each is skipped and logged; the rest of the folder still syncs.
+Not synced yet: PDFs and Office files (no text extraction), and Google Docs over Drive's 10 MB export limit. Each is skipped and logged; the rest of the folder still syncs.
 
 Field mappings per source are in §5 of [GOOGLE_DRIVE.md](../connectors/reference/GOOGLE_DRIVE.md), [SLACK.md](../connectors/reference/SLACK.md), [JIRA.md](../connectors/reference/JIRA.md) and [CONFLUENCE.md](../connectors/reference/CONFLUENCE.md).
 
