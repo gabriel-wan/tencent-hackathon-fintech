@@ -20,7 +20,8 @@ they are actually done and checked by a second team member.
 - [ ] **GitHub repository** – complete source code, README accurate, no secrets in history
 - [ ] **CodeBuddy / WorkBuddy proof** – minimum 3 screenshots or a screen
       recording of development chat logs (see [tool-usage.md](tool-usage.md))
-- [ ] **16:9 cover image** (recommended 380×216 px)
+- [x] **16:9 cover image** (recommended 380×216 px): [cover.png](cover.png), 1280×720, made with Miora
+      ([tool-usage.md](tool-usage.md), session 4)
 
 ## Optional items
 
