@@ -1,6 +1,7 @@
 import { BookOpen, ExternalLink, EyeOff, FileText, Link2, MessageSquare, SquareKanban, type LucideIcon } from "lucide-react";
 
 import { PlatformLogo } from "@/components/platform-logo";
+import { StatusChip } from "@/components/status-chip";
 import type { Citation } from "@/lib/api/types";
 import { freshness, maskedSummary, safeHttpUrl } from "@/lib/citations";
 import { formatExact, formatRelative } from "@/lib/format";
@@ -16,10 +17,10 @@ const SOURCES: Record<string, { label: string; Icon: LucideIcon }> = {
 function SourceBadge({ source }: { source: string }) {
   const { label, Icon } = SOURCES[source] ?? { label: source, Icon: Link2 };
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
+    <StatusChip>
       <PlatformLogo source={source} size={12} fallback={<Icon aria-hidden="true" className="size-3" />} />
       {label}
-    </span>
+    </StatusChip>
   );
 }
 
@@ -29,14 +30,11 @@ function MaskedChip({ redacted }: { redacted: Record<string, number> }) {
   if (!masked) return null;
   const detail = `Masked for you: ${masked.text} (Need-to-Know Shield)`;
   return (
-    <span
-      title={detail}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground"
-    >
-      <EyeOff aria-hidden="true" className="size-3" />
+    <StatusChip title={detail}>
+      <EyeOff aria-hidden="true" />
       <span aria-hidden="true">{masked.total} masked</span>
       <span className="sr-only">{detail}</span>
-    </span>
+    </StatusChip>
   );
 }
 
@@ -100,7 +98,7 @@ export function CitationList({ citations }: { citations: Citation[] }) {
     // identical "Sources" landmarks is noise. The heading still lets screen
     // reader users jump between them.
     <div className="grid gap-2 border-t pt-3">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Sources</h2>
+      <h2 className="text-sm font-medium text-muted-foreground">Sources</h2>
       <ul className="grid gap-2">
         {citations.map((citation) => (
           <CitationItem key={citation.id} citation={citation} />

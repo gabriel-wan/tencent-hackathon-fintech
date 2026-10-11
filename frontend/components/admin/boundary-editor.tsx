@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Disclosure } from "@/components/disclosure";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -81,9 +82,8 @@ function failureOf(error: unknown): string {
 
 function HowItWorks() {
   return (
-    <details className="rounded-lg border bg-card px-4 py-3 text-sm">
-      <summary className="cursor-pointer font-medium">How the boundary works</summary>
-      <div className="mt-3 grid gap-2 text-muted-foreground">
+    <Disclosure summary="How the boundary works">
+      <div className="grid max-w-prose gap-2 text-muted-foreground">
         <p>
           A document can appear in an answer only if <strong className="text-foreground">both</strong> say yes: the
           tool (the person asking may read it there) and this boundary (the company lets KnowBuddy use it).
@@ -111,7 +111,7 @@ function HowItWorks() {
           </li>
         </ul>
       </div>
-    </details>
+    </Disclosure>
   );
 }
 

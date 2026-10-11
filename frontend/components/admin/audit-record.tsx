@@ -1,6 +1,7 @@
 import { Check, Eye, EyeOff, ShieldAlert, X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Disclosure } from "@/components/disclosure";
 import { InfoTip } from "@/components/info-tip";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,7 +26,7 @@ function Section({ title, info, children }: { title: string; info?: ReactNode; c
     <section className="grid gap-2 border-t pt-4">
       {/* The ⓘ sits beside the heading, not in it, so the heading's name stays just the title. */}
       <div className="flex items-center gap-1">
-        <h3 className="text-xs font-semibold tracking-wide text-foreground uppercase">{title}</h3>
+        <h3 className="text-sm font-semibold">{title}</h3>
         {info}
       </div>
       {children}
@@ -330,10 +331,9 @@ export function RecordDetail({ record }: { record: AuditRecord }) {
           </dd>
         </dl>
       </Section>
-      <details className="text-sm">
-        <summary className="cursor-pointer text-muted-foreground">Raw record</summary>
-        <pre className="mt-2 overflow-x-auto rounded bg-muted p-3 text-xs">{JSON.stringify(record, null, 2)}</pre>
-      </details>
+      <Disclosure summary="Raw record">
+        <pre className="overflow-x-auto rounded bg-muted p-3 text-xs">{JSON.stringify(record, null, 2)}</pre>
+      </Disclosure>
     </div>
   );
 }
