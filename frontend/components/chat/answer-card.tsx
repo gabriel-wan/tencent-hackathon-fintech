@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleAlert, Clock, Copy, EyeOff, RotateCcw, TriangleAlert } from "lucide-react";
+import { Check, CircleAlert, Clock, Copy, RotateCcw, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState, type ReactNode } from "react";
 
@@ -124,20 +124,14 @@ function Fact({ tone, icon, text, label, children }: {
 }
 
 /**
- * What was masked for you and how fresh the sources are, at a glance. Only on a real answer: a "not found"
- * reply must look the same whatever happened (INV-5).
+ * How fresh the sources are, at a glance. Only on a real answer: a "not found" reply must look the same
+ * whatever happened (INV-5).
  */
 function TrustLine({ response }: { response: QueryResponse }) {
   const summary = answerSummary(response.citations);
-  if (!summary.masked && !summary.oldestSync) return null;
+  if (!summary.oldestSync) return null;
   return (
     <ul aria-label="About this answer" className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-      {summary.masked ? (
-        <Fact icon={<EyeOff aria-hidden="true" />} text={`${summary.masked.total} masked for you`} label="About masking">
-          The Need-to-Know Shield hid these before the AI saw them: {summary.masked.text}. Each source below says
-          which it masked.
-        </Fact>
-      ) : null}
       {summary.oldestSync ? (
         summary.stale ? (
           <Fact tone="danger" icon={<Clock aria-hidden="true" />} text="May be out of date" label="About freshness">
