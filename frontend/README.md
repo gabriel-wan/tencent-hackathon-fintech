@@ -48,6 +48,7 @@ components/ui/        shadcn-generated components: edit freely, keep them generi
 components/           our own components, built from components/ui
 components/connectors/  connection cards and the development-only Slack token form
 components/admin/     the audit trail and the boundary editor
+components/login/     the sign-in page's decorative answer card
 lib/api/              backend client (client.ts, server.ts), errors, generated types, mock mode
 lib/                  answer, citation, audit, boundary and date helpers; connectors.ts (connector ids, OAuth messages); utils.ts is shadcn's cn()
 components.json       shadcn CLI settings
@@ -59,9 +60,16 @@ components.json       shadcn CLI settings
   Use them through Tailwind classes (`bg-card`, `text-muted-foreground`, `border-input`, `bg-warning`); never
   hard-code a colour in a component.
 - **Tool logos** (`components/platform-logo.tsx`, files in `public/logos/`) only name an integration (Slack,
-  Google Drive, Jira, Confluence), always next to the tool's written name, which carries the meaning. Each file comes
-  from the vendor's own brand page, unaltered: Slack's media kit (the colour mark), Google's Drive branding guidelines,
-  and Atlassian's logo library (the "app" icons). A missing or failing file shows nothing, or a generic icon.
+  Google Drive, Jira, Confluence) or a sign-in (Google, Atlassian), always with the tool's name next to it or as the
+  link's accessible name and tooltip. Each file comes from the vendor's own brand page, unaltered: Slack's media kit
+  (the colour mark), Google's Drive branding guidelines, Atlassian's logo library (the "app" icons and the Atlassian
+  mark), and the "G" from Google's sign-in button assets (the button's circle removed, the G itself unchanged). A
+  missing or failing file shows nothing, or a generic icon.
+- **Our logo** is `app/icon.svg` (also the favicon) plus the name as text: `components/brand.tsx` `Wordmark`, in
+  `--brand-know` and `--brand-buddy`. Use it, never an image of the name.
+- **Buttons:** every button is `components/ui/button.tsx`, so they all behave the same: hover deepens the colour,
+  pressing deepens it more (towards the text colour, so darker in light mode and lighter in dark mode), a pointer
+  cursor. Change states there, never with one-off classes on a single button.
 - Our brand colour is `--primary`. shadcn's `--accent` is the hover background, not the brand colour.
 - `--destructive` is for genuine failures only. A "not found" answer is never red.
 - `--warning` is for "unavailable", development-only aids and mock data.

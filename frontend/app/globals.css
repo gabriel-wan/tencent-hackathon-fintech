@@ -19,6 +19,8 @@
     --color-warning: var(--warning);
     --color-warning-foreground: var(--warning-foreground);
     --color-success: var(--success);
+    --color-brand-know: var(--brand-know);
+    --color-brand-buddy: var(--brand-buddy);
     --color-success-foreground: var(--success-foreground);
     --color-destructive: var(--destructive);
     --color-accent-foreground: var(--accent-foreground);
@@ -72,6 +74,10 @@
     /* Input borders: 3:1 against the page, unlike --border. */
     --input: #8a8f98;
     --ring: #2457d6;
+    /* The wordmark's two halves, from the app icon (app/icon.svg). "Buddy" is a darker teal than the
+       icon's #1dcbd4, which is 1.9:1 on the page; this is 4.5:1. */
+    --brand-know: #2239ad;
+    --brand-buddy: #0b7f88;
     --radius: 0.625rem;
 }
 
@@ -98,6 +104,8 @@
     --border: #2a2f3a;
     --input: #6b7280;
     --ring: #7fa2ff;
+    --brand-know: #a2b0ef;
+    --brand-buddy: #1dcbd4;
 }
 
 @layer base {
