@@ -81,35 +81,23 @@ describe("freshness", () => {
 
 describe("answerSummary", () => {
   const now = Date.parse("2026-10-11T12:00:00Z");
-  it("counts sources and merges masked kinds", () => {
-    const s = answerSummary(
-      [
-        { redacted: { phone: 1, email: 2 }, synced_at: null },
-        { redacted: { email: 1 }, synced_at: null },
-        { redacted: {}, synced_at: null },
-      ],
-      now,
-    );
-    expect(s.sources).toBe(3);
-    expect(s.masked).toEqual({ total: 4, text: "email 3, phone 1" });
-    expect(s.oldestSync).toBeNull();
-    expect(s.stale).toBe(false);
+  it("has no sync time when no source has synced (seeded data)", () => {
+    expect(answerSummary([{ synced_at: null }, { synced_at: null }], now)).toEqual({ oldestSync: null, stale: false });
   });
   it("uses the oldest sync, and flags it stale after the window", () => {
     const s = answerSummary(
       [
-        { redacted: {}, synced_at: "2026-10-11T11:58:00Z" },
-        { redacted: {}, synced_at: "2026-10-11T11:30:00Z" },
-        { redacted: {}, synced_at: "not a date" },
+        { synced_at: "2026-10-11T11:58:00Z" },
+        { synced_at: "2026-10-11T11:30:00Z" },
+        { synced_at: "not a date" },
       ],
       now,
     );
     expect(s.oldestSync).toBe("2026-10-11T11:30:00Z");
     expect(s.stale).toBe(true);
-    expect(s.masked).toBeNull();
   });
   it("is empty for no citations", () => {
-    expect(answerSummary([], now)).toEqual({ sources: 0, masked: null, oldestSync: null, stale: false });
+    expect(answerSummary([], now)).toEqual({ oldestSync: null, stale: false });
   });
 });
 

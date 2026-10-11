@@ -52,27 +52,19 @@ export function freshness(syncedAt: string | null | undefined, now: number = Dat
 }
 
 /**
- * The trust line under an answer: how many sources, everything masked across them (merged by kind), and the
- * oldest sync (the answer is only as fresh as its stalest source). `oldestSync` is null when no source has
+ * The freshness chip under an answer: the oldest sync (the answer is only as fresh as its stalest source). `oldestSync` is null when no source has
  * synced (seeded data), so nothing pretends it was.
  */
 export function answerSummary(
-  citations: { redacted?: Record<string, number>; synced_at?: string | null }[],
+  citations: { synced_at?: string | null }[],
   now: number = Date.now(),
-): { sources: number; masked: { total: number; text: string } | null; oldestSync: string | null; stale: boolean } {
-  const merged: Record<string, number> = {};
-  for (const c of citations) for (const [kind, n] of Object.entries(c.redacted ?? {})) merged[kind] = (merged[kind] ?? 0) + n;
+): { oldestSync: string | null; stale: boolean } {
   const synced = citations
     .map((c) => c.synced_at)
     .filter((s): s is string => !!s && !Number.isNaN(Date.parse(s)))
     .sort((a, b) => Date.parse(a) - Date.parse(b));
   const oldestSync = synced[0] ?? null;
-  return {
-    sources: citations.length,
-    masked: maskedSummary(merged),
-    oldestSync,
-    stale: freshness(oldestSync, now)?.stale ?? false,
-  };
+  return { oldestSync, stale: freshness(oldestSync, now)?.stale ?? false };
 }
 
 export type AnswerPart = { kind: "text"; text: string } | { kind: "cite"; n: number };
