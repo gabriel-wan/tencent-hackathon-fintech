@@ -105,6 +105,9 @@ def test_filler_is_keyword_only_except_a_fixed_sample(seeded, monkeypatch):
     assert seed.choose_filler_sample(conn, 3) == 3
     sample = to_embed()
     assert seed.choose_filler_sample(conn, 3) == 0 and to_embed() == sample  # the same ones, not more
+    conn.execute(text("UPDATE chunks SET keyword_only = false"))  # e.g. filler from before migration 0008
+    seed.seed_scale(conn, "T_MERLION")
+    assert to_embed() == []  # a re-run marks it keyword-only again
 
 
 def test_handlers_are_keyed_by_tool_and_id(seeded):

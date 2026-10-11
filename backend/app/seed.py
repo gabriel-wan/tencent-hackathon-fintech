@@ -354,6 +354,11 @@ def seed_scale(conn, team: str) -> int:
               for doc_id, s, i in fresh if (s, i) in rows]
     if chunks:
         conn.execute(text(_INSERT_CHUNK), chunks)
+    # Filler written before migration 0008 (or a sample never embedded) goes back to keyword-only, so the sync
+    # worker leaves it alone; --embed chooses its sample again afterwards.
+    conn.execute(text(
+        "UPDATE chunks c SET keyword_only = true FROM documents d WHERE d.id = c.document_id AND d.company_id = :c "
+        "AND d.metadata->>'seed' = :m AND c.embedding IS NULL AND NOT c.keyword_only"), {"c": company, "m": MARK})
     return len(chunks)
 
 
