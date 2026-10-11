@@ -63,11 +63,18 @@ def acl(permissions: list[dict]) -> list[str]:
     return sorted(held)
 
 
+def _direct(p: dict) -> bool:
+    return any(d.get("inherited") is False for d in p.get("permissionDetails", []))
+
+
 def handlers(permissions: list[dict]) -> list[str]:
     """Need-to-Know Shield (ADR-010): people who own or edit the file see its identifiers unmasked.
-    Named people only: an edit share to a group, domain or "anyone" never clears anyone."""
+    Named people only: an edit share to a group, domain or "anyone" never clears anyone. Every shared-drive
+    contributor inherits edit on every file, so an inherited edit counts only for owners and organizers
+    (the drive's managers); others need the file shared with them directly. No details: treated as direct."""
     return sorted({f"google:user:{p['emailAddress'].lower()}" for p in permissions
-                   if p["type"] == "user" and p.get("role") in HANDLER_ROLES and p.get("emailAddress")})
+                   if p["type"] == "user" and p.get("role") in HANDLER_ROLES and p.get("emailAddress")
+                   and (p["role"] in ("owner", "organizer") or "permissionDetails" not in p or _direct(p))})
 
 
 def _opens(p: dict) -> bool:
@@ -76,7 +83,7 @@ def _opens(p: dict) -> bool:
     if p.get("view") == "metadata":
         return False
     if p.get("inheritedPermissionsDisabled") and p.get("role") not in ("owner", "organizer"):
-        return any(d.get("inherited") is False for d in p.get("permissionDetails", []))
+        return _direct(p)
     return True
 
 

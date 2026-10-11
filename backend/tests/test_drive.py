@@ -74,6 +74,17 @@ def test_only_named_owners_and_editors_have_need_to_know():
     ]) == ["google:user:ann@corp.com", "google:user:ben@corp.com"]
 
 
+@pytest.mark.security
+def test_shared_drive_contributors_need_the_file_shared_directly():
+    inherited, direct = [{"inherited": True}], [{"inherited": True}, {"inherited": False}]
+    assert drive.handlers([
+        {"type": "user", "emailAddress": "ann@corp.com", "role": "organizer", "permissionDetails": inherited},
+        {"type": "user", "emailAddress": "ben@corp.com", "role": "writer", "permissionDetails": inherited},
+        {"type": "user", "emailAddress": "cat@corp.com", "role": "fileOrganizer", "permissionDetails": inherited},
+        {"type": "user", "emailAddress": "dan@corp.com", "role": "writer", "permissionDetails": direct},
+    ]) == ["google:user:ann@corp.com", "google:user:dan@corp.com"]
+
+
 def test_fetch_walks_subfolders_and_skips_what_it_cannot_index():
     docs = {d["source_id"]: d for d in drive.fetch(FakeDrive(), "F1")}
     assert set(docs) == {"doc", "txt"}  # PDF has no text extraction; hidden sharing is never guessed

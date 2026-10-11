@@ -197,7 +197,7 @@ One document per file:
   "url": "https://docs.google.com/document/d/1AbC/edit", // file.webViewLink
   "updated_at": "2026-10-01T05:00:00Z",                  // file.modifiedTime
   "metadata": { "overshared": true,                      // any type: anyone
-                "need_to_know": ["google:user:alice@company.com"] },  // owners/editors (type user): ADR-010
+                "need_to_know": ["google:user:alice@company.com"] },  // owners/editors (type user; inherited edit counts only for organizers): ADR-010
   "acl": ["google:user:sara@company.com", "google:user:alice@company.com", "public"]
 }
 ```
