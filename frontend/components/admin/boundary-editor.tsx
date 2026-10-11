@@ -480,7 +480,8 @@ function ToolSection({
                   onClick={() => onBulk(tool, "add", toAdd)}
                 >
                   <ListPlus aria-hidden="true" />
-                  Add all {toAdd.length} shown
+                  Add all {toAdd.length}
+                  {filtering ? " matching" : ""}
                 </Button>
               ) : null}
               {toRemove.length > 1 ? (
@@ -491,7 +492,8 @@ function ToolSection({
                   onClick={() => onBulk(tool, "remove", toRemove)}
                 >
                   <ListMinus aria-hidden="true" />
-                  Remove all {toRemove.length} shown
+                  Remove all {toRemove.length}
+                  {filtering ? " matching" : ""}
                 </Button>
               ) : null}
               {toAdd.length > BULK_LIMIT || toRemove.length > BULK_LIMIT ? (
@@ -801,10 +803,6 @@ export function BoundaryEditor() {
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="grid gap-2">
-                <p>
-                  {bulk?.rows.slice(0, 5).map((r) => r.title).join(", ")}
-                  {bulk && bulk.rows.length > 5 ? ` and ${bulk.rows.length - 5} more` : ""}.
-                </p>
                 {bulk?.mode === "add" ? (
                   <p>
                     KnowBuddy will copy them and answer from them, for people who can see them in {bulk.tool.label}.
@@ -819,6 +817,27 @@ export function BoundaryEditor() {
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* Every one, not the first few: the list on the page shows 50 rows and folds Drive folders, so this is
+              where the admin sees exactly what changes (review of the UI revamp PR). */}
+          {bulk ? (
+            <ul
+              aria-label={`The ${bulk.rows.length} ${bulk.tool.scopes}`}
+              className="grid max-h-[min(15rem,30vh)] gap-1.5 overflow-y-auto rounded-md border p-3 text-sm"
+            >
+              {bulk.rows.map((r) => (
+                <li key={r.id} className="grid min-w-0 gap-0.5">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {r.private ? <Lock aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+                    <span className="truncate">{r.title}</span>
+                    {bulk.tool.source === "jira" ? (
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">{r.id}</span>
+                    ) : null}
+                  </span>
+                  {r.path ? <span className="truncate text-xs text-muted-foreground">{r.path}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={bulkBusy}>Cancel</AlertDialogCancel>
             <AlertDialogAction
