@@ -76,13 +76,20 @@ def boundary(engine: Db, admin: User = Depends(require_admin)):
         return [dict(r) for r in rows.mappings()]
 
 
-def _insert(db, admin: User, source: str, scope_id: str, title: str) -> None:
+def _insert(db, admin: User, source: str, scope_id: str, title: str) -> bool:
+    """Adds a scope (or refreshes its title). Audited only when it is new: re-adding one already in the boundary
+    (a stale page, two admins at once) changes nothing, so it must not appear in the trail (review of the UI
+    revamp PR). Callers hold the boundary lock, so the check and the write see the same boundary."""
+    key = {"c": admin.company_id, "s": source, "i": scope_id}
+    new = db.execute(text("SELECT 1 FROM boundary WHERE company_id = :c AND source = :s AND scope_id = :i"),
+                     key).first() is None
     db.execute(text("INSERT INTO boundary (company_id, source, scope_id, scope_type, title, added_by) "
                     "VALUES (:c, :s, :i, :t, :ti, :u) "
                     "ON CONFLICT (company_id, source, scope_id) DO UPDATE SET title = EXCLUDED.title"),
-               {"c": admin.company_id, "s": source, "i": scope_id, "t": SCOPE_TYPE[source], "ti": title,
-                "u": admin.id})
-    record_event(db, admin.id, "boundary_added", {"source": source, "scope_id": scope_id, "title": title})
+               {**key, "t": SCOPE_TYPE[source], "ti": title, "u": admin.id})
+    if new:
+        record_event(db, admin.id, "boundary_added", {"source": source, "scope_id": scope_id, "title": title})
+    return new
 
 
 def _delete(db, admin: User, source: str, scope_id: str) -> bool:
@@ -187,9 +194,8 @@ def bulk(source: str, body: Bulk, engine: Db, admin: User = Depends(require_admi
         if source == "drive" and adding:
             _drive_overlaps(db, engine, admin, adding, removing)
         removed = sum(_delete(db, admin, source, scope_id) for scope_id in sorted(removing))
-        for scope_id, title in adding.items():
-            _insert(db, admin, source, scope_id, title)
-    return {"added": len(adding), "removed": removed}  # removed: only scopes that were in the boundary
+        added = sum(_insert(db, admin, source, scope_id, title) for scope_id, title in adding.items())
+    return {"added": added, "removed": removed}  # only scopes that actually changed
 
 
 @router.post("/sync", status_code=202)
