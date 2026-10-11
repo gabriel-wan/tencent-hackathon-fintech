@@ -544,7 +544,9 @@ of answers people copy and share.
   need-to-know readers keep full fidelity. Chunks are never cut inside a
   detected identifier or between a label and its value.
 - **Need-to-know comes from the source**, not from a new role: Jira assignee and
-  reporter, Drive owners and editors (named users only), Confluence page owner
+  reporter, Drive owners and editors (named users only; in a shared drive,
+  its managers plus editors the file is shared with directly, since every
+  contributor inherits edit on every file), Confluence page owner
   and author, written by each connector as `metadata.need_to_know`. A user
   holding one of those identities sees that document unmasked. Slack names no
   handler, so Slack is masked for everyone. Admins get no exemption.

@@ -56,7 +56,10 @@ Domain company.com
 ```
 
 - Each file has a **permission list** of `type` (`user`, `group`, `domain`, `anyone`) + `role`. For us, any role means "can read".
-- Folder and shared-drive access **already appears** on each file's list, so you never walk the tree.
+- Folder and shared-drive access **already appears** on each file's list (4.5), so you never walk the tree. A
+  limited-access folder (`inheritedPermissionsDisabled`) still lists inherited members, marked `view: "metadata"` or
+  `inheritedPermissionsDisabled: true`: they see its name but can't open it. Only owners, organizers and people added
+  to it directly (`permissionDetails.inherited: false`) can, so sync stores only those.
 
 **Rule:** you can read a file if your email, one of your groups, or your
 domain is on its list, or the list has `anyone`.
@@ -147,7 +150,7 @@ Response: raw bytes (e.g. a PDF). Extract the text yourself (e.g. `pypdf`).
 
 | | |
 |---|---|
-| Request | `GET /files/{fileId}/permissions?fields=permissions(type,role,emailAddress,domain)` |
+| Request | `GET /files/{fileId}/permissions?fields=permissions(type,role,emailAddress,domain,view,inheritedPermissionsDisabled,permissionDetails(inherited))` |
 
 ```json
 { "permissions": [
@@ -156,7 +159,9 @@ Response: raw bytes (e.g. a PDF). Extract the text yourself (e.g. `pypdf`).
   { "type": "anyone", "role": "reader" }
 ] }
 ```
-Notes: use when the embedded `permissions` in 4.1/4.2 are missing or truncated.
+Notes: use when the embedded `permissions` in 4.1/4.2 are missing or truncated. Shared-drive files never have
+them embedded, so sync calls this for each of them, with `supportsAllDrives=true` and batched 100 per request. It
+returns drive members (inherited) and direct shares, and pages past 100 entries with `nextPageToken`.
 
 ### 4.6 `files.get` as a specific user (live gate)
 
@@ -192,7 +197,7 @@ One document per file:
   "url": "https://docs.google.com/document/d/1AbC/edit", // file.webViewLink
   "updated_at": "2026-10-01T05:00:00Z",                  // file.modifiedTime
   "metadata": { "overshared": true,                      // any type: anyone
-                "need_to_know": ["google:user:alice@company.com"] },  // owners/editors (type user): ADR-010
+                "need_to_know": ["google:user:alice@company.com"] },  // owners/editors (type user; inherited edit counts only for organizers): ADR-010
   "acl": ["google:user:sara@company.com", "google:user:alice@company.com", "public"]
 }
 ```
@@ -211,14 +216,14 @@ One document per file:
 - **Each person's own Google sign-in** (ADR-002): sync reads as the company admin, the live check as the asking user.
 - **Always send a `fields` mask** (including `nextPageToken`), or responses look empty.
 - **Docs/Slides/Sheets → export** (4.3), `text/*` → download (4.4). PDFs and Office files are skipped for now (no text extraction).
-- Inherited folder access is already on each file's list. **Shared drives are not:** Drive leaves `permissions` empty there, so those files are skipped for now (4.5 per file would cover them).
+- Inherited folder access is already on each file's list. **Shared drives are not:** files.list leaves `permissions` out there, so each shared-drive file's list is read with 4.5: one extra call per file per pass, batched. A list Drive refuses (403/404) skips the file; any other error fails the folder, which is retried next run with its stored files kept.
 - `anyone` = `public` + **overshared** flag. That's our oversharing signal.
 
 **How this connector implements the contract** (`backend/app/connectors/drive.py`, run by `app/sync.py`)
 
 | Function | Calls | Runs |
 |---|---|---|
-| `fetch(service, folder, changed)` | 4.1 with `permissions`, recursing into subfolders → 4.3 / 4.4 only for files whose `modifiedTime` changed; sharing refreshed for every file | every 5 min, as the admin |
+| `fetch(service, folder, changed)` | 4.1 with `permissions` (4.5 for shared-drive files), recursing into subfolders → 4.3 / 4.4 only for files whose `modifiedTime` changed; sharing refreshed for every file | every 5 min, as the admin |
 | `can_read(service, ids)` | 4.6 as that user, batched | each question, final context only |
 
 **Day-1 checks**
