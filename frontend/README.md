@@ -80,7 +80,9 @@ components.json       shadcn CLI settings
 - `--warning` is for "unavailable", development-only aids and mock data.
 - Input borders use `--input`, which meets 3:1 contrast; `--border` is for decorative edges only.
 - Every text/background pair meets WCAG AA. Re-check contrast when changing a value.
-- Animations are switched off under `prefers-reduced-motion`.
+- Animations are switched off under `prefers-reduced-motion`. Motion is rare (the sign-in page only): animate
+  `transform` and `opacity` only, read the pointer at most once a frame into CSS variables (`lib/use-pointer-motion.ts`),
+  skip pointer effects on touch screens, and keep moving decoration `aria-hidden`.
 
 The design principles and the full accessibility rules (WCAG 2.2 AA):
 [docs/architecture/FRONTEND.md](../docs/architecture/FRONTEND.md).

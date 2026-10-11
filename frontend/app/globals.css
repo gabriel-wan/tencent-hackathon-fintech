@@ -145,6 +145,16 @@
     }
 }
 
+/* The sign-in page's motion (components/login/): drifting light, and the question bubble rising in. */
+@keyframes kb-drift {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(-6%, 8%, 0) scale(1.08); }
+}
+@keyframes kb-rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+}
+
 /* Motion is decoration only: switch it off for people who ask. */
 @media (prefers-reduced-motion: reduce) {
     *,

@@ -62,7 +62,14 @@ site, and a user with only Google has no company and sees nothing.
   display only. This gate is UX: the backend checks the session on every call.
 - **`/login`.** Signed-in visitors go to `/`. The logo, a headline and, on
   wider screens, a decorative answer card (`components/login/hero-illustration.tsx`,
-  made-up content, hidden from screen readers). "Sign in with Slack" is the main
+  made-up content, hidden from screen readers). **Motion** (`login-hero.tsx`,
+  `ambient-background.tsx`, `lib/use-pointer-motion.ts`): the card plays once
+  on load (the question, the answer typing, the sources, the shield), tilts up
+  to 6° toward the mouse with a soft highlight, and faint brand-coloured light
+  drifts behind the page, leaning toward the mouse. Only `transform` and
+  `opacity` move; the pointer is read at most once a frame into CSS variables
+  (no React re-render); no tilt on touch screens; everything still and the card
+  shown complete under reduced motion. "Sign in with Slack" is the main
   button because Slack is the only sign-in that can start a company; Google and
   Atlassian follow as logo-only buttons ("Alternatively, sign in with"), each
   with an accessible name and a tooltip on hover and keyboard focus. "How
