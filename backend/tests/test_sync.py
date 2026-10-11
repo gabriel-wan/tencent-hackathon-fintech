@@ -173,6 +173,18 @@ def test_embeddings_missed_during_an_outage_are_filled_later(setup):
     assert sync.embed_missing(engine, FakeLLM()) == 0
 
 
+def test_the_seeds_scale_filler_is_never_embedded_by_the_worker(setup):
+    # Keyword-only on purpose (app/seed_scale.py): the worker must not spend tokens on ~20,000 filler chunks.
+    with engine.begin() as c:
+        doc = c.execute(text("INSERT INTO documents (company_id, source, source_id, scope_id, updated_at, metadata) "
+                             "VALUES (:c, 'slack', 'SC_C001:1', 'SC_C001', now(), '{\"seed\": \"scale\"}') "
+                             "RETURNING id"), {"c": setup.company}).scalar()
+        c.execute(text("INSERT INTO chunks (document_id, ordinal, text, text_hash) VALUES (:d, 0, 'filler', 'h')"),
+                  {"d": doc})
+    llm = FakeLLM()
+    assert sync.embed_missing(engine, llm) == 0 and llm.embed_calls == []
+
+
 @pytest.mark.security
 def test_the_embedding_model_only_receives_masked_text(setup):
     # A chunk at the limit whose tags are longer than the emails they replace: still sent within the limit.

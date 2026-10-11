@@ -94,10 +94,16 @@ def upsert(conn, company_id: int, doc: dict) -> None:
 
 
 def embed_missing(engine: Engine, llm) -> int:
-    """Embed one batch of chunks that have no vector yet (new, or the LLM was down). Returns how many."""
+    """Embed one batch of chunks that have no vector yet (new, or the LLM was down). Returns how many.
+
+    Skips the development seed's scale filler (documents marked {"seed": "scale"}, app/seed_scale.py): it is
+    keyword-only on purpose, and embedding ~20,000 chunks here would spend TokenHub tokens nobody asked for.
+    `python -m app.seed --embed` embeds a fixed sample of it instead."""
     with engine.begin() as conn:
-        rows = conn.execute(text("SELECT id, document_id, text FROM chunks WHERE embedding IS NULL "
-                                 "ORDER BY id LIMIT :n"), {"n": EMBED_BATCH}).all()
+        rows = conn.execute(text("SELECT c.id, c.document_id, c.text FROM chunks c JOIN documents d "
+                                 "ON d.id = c.document_id WHERE c.embedding IS NULL "
+                                 "AND d.metadata->>'seed' IS DISTINCT FROM 'scale' "
+                                 "ORDER BY c.id LIMIT :n"), {"n": EMBED_BATCH}).all()
         if rows:
             for row, vec in zip(rows, llm.embed(masked_for_embedding(conn, rows)), strict=True):
                 conn.execute(text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
