@@ -278,6 +278,29 @@ erDiagram
 | Signing in by connecting tools | An app username and password | The tools' own sign-in proves identity; nothing to store or reset | Sign-in depends on the tools' OAuth apps and their review processes |
 | A hash chain inside PostgreSQL | An external ledger | Simple to build, verify and demo | Someone with owner access could rewrite and re-hash the chain; the chain head should be noted outside |
 
+### How it scales
+
+Measured against the handbook's Company A (12,000+ Confluence pages in 50+ spaces, 30+ Jira projects, 200+ Slack
+channels, nested and shared Drive folders).
+
+**Built for it today:**
+- **Search** filters by permission inside the database, before ranking: a GIN index on each document's ACL, a GIN
+  full-text index, and an HNSW vector index with iterative scan, so a user with narrow access still gets enough
+  permitted results (`retrieval/search.py`, migrations 0002 and 0003). Only the top results are re-checked live with
+  each tool, so the question-time cost doesn't grow with the corpus.
+- **Sync** works scope by scope, and one scope failing never stops the others. Unchanged items are not
+  downloaded again: only new or edited text is fetched, chunked and embedded (`changed()` in `app/sync.py`).
+- **The boundary** is chosen at the level each tool uses (channel, folder, project, space), so 12,000 pages are 50
+  decisions, not 12,000. The admin page searches across the four tools, shows Drive as a tree with paths, and adds
+  or removes up to 50 scopes at once, each still audited (`connectors/admin.py`, [FRONTEND.md](architecture/FRONTEND.md)).
+  A Drive folder already includes its subfolders, so overlapping folders are refused.
+- **The audit trail** pages by record number (an index on company and id), so a long trail loads 50 at a time.
+
+**Not yet** (planned, [PROJECT.md](PROJECT.md#planned-scaling-work)): every sync still lists each scope in full
+(the listing and permission calls, not the content), one scope after another, which at Company A's size would
+outgrow the 5-minute window and the tools' rate limits; files in Google **shared drives** are skipped, because
+their permissions come from the drive, not the file; and several Slack workspaces become several companies.
+
 ## 9. The design questions, answered
 
 Before building, the team listed the questions the design had to answer. Each is now settled:

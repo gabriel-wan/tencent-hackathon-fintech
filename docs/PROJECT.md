@@ -149,6 +149,21 @@ What the frontend does next, and what each item waits for:
 
 Each fills a reserved slot in the UI.
 
+### Planned scaling work
+
+For the handbook's Company A ([ARCHITECTURE.md](ARCHITECTURE.md#how-it-scales) says what already scales). Not built;
+after the submission unless the team decides otherwise.
+
+| Work | Why | Suggested owner |
+|---|---|---|
+| **Incremental sync:** list only what changed since the last run (Confluence CQL `lastmodified`, Jira JQL `updated`, Slack `oldest`, Drive's Changes API), with a full reconcile nightly for deletions and permission changes | Full listing of 12,000 pages and 200+ channel histories every 5 minutes doesn't fit the window or the rate limits | Vincent |
+| **Parallel, rate-aware sync:** a small worker pool per tool, honouring `Retry-After`, most out-of-date scopes first | One huge space mustn't starve the rest | Vincent |
+| **Drive shared drives:** take access from the shared drive's members | Shared-drive files are skipped today | Vincent (permission model: tests and a SECURITY.md update) |
+| **Search load test** at ~100k chunks with realistic ACLs; maybe a `documents.in_boundary` column | Check the HNSW + permission filter still returns enough results quickly | Gabriel |
+| **Audit at volume:** indexes for the document and scope filters; verify the chain from a saved checkpoint | Those filters scan JSON; `verify_chain` reads the whole chain | Gabriel |
+| **Several Slack workspaces** in one company (needs an ADR) | Enterprise Grid | Vincent |
+| **Jira issue security levels** stored with each ticket | Today the live check trims them at question time, which is correct but does more work at scale | Vincent |
+
 ## Out of scope for the hackathon (proposed)
 
 - Production-grade identity federation with real enterprise IdPs
