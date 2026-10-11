@@ -22,12 +22,3 @@ export function tiltFor(offset: { x: number; y: number }, max = 6): { rotateX: n
   const round = (n: number) => Math.round(n * 100) / 100 || 0; // || 0: never "-0deg"
   return { rotateX: round(-offset.y * max), rotateY: round(offset.x * max) };
 }
-
-/**
- * One frame of easing toward a target: moves `rate` of the remaining way, and snaps once within `settle`, so a
- * loop driven by it ends instead of creeping forever. Makes the background follow the pointer smoothly.
- */
-export function easeToward(current: number, target: number, rate = 0.08, settle = 0.001): number {
-  const next = current + (target - current) * rate;
-  return Math.abs(target - next) < settle ? target : next;
-}
