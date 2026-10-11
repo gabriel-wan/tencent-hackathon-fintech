@@ -42,13 +42,34 @@ def _list(drive, q: str, fields: str) -> Iterator[dict]:
 MAX_DEPTH = 30  # folder nesting followed when looking for a folder's ancestors (Drive allows ~100; real ones are shallow)
 
 
+MY_DRIVE, SHARED_WITH_ME = "my-drive", "shared-with-me"  # `drive_id`s of the two groups that aren't shared drives
+
+
+def _shared_drive_names(drive) -> dict[str, str]:
+    """Shared drive ID -> its name, for the drive headings. A failure only costs the names, never the list."""
+    names: dict[str, str] = {}
+    token = None
+    try:
+        while True:
+            resp = drive.drives().list(pageSize=100, pageToken=token, fields="nextPageToken, drives(id, name)") \
+                .execute(num_retries=3)
+            names.update({d["id"]: d["name"] for d in resp.get("drives", [])})
+            if not (token := resp.get("nextPageToken")):
+                return names
+    except HttpError as e:
+        log.info("Drive shared drive names unavailable: %s", e.status_code)
+        return names
+
+
 def scopes(drive) -> list[dict]:
     """Folders this person can see, for the admin to choose the boundary from. Each has its `parent` (None at
-    the top, or when the parent isn't one of these folders) and its `path`, the names of the folders above it
-    ("Finance / 2026"), so same-named folders can be told apart. One listing, no extra API calls."""
+    the top, or when the parent isn't one of these folders), its `path`, the names of the folders above it
+    ("Finance / 2026"), so same-named folders can be told apart, and the drive it is in: `drive_id` (a shared
+    drive's ID, MY_DRIVE or SHARED_WITH_ME) and `drive`, its name for the page's headings."""
     folders = list(_list(drive, f"mimeType = '{FOLDER}' and trashed = false",
-                         "nextPageToken, files(id, name, parents)"))
+                         "nextPageToken, files(id, name, parents, driveId, ownedByMe)"))
     by_id = {f["id"]: f for f in folders}
+    shared = _shared_drive_names(drive) if any(f.get("driveId") for f in folders) else {}
 
     def parent(f: dict) -> str | None:
         p = (f.get("parents") or [None])[0]
@@ -62,7 +83,13 @@ def scopes(drive) -> list[dict]:
             p = parent(by_id[p])
         return " / ".join(reversed(names))
 
-    return [{"id": f["id"], "title": f["name"], "parent": parent(f), "path": path(f)} for f in folders]
+    def where(f: dict) -> tuple[str, str]:
+        if f.get("driveId"):
+            return f["driveId"], shared.get(f["driveId"], "Shared drive")
+        return (MY_DRIVE, "My Drive") if f.get("ownedByMe") else (SHARED_WITH_ME, "Shared with me")
+
+    return [{"id": f["id"], "title": f["name"], "parent": parent(f), "path": path(f),
+             "drive_id": where(f)[0], "drive": where(f)[1]} for f in folders]
 
 
 def ancestors(drive, folder_id: str, parent_of: dict[str, str | None] | None = None) -> list[str]:

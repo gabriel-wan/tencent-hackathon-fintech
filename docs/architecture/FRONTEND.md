@@ -266,8 +266,12 @@ menu (name and email, theme, Sign out).
     the others; the heading says "4 of 73 channels in the boundary · 10
     shown". The first 50 rows, then "Show 100 more".
   - **Per tool:** Slack in Public and Private groups (a lock on private ones;
-    DMs are never offered). Drive as a **tree** (`treeOrder`), or with each
-    folder's path when searching; a folder under a ticked one is shown ticked
+    DMs are never offered). Drive as a **tree** (`treeOrder`) under a heading
+    per drive (My Drive, each shared drive by name, Shared with me, and Other
+    for boundary folders no longer listed; `driveGroups`), folders folded
+    until their arrow is pressed, with Expand all and Collapse all
+    (`foldTree`); with a search or a Show filter, a flat list with each
+    folder's path; a folder under a ticked one is shown ticked
     and locked, "Included with *Parent*" (`coveredBy`), since sync includes
     subfolders and the backend refuses overlapping folders (409, shown under
     the row). Jira with the project key.

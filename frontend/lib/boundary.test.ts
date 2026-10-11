@@ -5,6 +5,8 @@ import {
   STALE_AFTER_MS,
   blockedReason,
   bulkRows,
+  driveGroups,
+  foldTree,
   containsAllowed,
   coveredBy,
   filterRows,
@@ -70,7 +72,7 @@ describe("rowsFor", () => {
   it("shows only the boundary when the tool's list couldn't load, flagging nothing", () => {
     const rows = rowsFor("slack", null, [entry("C1", null, "#payments-oncall")]);
     expect(rows).toEqual([
-      { id: "C1", title: "#payments-oncall", inBoundary: true, lastSyncedAt: null, visible: true, private: false, parent: null, path: "" },
+      { id: "C1", title: "#payments-oncall", inBoundary: true, lastSyncedAt: null, visible: true, private: false, parent: null, path: "", driveId: null, drive: "" },
     ]);
   });
 
@@ -91,7 +93,7 @@ describe("rowState", () => {
   const now = Date.parse("2026-10-09T05:00:00Z");
   const row = (over: Partial<ReturnType<typeof rowsFor>[number]>) => ({
     id: "C1", title: "#x", inBoundary: true, lastSyncedAt: null, visible: true, private: false, parent: null, path: "",
-    ...over,
+    driveId: null, drive: "", ...over,
   });
 
   it.each([
@@ -219,5 +221,36 @@ describe("thousands of Drive folders stay fast", () => {
     const { ms, toAdd } = run(scopes.slice(0, 2000));
     expect(toAdd.map((r) => r.id)).toEqual(["F0"]);
     expect(ms).toBeLessThan(1500); // a 2,000-deep chain is the worst case: each folder walks its parents
+  });
+});
+
+describe("Drive folding and drive headings", () => {
+  const scopes = [
+    { id: "FIN", title: "Finance", parent: null, path: "", drive_id: "my-drive", drive: "My Drive" },
+    { id: "Y26", title: "2026", parent: "FIN", path: "Finance", drive_id: "my-drive", drive: "My Drive" },
+    { id: "PAY", title: "Payroll", parent: "Y26", path: "Finance / 2026", drive_id: "my-drive", drive: "My Drive" },
+    { id: "LEG", title: "Legal", parent: "FIN", path: "Finance", drive_id: "my-drive", drive: "My Drive" },
+    { id: "ENG", title: "Eng", parent: null, path: "", drive_id: "SD1", drive: "Engineering team" },
+    { id: "OUT", title: "From a partner", parent: null, path: "", drive_id: "shared-with-me", drive: "Shared with me" },
+    { id: "OPS", title: "Ops", parent: null, path: "", drive_id: "SD0", drive: "Ops team" },
+  ];
+  const rows = rowsFor("drive", scopes, []);
+
+  it("groups by drive: My Drive, shared drives by name, then Shared with me", () => {
+    expect(driveGroups(rows).map((g) => g.label)).toEqual(["My Drive", "Engineering team", "Ops team", "Shared with me"]);
+  });
+
+  it("folded folders hide everything below them; expanding shows one level more", () => {
+    const tree = treeOrder(driveGroups(rows)[0].rows);
+    expect(foldTree(tree, new Set()).map((e) => e.row.title)).toEqual(["Finance"]);
+    expect(foldTree(tree, new Set(["FIN"])).map((e) => e.row.title)).toEqual(["Finance", "2026", "Legal"]);
+    expect(foldTree(tree, new Set(["FIN", "Y26"])).map((e) => e.row.title)).toEqual(["Finance", "2026", "Payroll", "Legal"]);
+    expect(tree.find((e) => e.row.id === "Y26")?.hasChildren).toBe(true);
+    expect(tree.find((e) => e.row.id === "LEG")?.hasChildren).toBe(false);
+  });
+
+  it("a folder in the boundary but no longer listed goes under Other", () => {
+    const withGone = rowsFor("drive", scopes, [entry("GONE", null, "Old folder", "drive")]);
+    expect(driveGroups(withGone).at(-1)).toMatchObject({ label: "Other", rows: [{ id: "GONE" }] });
   });
 });

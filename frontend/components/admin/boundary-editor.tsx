@@ -36,6 +36,8 @@ import {
   bulkRows,
   containsAllowed,
   coveredBy,
+  driveGroups,
+  foldTree,
   indexRows,
   matchRows,
   rowState,
@@ -239,6 +241,7 @@ function ScopeItem({
   depth,
   covered,
   contains,
+  fold,
   query,
   now,
   syncing,
@@ -252,6 +255,8 @@ function ScopeItem({
   depth: number;
   covered: ScopeRow | null;
   contains: ScopeRow | null; // a folder below this one already in: adding this one would overlap
+  // Drive tree only: the arrow that opens or folds this folder (null: no subfolders, a spacer keeps rows aligned).
+  fold: { expanded: boolean; onToggle: () => void } | null | undefined;
   query: string;
   now: number;
   syncing: boolean;
@@ -262,7 +267,21 @@ function ScopeItem({
 }) {
   const id = `scope-${tool.source}-${row.id}`;
   return (
-    <li className="flex min-h-11 items-start gap-3 py-1" style={depth ? { paddingLeft: `${depth * 1.25}rem` } : undefined}>
+    <li className="flex min-h-11 items-start gap-2 py-1" style={depth ? { paddingLeft: `${depth * 1.25}rem` } : undefined}>
+      {fold === undefined ? null : fold === null ? (
+        <span aria-hidden="true" className="size-6 shrink-0" />
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="-mt-0.5 size-6 shrink-0 text-muted-foreground"
+          onClick={fold.onToggle}
+          aria-expanded={fold.expanded}
+          aria-label={`${fold.expanded ? "Hide" : "Show"} the folders in ${row.title}`}
+        >
+          <ChevronRight aria-hidden="true" className={cn("transition-transform", fold.expanded && "rotate-90")} />
+        </Button>
+      )}
       <Checkbox
         id={id}
         className="mt-0.5"
@@ -346,18 +365,33 @@ function ToolSection({
   const allowed = rows.filter((r) => r.inBoundary).length;
   const headingId = `tool-${tool.source}`;
   const problem = scopes.status === "problem" ? scopes.problem : null;
-  // Drive without a search: a tree. Otherwise flat (search results show each folder's path instead).
-  const tree = useMemo(() => (tool.source === "drive" ? treeOrder(rows) : []), [tool.source, rows]);
-  const ordered = useMemo(() => {
-    if (tool.source !== "drive" || query.trim()) return shown.map((row) => ({ row, depth: 0 }));
-    const wanted = new Set(shown);
-    return tree.filter(({ row }) => wanted.has(row));
-  }, [tool.source, query, shown, tree]);
+  // Drive with no search and Show "All": a tree per drive (My Drive, each shared drive, Shared with me), its
+  // folders folded until opened. Otherwise a flat list, each folder with its path.
+  const treeMode = tool.source === "drive" && !query.trim() && show === "all";
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const drives = useMemo(
+    () => (treeMode ? driveGroups(rows).map((g) => ({ ...g, tree: treeOrder(g.rows) })) : []),
+    [treeMode, rows],
+  );
+  const parents = useMemo(() => drives.flatMap((g) => g.tree.filter((e) => e.hasChildren).map((e) => e.row.id)), [drives]);
+  const ordered = useMemo(
+    () =>
+      treeMode
+        ? drives.flatMap((g) => foldTree(g.tree, expanded).map((e) => ({ ...e, group: g.id })))
+        : shown.map((row) => ({ row, depth: 0, hasChildren: false, group: null as string | null })),
+    [treeMode, drives, expanded, shown],
+  );
   const visible = ordered.slice(0, limit);
+  const toggleFold = (id: string) =>
+    setExpanded((open) => {
+      const next = new Set(open);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const toAdd = useMemo(() => bulkRows(shown, index, "add"), [shown, index]);
   const toRemove = useMemo(() => bulkRows(shown, index, "remove"), [shown, index]);
 
-  const item = ({ row, depth }: { row: ScopeRow; depth: number }) => {
+  const item = ({ row, depth, hasChildren }: { row: ScopeRow; depth: number; hasChildren: boolean }) => {
     const key = scopeKey(tool.source, row.id);
     return (
       <ScopeItem
@@ -367,6 +401,13 @@ function ToolSection({
         depth={depth}
         covered={tool.source === "drive" && !row.inBoundary ? coveredBy(row, index) : null}
         contains={tool.source === "drive" && !row.inBoundary ? containsAllowed(row, index) : null}
+        fold={
+          treeMode
+            ? hasChildren
+              ? { expanded: expanded.has(row.id), onToggle: () => toggleFold(row.id) }
+              : null
+            : undefined
+        }
         query={query}
         now={now}
         syncing={syncing}
@@ -377,14 +418,16 @@ function ToolSection({
       />
     );
   };
-  // Slack: public channels, then private ones, when there are both.
-  const groups =
-    tool.source === "slack" && visible.some(({ row }) => row.private) && visible.some(({ row }) => !row.private)
-      ? [
-          { label: "Public channels", items: visible.filter(({ row }) => !row.private) },
-          { label: "Private channels", items: visible.filter(({ row }) => row.private) },
-        ]
-      : [{ label: null, items: visible }];
+  // Headings: Drive's drives in the tree (when there is more than one); Slack's public, then private channels.
+  const groups: { key: string; label: string | null; items: typeof visible }[] =
+    treeMode && drives.length > 1
+      ? drives.map((g) => ({ key: g.id, label: g.label, items: visible.filter((e) => e.group === g.id) }))
+      : tool.source === "slack" && visible.some(({ row }) => row.private) && visible.some(({ row }) => !row.private)
+        ? [
+            { key: "public", label: "Public channels", items: visible.filter(({ row }) => !row.private) },
+            { key: "private", label: "Private channels", items: visible.filter(({ row }) => row.private) },
+          ]
+        : [{ key: "all", label: null, items: visible }];
 
   return (
     <section aria-labelledby={headingId} className="grid gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
@@ -458,6 +501,16 @@ function ToolSection({
               ) : null}
             </div>
           ) : null}
+          {treeMode && parents.length ? (
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" onClick={() => setExpanded(new Set(parents))}>
+                Expand all
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setExpanded(new Set())} disabled={expanded.size === 0}>
+                Collapse all
+              </Button>
+            </div>
+          ) : null}
           {sectionError ? (
             <p role="alert" className="text-sm text-destructive">
               {sectionError}
@@ -465,7 +518,7 @@ function ToolSection({
           ) : null}
           {groups.map((group) =>
             group.items.length ? (
-              <div key={group.label ?? "all"} className="grid gap-1">
+              <div key={group.key} className="grid gap-1">
                 {group.label ? <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3> : null}
                 <ul className="grid gap-1">{group.items.map(item)}</ul>
               </div>
