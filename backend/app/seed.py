@@ -260,7 +260,8 @@ KOPI_DOCUMENTS = [
      ["slack:members"],
      "Dana: Our payment gateway migration finished last week with no blockers."),
     ("jira", "90101", "KOPI", "KOPI-3 Database migration", "https://kopilabs.atlassian.example/browse/KOPI-3",
-     "2026-10-05T10:00:00Z", ["atlassian:user:A101"],
+     "2026-10-05T10:00:00Z", ["atlassian:user:A101", "public"],  # "public": Alice holds it too, so only the
+     # company filter keeps it from her (review of PR #35)
      "KOPI-3 Database migration. Status: Done. No blockers; finished on 4 October."),
 ]
 
@@ -361,20 +362,27 @@ def seed_scale(conn, team: str) -> int:
         text("SELECT id, source, source_id FROM documents WHERE company_id = :c AND metadata->>'seed' = :m"),
         {"c": company, "m": MARK}).all()}
     conn.execute(
-        text("INSERT INTO chunks (document_id, ordinal, text, text_hash) VALUES (:d, 0, :t, :h)"),
+        text("INSERT INTO chunks (document_id, ordinal, text, text_hash, keyword_only) VALUES (:d, 0, :t, :h, true)"),
         [{"d": ids[(source, source_id)], "t": body, "h": hashlib.sha256(body.encode()).hexdigest()}
          for source, source_id, _scope, _t, _u, _at, _acl, body in new],
     )
     return len(new)
 
 
-def remove_scale(conn) -> int:
-    """Removes every filler document (their chunks go with them) and every filler scope, in all companies."""
+def remove_scale(conn, team: str = "T_MERLION") -> int:
+    """Removes the filler from the seed's company only: its marked documents (their chunks go with them) and its
+    scopes. The prefix is matched literally ("_" escaped), so a real scope such as SCRUM is never touched."""
     from app.seed_scale import MARK, SCOPE_PREFIX
 
-    removed = conn.execute(text("DELETE FROM documents WHERE metadata->>'seed' = :m"), {"m": MARK}).rowcount
+    company = conn.execute(text("SELECT id FROM companies WHERE slack_team_id = :t"), {"t": team}).scalar()
+    if company is None:
+        return 0
+    removed = conn.execute(text("DELETE FROM documents WHERE company_id = :c AND metadata->>'seed' = :m"),
+                           {"c": company, "m": MARK}).rowcount
+    pattern = SCOPE_PREFIX.replace("\\", "\\\\").replace("_", "\\_").replace("%", "\\%") + "%"
     for table, column in (("boundary", "scope_id"), ("sync_state", "key")):
-        conn.execute(text(f"DELETE FROM {table} WHERE {column} LIKE :p"), {"p": SCOPE_PREFIX + "%"})
+        conn.execute(text(f"DELETE FROM {table} WHERE company_id = :c AND {column} LIKE :p ESCAPE '\\'"),
+                     {"c": company, "p": pattern})
     return removed
 
 
@@ -396,6 +404,9 @@ def embed_chunks(conn, sample: int) -> int:
         "SELECT c.id, c.document_id, c.text FROM chunks c JOIN documents d ON d.id = c.document_id "
         "WHERE c.embedding IS NULL AND d.metadata->>'seed' = :m ORDER BY md5(d.source_id), c.id LIMIT :n"),
         {"m": MARK, "n": max(0, sample - done)}).all()
+    if filler:  # the sample is embedded on purpose: no longer keyword-only
+        conn.execute(text("UPDATE chunks SET keyword_only = false WHERE id = ANY(:ids)"),
+                     {"ids": [r.id for r in filler]})
     rows = sorted([*story, *filler], key=lambda r: r.id)  # by id, like the sync worker: no deadlock with it
     if rows:
         vectors = LLMClient.from_env().embed(masked_for_embedding(conn, rows))  # masked (ADR-010)

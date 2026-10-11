@@ -96,19 +96,22 @@ def upsert(conn, company_id: int, doc: dict) -> None:
 def embed_missing(engine: Engine, llm) -> int:
     """Embed one batch of chunks that have no vector yet (new, or the LLM was down). Returns how many.
 
-    Skips the development seed's scale filler (documents marked {"seed": "scale"}, app/seed_scale.py): it is
-    keyword-only on purpose, and embedding ~20,000 chunks here would spend TokenHub tokens nobody asked for.
-    `python -m app.seed --embed` embeds a fixed sample of it instead."""
+    Chunks marked `keyword_only` are left alone (whoever wrote them decided; today the development seed's
+    filler). The partial index chunks_to_embed_idx serves this query, so skipped chunks are never read."""
     with engine.begin() as conn:
-        rows = conn.execute(text("SELECT c.id, c.document_id, c.text FROM chunks c JOIN documents d "
-                                 "ON d.id = c.document_id WHERE c.embedding IS NULL "
-                                 "AND d.metadata->>'seed' IS DISTINCT FROM 'scale' "
-                                 "ORDER BY c.id LIMIT :n"), {"n": EMBED_BATCH}).all()
-        if rows:
-            for row, vec in zip(rows, llm.embed(masked_for_embedding(conn, rows)), strict=True):
-                conn.execute(text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
-                             {"v": vector_literal(vec), "id": row.id})
+        rows = conn.execute(text("SELECT id, document_id, text FROM chunks WHERE embedding IS NULL "
+                                 "AND NOT keyword_only ORDER BY id LIMIT :n"), {"n": EMBED_BATCH}).all()
+        store_embeddings(conn, rows, llm)
     return len(rows)
+
+
+def store_embeddings(conn, rows, llm) -> None:
+    """Embeds these chunks (their text masked first, ADR-010) and stores the vectors, in id order."""
+    rows = sorted(rows, key=lambda r: r.id)  # one lock order for every writer: no deadlocks between them
+    if rows:
+        for row, vec in zip(rows, llm.embed(masked_for_embedding(conn, rows)), strict=True):
+            conn.execute(text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
+                         {"v": vector_literal(vec), "id": row.id})
 
 
 def masked_for_embedding(conn, rows) -> list[str]:
@@ -146,8 +149,14 @@ def _sync_company(engine: Engine, company_id: int, sources: list[str] | None, ll
     if admin is None:
         log.warning("company %s has no admin: nothing synced", company_id)
         return
+    # A tool the admin hasn't connected fails for every one of its scopes: skip the rest of them and log it once,
+    # so hundreds of scopes don't bury real failures under the same warning (review of PR #35).
+    unconnected: dict[str, int] = {}
     for source, scope_id in scopes:
         HEARTBEAT.touch()
+        if source in unconnected:
+            unconnected[source] += 1
+            continue
         try:
             with engine.connect() as db:  # what is stored, to download only new or edited items
                 known = dict(db.execute(text("SELECT source_id, updated_at FROM documents WHERE company_id = :c "
@@ -175,10 +184,16 @@ def _sync_company(engine: Engine, company_id: int, sources: list[str] | None, ll
                 conn.execute(text("INSERT INTO sync_state (company_id, source, key, updated_at) "
                                   "VALUES (:c, :s, :scope, now()) ON CONFLICT (company_id, source, key) "
                                   "DO UPDATE SET updated_at = now()"), key)
-        except Exception as e:  # one scope failing (not connected, revoked, API down) never stops the others
+        except store.NotConnected:
+            unconnected[source] = 1
+            continue
+        except Exception as e:  # one scope failing (revoked, API down) never stops the others
             log.warning("company %s: %s %s not synced: %s", company_id, source, scope_id, type(e).__name__)
             continue
         log.info("company %s: %s %s synced, %d items, %d removed", company_id, source, scope_id, len(docs), gone)
+    for source, count in unconnected.items():
+        log.warning("company %s: %s not connected: %d scope%s not synced", company_id, source, count,
+                    "" if count == 1 else "s")
     try:
         llm = llm or LLMClient.from_env()
         while embed_missing(engine, llm):

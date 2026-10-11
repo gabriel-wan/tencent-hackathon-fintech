@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import text
 
 from app import seed, seed_scale
+from app.auth.principals import PUBLIC
 from app.retrieval.search import hybrid_search
 
 pytestmark = pytest.mark.security
@@ -17,7 +18,7 @@ def seeded(conn):
     for team, name, users, boundary, documents in seed.COMPANIES:
         seed.seed_company(conn, team, name, users, boundary, documents)
     merlion = conn.execute(text("SELECT id FROM companies WHERE slack_team_id = 'T_MERLION'")).scalar_one()
-    principals = {email: p for email, _name, _admin, p in seed.USERS}
+    principals = {email: [*p, PUBLIC] for email, _name, _admin, p in seed.USERS}  # as principals_for() gives
     return conn, merlion, principals
 
 
@@ -79,3 +80,11 @@ def test_scale_filler_is_added_once_and_removed_cleanly(seeded, monkeypatch):
     assert conn.execute(text("SELECT count(*) FROM documents WHERE company_id = :c"), {"c": company}).scalar() \
         == story - added  # the story documents stay
     assert conn.execute(text("SELECT count(*) FROM boundary WHERE scope_id LIKE 'SC\\_%'")).scalar() == 0
+
+
+def test_removing_the_filler_never_touches_a_real_scope_that_looks_alike(seeded):
+    conn, company, _principals = seeded
+    conn.execute(text("INSERT INTO boundary (company_id, source, scope_id, scope_type) "
+                      "VALUES (:c, 'jira', 'SCRUM', 'project')"), {"c": company})
+    seed.remove_scale(conn)
+    assert conn.execute(text("SELECT count(*) FROM boundary WHERE scope_id = 'SCRUM'")).scalar() == 1
