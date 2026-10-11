@@ -163,13 +163,31 @@ Rules:
 The persona-by-persona checks with expected answers, and the states that can only be triggered in mock mode:
 [docs/TESTING.md](../TESTING.md) sections 4 and 6.
 
+## The frame (sidebar)
+
+`components/signed-in-shell.tsx`, `app-sidebar.tsx`, `main-nav.tsx`,
+`user-menu.tsx`. Every signed-in page has a left sidebar: the logo and a
+collapse button, **New chat**, the links (Ask, Connections; for admins an
+"Admin" group with Audit trail and Boundary), and at the bottom the account
+menu (name and email, theme, Sign out).
+
+- **Collapsed** to icons (each with its name as label and tooltip) by the
+  button at the top; remembered in the `kb_sidebar` cookie, read on the server
+  so the first paint is right (`lib/sidebar.ts`).
+- **Below 768 px** a slim top bar with a menu button opens the same contents
+  in a sheet from the left.
+- **New chat** gives the chat page a fresh, empty thread
+  (`components/chat-session.tsx`); the thread was only ever in memory.
+- The development strip stays full width above everything, sticky on
+  desktop. The public pages (sign-in, status) keep the slim top bar.
+
 ## Admin pages
 
 `app/(app)/admin/`. ADR-007: one admin role, which also does compliance.
 
 - **Gate.** `app/(app)/admin/layout.tsx` sends non-admins back to the chat;
-  the header shows Chat and Connections for everyone and Audit / Boundary for
-  admins (in the user menu below 640 px). Both are UX only: every admin API
+  the sidebar shows Ask and Connections for everyone and an "Admin" group
+  (Audit trail, Boundary) for admins. Both are UX only: every admin API
   route checks `is_admin` itself and returns 403.
 - **Audit trail** (`/admin/audit`, `components/admin/audit-trail.tsx`). Calls
   `GET /api/admin/audit` and `POST /api/admin/audit/verify`
@@ -321,8 +339,10 @@ than explaining it.
 
 1. **Provenance first.** Every answer shows where it came from (platform,
    title, last updated). Sources are not a footnote.
-2. **Calm, not chatty.** An enterprise tool: no avatar or personality for the
-   assistant, system fonts, thin borders, motion only for the pending state.
+2. **Calm, not chatty.** An enterprise tool: the KnowBuddy icon marks its
+   answers and the empty chat greets you by first name, but nothing more (no
+   persona, no jokes, no invented progress); system fonts, thin borders,
+   motion only for the pending state and small state changes.
 3. **Honest states.** "Not found" is a normal, neutral outcome: never red,
    never "denied", identical whatever the reason.
 4. **Development aids look like development aids.** The persona switcher and
