@@ -10,7 +10,15 @@ import type { SourceName } from "@/lib/api/types";
  * GET /api/admin/scopes/{source}: what the admin can see in that tool. Slack adds `private`; Drive adds the
  * folder's `parent` (null at the top or when it isn't listed) and its `path` ("Finance / 2026").
  */
-export type Scope = { id: string; title: string; private?: boolean; parent?: string | null; path?: string };
+export type Scope = {
+  id: string;
+  title: string;
+  private?: boolean;
+  parent?: string | null;
+  path?: string;
+  drive_id?: string; // Drive: a shared drive's ID, "my-drive" or "shared-with-me"
+  drive?: string; // Drive: that drive's name, for the headings
+};
 
 /** GET /api/admin/boundary: one allowed scope. `last_synced_at` null: never synced. */
 export type BoundaryEntry = {
@@ -66,11 +74,19 @@ export type ScopeRow = {
   private: boolean; // a private Slack channel
   parent: string | null; // a Drive folder's parent, if listed
   path: string; // a Drive folder's path of parent names, "" at the top
+  driveId: string | null; // a Drive folder's drive (null when not in the admin's list)
+  drive: string; // that drive's name
 };
 
 const byTitle = (a: { title: string }, b: { title: string }) => a.title.localeCompare(b.title);
 
-const details = (s: Scope | undefined) => ({ private: s?.private ?? false, parent: s?.parent ?? null, path: s?.path ?? "" });
+const details = (s: Scope | undefined) => ({
+  private: s?.private ?? false,
+  parent: s?.parent ?? null,
+  path: s?.path ?? "",
+  driveId: s?.drive_id ?? null,
+  drive: s?.drive ?? "",
+});
 
 /**
  * A tool's rows: what's in the boundary first, then what the admin could add. `scopes`
@@ -162,8 +178,10 @@ export function containsAllowed(row: ScopeRow, index: RowIndex): ScopeRow | null
   return index.contains.get(row.id) ?? null;
 }
 
+export type TreeEntry = { row: ScopeRow; depth: number; hasChildren: boolean };
+
 /** Drive folders as a tree, depth first, each level by name, with its depth (0 at the top). */
-export function treeOrder(rows: ScopeRow[]): { row: ScopeRow; depth: number }[] {
+export function treeOrder(rows: ScopeRow[]): TreeEntry[] {
   const ids = new Set(rows.map((r) => r.id));
   const children = new Map<string | null, ScopeRow[]>();
   for (const r of rows) {
@@ -172,18 +190,52 @@ export function treeOrder(rows: ScopeRow[]): { row: ScopeRow; depth: number }[] 
     if (siblings) siblings.push(r);
     else children.set(key, [r]);
   }
-  const out: { row: ScopeRow; depth: number }[] = [];
+  const out: TreeEntry[] = [];
   const seen = new Set<string>();
   const walk = (parent: string | null, depth: number) => {
     for (const r of (children.get(parent) ?? []).sort(byTitle)) {
       if (seen.has(r.id)) continue;
       seen.add(r.id);
-      out.push({ row: r, depth });
+      out.push({ row: r, depth, hasChildren: (children.get(r.id)?.length ?? 0) > 0 });
       walk(r.id, depth + 1);
     }
   };
   walk(null, 0);
   return out;
+}
+
+/**
+ * A tree with folded folders: everything below a folder not in `expanded` is left out. Folders start folded, so
+ * a big Drive shows its top level first.
+ */
+export function foldTree(entries: TreeEntry[], expanded: Set<string>): TreeEntry[] {
+  const out: TreeEntry[] = [];
+  let hideBelow: number | null = null; // depth of the folded folder whose subtree is being skipped
+  for (const entry of entries) {
+    if (hideBelow !== null && entry.depth > hideBelow) continue;
+    hideBelow = entry.hasChildren && !expanded.has(entry.row.id) ? entry.depth : null;
+    out.push(entry);
+  }
+  return out;
+}
+
+const DRIVE_ORDER = (id: string) => (id === "my-drive" ? 0 : id === "shared-with-me" ? 2 : 1);
+
+/**
+ * Drive folders grouped by drive, for the headings: My Drive first, then each shared drive by name, then
+ * "Shared with me". Folders the list doesn't place (e.g. in the boundary but no longer visible) go last, under
+ * "Other". One group means no headings are needed.
+ */
+export function driveGroups(rows: ScopeRow[]): { id: string; label: string; rows: ScopeRow[] }[] {
+  const groups = new Map<string, { id: string; label: string; rows: ScopeRow[] }>();
+  for (const row of rows) {
+    const id = row.driveId ?? "other";
+    const group = groups.get(id) ?? { id, label: row.driveId ? row.drive : "Other", rows: [] };
+    group.rows.push(row);
+    groups.set(id, group);
+  }
+  const rank = (id: string) => (id === "other" ? 3 : DRIVE_ORDER(id));
+  return [...groups.values()].sort((a, b) => rank(a.id) - rank(b.id) || a.label.localeCompare(b.label));
 }
 
 /** At most this many scopes change in one bulk action (the backend's BULK_LIMIT). */
