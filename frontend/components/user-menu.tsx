@@ -106,7 +106,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
         </DropdownMenuItem>
         {state === "failed" ? (
           <p role="alert" className="px-2 py-1.5 text-xs text-destructive">
-            Sign-out failed. You are still signed in; try again.
+            Sign-out failed. Please check your network connection and try again.
           </p>
         ) : null}
       </DropdownMenuContent>
