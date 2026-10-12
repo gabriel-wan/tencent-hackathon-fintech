@@ -19,6 +19,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 import time
@@ -29,7 +30,7 @@ from sqlalchemy import Engine, text
 
 from app.connectors import store
 from app.db import engine as default_engine
-from app.llm.client import EMBEDDING_MAX_CHARS, LLMClient
+from app.llm.client import LLMClient
 from app.redaction import for_embedding, names_in, protected_spans
 from app.retrieval.search import vector_literal
 
@@ -37,41 +38,86 @@ log = logging.getLogger(__name__)
 
 INTERVAL_S = 300  # ADR-005: every 5 minutes
 EMBED_BATCH = 512
+# ADR-012: small chunks embed one topic each; the pipeline adds the neighbouring chunks back as context.
+# Set with scripts/eval_retrieval.py. Title, headings and chunk must fit in EMBEDDING_MAX_CHARS together.
+CHUNK_CHARS = 800
+OVERLAP_CHARS = 120  # at most this much of a chunk's end is repeated at the start of the next one
 CUT_LOOKAHEAD = 200  # characters past the limit scanned, to see an identifier the limit falls inside
+HEADING_LINE = re.compile(r"(#{1,6}) ")  # a Markdown heading, as the connectors write them
 HEARTBEAT = Path(tempfile.gettempdir()) / "sync-heartbeat"  # touched while the loop makes progress
 HEALTHY_WITHIN_S = 3 * INTERVAL_S  # the container is unhealthy when the heartbeat is older
 
 
 def _cut(text: str) -> int:
-    """Where the next chunk of `text` (longer than EMBEDDING_MAX_CHARS) ends: the last line break, else the
-    last space, that is not inside anything the Need-to-Know Shield detects (ADR-010); else the start of the
-    identifier the limit falls in; else the limit. Half a card number, or a label without its value, in
-    another chunk would escape masking."""
-    spans = protected_spans(text[:EMBEDDING_MAX_CHARS + CUT_LOOKAHEAD])
-    for sep in ("\n", " "):
-        for i in range(EMBEDDING_MAX_CHARS, 0, -1):
-            if text[i - 1] == sep and not any(start < i < end for start, end in spans):
+    """Where the next chunk of `text` (longer than CHUNK_CHARS) ends: before a heading line (not in the first
+    quarter, so sections don't leave tiny chunks), else the last line break, sentence end or space; never inside
+    anything the Need-to-Know Shield detects (ADR-010); else the start of the identifier the limit falls in; else
+    the limit. Half a card number, or a label without its value, in another chunk would escape masking."""
+    spans = protected_spans(text[:CHUNK_CHARS + CUT_LOOKAHEAD])
+
+    def free(i: int) -> bool:
+        return not any(start < i < end for start, end in spans)
+
+    for i in range(CHUNK_CHARS, CHUNK_CHARS // 4, -1):
+        if text[i - 1] == "\n" and HEADING_LINE.match(text, i) and free(i):
+            return i
+    for sep in ("\n", ". ", " "):
+        for i in range(CHUNK_CHARS, len(sep) - 1, -1):
+            if text.endswith(sep, 0, i) and free(i):
                 return i
-    inside = [start for start, end in spans if 0 < start < EMBEDDING_MAX_CHARS < end]
-    return min(inside) if inside else EMBEDDING_MAX_CHARS
+    # No free separator: back to the start of the identifier the limit falls in, and of any identifier that start
+    # falls in (spans overlap), so the cut lands inside none of them; not into the first quarter, where text that
+    # is identifiers wall to wall has no safe cut anyway.
+    cut = CHUNK_CHARS
+    while inside := [start for start, end in spans if CHUNK_CHARS // 4 < start < cut < end]:
+        cut = min(inside)
+    return cut
+
+
+def _overlap_start(text: str, cut: int) -> int:
+    """Where the chunk after a cut at `cut` starts: at the earliest line start within OVERLAP_CHARS before the cut
+    (and in the chunk's second half, so every chunk moves on), repeating those lines; at the cut itself after a
+    heading (a new section) or when no line start qualifies. Never inside an identifier, which stays whole."""
+    if HEADING_LINE.match(text, cut):
+        return cut
+    spans = protected_spans(text[:cut + CUT_LOOKAHEAD])
+    for i in range(max(cut // 2, cut - OVERLAP_CHARS, 1), cut):
+        if text[i - 1] == "\n" and not any(start < i < end for start, end in spans):
+            return i
+    return cut
 
 
 def chunk(body: str) -> list[str]:
-    """Non-blank lines packed into pieces of at most EMBEDDING_MAX_CHARS, cut where `_cut` says."""
+    """Non-blank lines packed into pieces of at most CHUNK_CHARS, cut where `_cut` says, each repeating the end of
+    the one before where `_overlap_start` says."""
     text, chunks = "\n".join(line for line in body.splitlines() if line.strip()), []
-    while len(text) > EMBEDDING_MAX_CHARS:
+    while len(text) > CHUNK_CHARS:
         cut = _cut(text)
         chunks.append(text[:cut].rstrip())
-        text = text[cut:]
+        text = text[_overlap_start(text, cut):]
     return [c for c in [*chunks, text] if c.strip()]
+
+
+def _heading_paths(texts: list[str]) -> list[list[str]]:
+    """For each of a document's chunks, in order, the headings it sits under (outermost first): those met in the
+    chunks before it, less any its own first line replaces."""
+    heads: dict[int, str] = {}
+    paths = []
+    for t in texts:
+        own = HEADING_LINE.match(t)
+        paths.append([heads[n] for n in sorted(heads) if not own or n < len(own[1])])
+        for line in t.splitlines():
+            if m := HEADING_LINE.match(line):
+                heads = {n: h for n, h in heads.items() if n < len(m[1])} | {len(m[1]): line}
+    return paths
 
 
 def upsert(conn, company_id: int, doc: dict) -> None:
     """Write one document; its chunks are replaced only when the text changed. `text` None means
     unchanged at the source (not downloaded): only title, URL, ACL and metadata are refreshed."""
     key = {"c": company_id, "s": doc["source"], "sid": doc["source_id"]}
-    old = conn.execute(text("SELECT content_hash FROM documents WHERE company_id = :c AND source = :s "
-                            "AND source_id = :sid"), key).scalar()
+    old, old_title = conn.execute(text("SELECT content_hash, title FROM documents WHERE company_id = :c "
+                                       "AND source = :s AND source_id = :sid"), key).first() or (None, None)
     content_hash = old if doc["text"] is None else hashlib.sha256(doc["text"].encode()).hexdigest()
     doc_id = conn.execute(
         text(
@@ -89,8 +135,13 @@ def upsert(conn, company_id: int, doc: dict) -> None:
     if old != content_hash:
         conn.execute(text("DELETE FROM chunks WHERE document_id = :d"), {"d": doc_id})
         if chunks := chunk(doc["text"]):
-            conn.execute(text("INSERT INTO chunks (document_id, ordinal, text) VALUES (:d, :o, :t)"),
-                         [{"d": doc_id, "o": i, "t": t} for i, t in enumerate(chunks)])
+            # context: the title and the headings each chunk sits under, searched and embedded with it (ADR-012).
+            conn.execute(text("INSERT INTO chunks (document_id, ordinal, text, context) VALUES (:d, :o, :t, :ctx)"),
+                         [{"d": doc_id, "o": i, "t": t, "ctx": "\n".join([doc["title"], *path])}
+                          for i, (t, path) in enumerate(zip(chunks, _heading_paths(chunks), strict=True))])
+    elif old_title is not None and old_title != doc["title"]:  # renamed: its chunks are searched and embedded anew
+        conn.execute(text("UPDATE chunks SET context = :t || substr(context, char_length(:old) + 1), "
+                          "embedding = NULL WHERE document_id = :d"), {"t": doc["title"], "old": old_title, "d": doc_id})
 
 
 def embed_missing(engine: Engine, llm) -> int:
@@ -99,7 +150,7 @@ def embed_missing(engine: Engine, llm) -> int:
     Chunks marked `keyword_only` are left alone (whoever wrote them decided; today the development seed's
     filler). The partial index chunks_to_embed_idx serves this query, so skipped chunks are never read."""
     with engine.begin() as conn:
-        rows = conn.execute(text("SELECT id, document_id, text FROM chunks WHERE embedding IS NULL "
+        rows = conn.execute(text("SELECT id, document_id, text, context FROM chunks WHERE embedding IS NULL "
                                  "AND NOT keyword_only ORDER BY id LIMIT :n"), {"n": EMBED_BATCH}).all()
         store_embeddings(conn, rows, llm)
     return len(rows)
@@ -115,13 +166,14 @@ def store_embeddings(conn, rows, llm) -> None:
 
 
 def masked_for_embedding(conn, rows) -> list[str]:
-    """Each chunk's text masked for the embedding model (ADR-010). Names are collected from the whole
-    document, so a name labelled in one chunk is masked in every other chunk too."""
+    """Each chunk as the embedding model reads it: its context (title and headings, ADR-012), then its text, all
+    masked (ADR-010). Names are collected from the whole document, so a name labelled in one chunk is masked in
+    every other chunk too."""
     docs = conn.execute(text("SELECT d.id, d.title, string_agg(c.text, E'\n' ORDER BY c.ordinal) "
                              "FROM documents d JOIN chunks c ON c.document_id = d.id WHERE d.id = ANY(:ids) "
                              "GROUP BY d.id, d.title"), {"ids": list({r.document_id for r in rows})}).all()
     names = {doc_id: names_in([title, body]) for doc_id, title, body in docs}
-    return [for_embedding(r.text, names[r.document_id]) for r in rows]
+    return [for_embedding("\n\n".join(filter(None, [r.context, r.text])), names[r.document_id]) for r in rows]
 
 
 def sync_company(engine: Engine, company_id: int, sources: list[str] | None = None, llm=None) -> None:
@@ -159,8 +211,9 @@ def _sync_company(engine: Engine, company_id: int, sources: list[str] | None, ll
             continue
         try:
             with engine.connect() as db:  # what is stored, to download only new or edited items
+                # No content hash: its text must be read again (migration 0009 re-chunks everything this way).
                 known = dict(db.execute(text("SELECT source_id, updated_at FROM documents WHERE company_id = :c "
-                                             "AND source = :s AND scope_id = :scope"),
+                                             "AND source = :s AND scope_id = :scope AND content_hash IS NOT NULL"),
                                         {"c": company_id, "s": source, "scope": scope_id}).all())
 
             def changed(source_id: str, updated_at: str, known=known) -> bool:

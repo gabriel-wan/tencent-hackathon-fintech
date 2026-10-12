@@ -15,10 +15,24 @@ from tests.helpers import FakeLLM
 
 
 def test_chunks_are_packed_and_never_too_long():
-    long_line = "x" * (EMBEDDING_MAX_CHARS + 10)
+    long_line = "x" * (sync.CHUNK_CHARS + 10)
     assert sync.chunk("a\n\nb") == ["a\nb"]  # blank lines dropped, short lines packed together
-    assert [len(c) for c in sync.chunk(long_line)] == [EMBEDDING_MAX_CHARS, 10]
-    assert all(len(c) <= EMBEDDING_MAX_CHARS for c in sync.chunk(("y" * 1500 + "\n") * 5))
+    assert [len(c) for c in sync.chunk(long_line)] == [sync.CHUNK_CHARS, 10]
+    assert all(len(c) <= sync.CHUNK_CHARS for c in sync.chunk(("y" * 1500 + "\n") * 5))
+
+
+def test_a_chunk_ends_where_a_section_starts_and_carries_nothing_of_the_last_one():
+    body = "# Refunds\n" + ("r " * 120 + "\n") * 2 + "## Fees\n" + ("f " * 120 + "\n") * 3
+    first, second, *_ = sync.chunk(body)
+    assert "## Fees" not in first and second.startswith("## Fees\n")
+
+
+def test_each_chunk_repeats_the_last_whole_line_of_the_one_before():
+    lines = [f"line {n:02} " + "the quick brown fox " * 4 + "jumps" for n in range(20)]  # 93 characters: one fits
+    chunks = sync.chunk("\n".join(lines))
+    assert len(chunks) > 2 and all(len(c) <= sync.CHUNK_CHARS for c in chunks)
+    for before, after in zip(chunks, chunks[1:]):
+        assert after.splitlines()[0] == before.splitlines()[-1]
 
 
 @pytest.mark.security
@@ -26,10 +40,20 @@ def test_chunks_are_packed_and_never_too_long():
                                         "Customer: Jane Lee"])
 def test_a_chunk_never_splits_an_identifier_or_a_label_from_its_value(identifier):
     # The limit falls inside the identifier: a cut there would put half of it, unmasked, in each chunk.
-    body = "word " * ((EMBEDDING_MAX_CHARS - 10) // 5) + identifier + " end"
+    body = "word " * ((sync.CHUNK_CHARS - 10) // 5) + identifier + " end"
     chunks = sync.chunk(body)
-    assert len(chunks) == 2 and all(len(c) <= EMBEDDING_MAX_CHARS for c in chunks)
+    assert len(chunks) == 2 and all(len(c) <= sync.CHUNK_CHARS for c in chunks)
     assert any(identifier in c for c in chunks)
+
+
+@pytest.mark.security
+@pytest.mark.parametrize("filler_lines", range(14))
+def test_no_chunk_starts_inside_an_identifier_either(filler_lines):
+    # Wherever the identifier lands, near a cut or in the repeated lines, its value never travels without its label.
+    line = "the settlement batch ran late again so we moved the cutoff to later"
+    body = "\n".join([line] * filler_lines + ["Account no.:", "123-45678-9 confirmed"] + [line] * 14)
+    for c in sync.chunk(body):
+        assert "123-45678-9" not in c or "Account no.:" in c
 
 
 def doc(source_id="C1:1", body="gateway migration blocked", acl=("slack:members",)):
@@ -50,6 +74,18 @@ def test_upsert_rewrites_chunks_only_when_the_text_changes(conn, company):
     assert conn.execute(text("SELECT acl FROM documents")).scalar() == ["slack:user:U1"]
     sync.upsert(conn, company, doc(body="gateway migration done"))
     assert chunk_ids(conn) != first
+
+
+def test_a_document_without_a_content_hash_is_downloaded_and_chunked_again(setup):
+    # How migration 0009 re-chunks everything: the hash goes, so the next sync reads the text again.
+    sync.sync_company(engine, setup.company, llm=FakeLLM())
+    with engine.begin() as c:
+        first = chunk_ids(c)
+        c.execute(text("UPDATE documents SET content_hash = NULL"))
+    sync.sync_company(engine, setup.company, llm=FakeLLM())
+    with engine.connect() as c:
+        assert chunk_ids(c) != first and c.execute(text("SELECT bool_and(content_hash IS NOT NULL) "
+                                                         "FROM documents")).scalar()
 
 
 # ---- sync_company: a company with an admin and one Slack channel in its boundary ----
@@ -209,8 +245,19 @@ def test_the_embedding_model_only_receives_masked_text(setup):
     setup.source.docs = [doc(body="card 4111 1111 1111 1111 " + "a@b.co " * 280)]
     llm = FakeLLM()
     sync.sync_company(engine, setup.company, llm=llm)
-    [[sent]] = llm.embed_calls
-    assert "4111" not in sent and "@" not in sent and len(sent) <= EMBEDDING_MAX_CHARS
+    sent = [t for call in llm.embed_calls for t in call]
+    assert sent and all("4111" not in t and "@" not in t and len(t) <= EMBEDDING_MAX_CHARS for t in sent)
+
+
+def test_each_chunk_is_embedded_with_its_title_and_the_headings_it_sits_under(setup):
+    # Two cuts at headings: the last chunk's own text says only "Late"; the input says where that is.
+    body = "# Refunds\n" + "a " * 300 + "\n## Fees\n" + "b " * 395 + "\n### Late\nlate fee rule"
+    setup.source.docs = [doc(body=body)]
+    llm = FakeLLM()
+    sync.sync_company(engine, setup.company, llm=llm)
+    sent = [t for call in llm.embed_calls for t in call]
+    assert next(t for t in sent if "late fee rule" in t) == "#eng\n# Refunds\n## Fees\n\n### Late\nlate fee rule"
+    assert next(t for t in sent if t.endswith("a")).startswith("#eng\n\n# Refunds\n")  # no heading above the first
 
 
 @pytest.mark.security
