@@ -27,7 +27,7 @@ flowchart LR
     GD["Google Drive"]
 
     W["sync worker<br/>python -m app.sync --loop<br/>every company, every 5 min"]
-    DB[("Postgres + pgvector<br/>docs, chunks, acl,<br/>embeddings, full-text")]
+    DB[("Postgres + pgvector + BM25<br/>docs, chunks, acl,<br/>embeddings, keyword index")]
     API["backend: FastAPI"]
     U["User"]
     LLM["LLM"]
@@ -56,7 +56,7 @@ Solid arrows into the worker run on a timer. Dashed arrows run on every question
    - **Staleness is visible:** each scope's last complete sync is stored (`sync_state`) and returned as `synced_at` on citations and `last_synced_at` in the admin boundary list. A scope that keeps failing keeps its old time, so stale content is labelled, never shown as current.
 
    Each item is saved as a document with an `acl` (the IDs of people allowed to read it, e.g. `slack:user:U024`) and its text split into chunks. Only chunks whose text hash changed are re-embedded.
-2. **Search (backend, per question).** Hybrid search runs vector similarity plus Postgres full-text (for exact terms like `PAY-13`), merged by rank. It returns only chunks whose `acl` contains one of the asker's IDs.
+2. **Search (backend, per question).** Hybrid search runs vector similarity plus BM25 keyword search over each chunk's title, headings and text (for exact terms like `PAY-13`), merged by rank (ADR-012). It returns only chunks whose `acl` contains one of the asker's IDs.
 3. **Live check (backend, per question).** For the top 20 results, the backend asks each source in parallel (2 s timeout) whether this user can still read the item. A "no", an error, a timeout or a deleted item drops it, so revocations apply on the very next question. Deletions do too for Drive (trashed files included), Jira and Confluence. Slack's check is per channel, so a deleted Slack message drops at the next sync (≤ 5 min).
 4. **Answer.** Up to 10 documents that passed the live check go to the LLM.
 
@@ -215,4 +215,4 @@ out): [TESTING.md](../TESTING.md) section 4, "With your own tools". Unit tests: 
 
 **What we take from them:** hybrid vector + keyword search (Onyx), and checking with the source at query time (PipesHub).
 
-**What we skip:** a separate search engine, graph database and message queue. At this corpus size Postgres handles vectors, full-text and ACLs in one place, and one transaction keeps them consistent. Add OpenSearch or a queue only when Postgres search latency or worker throughput is measured to be the bottleneck.
+**What we skip:** a separate search engine, graph database and message queue. At this corpus size Postgres handles vectors, BM25 and ACLs in one place, and one transaction keeps them consistent. Add OpenSearch or a queue only when Postgres search latency or worker throughput is measured to be the bottleneck.

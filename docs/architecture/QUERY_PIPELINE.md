@@ -15,14 +15,15 @@ Schema: [0002_core_schema.py](../../backend/migrations/versions/0002_core_schema
 an HNSW vector index in [0003](../../backend/migrations/versions/0003_chunks_embedding_hnsw.py),
 connections in [0004](../../backend/migrations/versions/0004_connections.py), companies in
 [0005](../../backend/migrations/versions/0005_companies.py), the audit hash chain and app role in
-[0006](../../backend/migrations/versions/0006_audit_hash_chain.py), and the app's own login in
-[0007](../../backend/migrations/versions/0007_app_role_login.py).
+[0006](../../backend/migrations/versions/0006_audit_hash_chain.py), the app's own login in
+[0007](../../backend/migrations/versions/0007_app_role_login.py), and the chunk context and BM25 index in
+[0010](../../backend/migrations/versions/0010_bm25.py) (ADR-012).
 
 | Table | Written by | Notes |
 |---|---|---|
 | `companies` | First full member to connect Slack from a new workspace; its admin adds the Atlassian site (`app/companies.py`) | Every document, boundary scope and cursor belongs to one (migration 0005). A user has one once a Slack or Atlassian connection names it; until then they see nothing |
 | `documents` | Connector | One row per item (Slack thread, Drive file). Unique on `(company_id, source, source_id)` |
-| `chunks` | Connector worker | Pieces of a document's text, at most **2,000 characters** each (TokenHub embedding limit) |
+| `chunks` | Connector worker | Pieces of a document's text, at most **800 characters**, cut before a heading where there is one, repeating up to 120 characters of the piece before (ADR-012). `context`: the title and headings the piece sits under, embedded and searched with it |
 | `sync_state` | Sync | Each scope's last complete sync, one row per `(company_id, source, key)`; shown as `synced_at` on citations and `last_synced_at` on the boundary. No change cursors yet: sync rescans each scope |
 | `boundary` | Admin action (`/api/admin/boundary`) | Which channels, folders, projects and spaces each company may use at all |
 | `users`, `user_principals` | Sign-in | Who a person is on each platform |
@@ -93,8 +94,9 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
 2. Embed the question. If that fails, continue with keyword search only.
 3. One SQL query ([app/retrieval/search.py](../../backend/app/retrieval/search.py)):
    only the user's own company's documents that are not deleted, whose ACL
-   shares a principal with the user, and whose scope is in the boundary. Keyword and vector ranks are merged
-   with reciprocal rank fusion; top 20 documents, up to 3 chunks each. Vector
+   shares a principal with the user, and whose scope is in the boundary. Keyword (BM25 over each chunk's
+   title, headings and text) and vector ranks are merged with reciprocal rank fusion; top 20 documents, up
+   to 3 chunks each, plus the chunks just before and after those (ADR-012). Vector
    search can use the HNSW index and runs with `hnsw.iterative_scan` on, so the
    permission filter cannot starve it. The index is approximate: it can
    occasionally miss a document, which makes an answer less complete but never
@@ -109,7 +111,8 @@ The app's routes are under `/api`; sign-in and connections are `/connectors/*` a
    `metadata.need_to_know` identities; secrets always. Secrets in the question are masked
    before step 2.
 6. Up to 10 documents go to the LLM as `<source id="S1">` blocks marked as
-   untrusted data, best-ranked chunks first, within 12,000 characters in total
+   untrusted data, best-ranked chunks first, then the chunks next to them from what is left of
+   12,000 characters in total
    (smaller prompts answer faster); replies are capped at 1,024 tokens, with
    `hy3`'s hidden reasoning turned off (ADR-006). The model sees short labels,
    never raw IDs. Prompt injection (ADR-011): each line addressed to the AI
