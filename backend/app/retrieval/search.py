@@ -3,8 +3,8 @@
 The permission filter (ACL overlaps the user's principals) and the admin
 boundary are applied in the first CTE, before any ranking. Denied documents
 therefore never influence ranking or result counts (SECURITY.md INV-5).
-Keyword (Postgres full-text) and semantic (pgvector) ranks are merged with
-reciprocal rank fusion. This is the fast pre-filter only; the live check
+Keyword (BM25, ParadeDB's pg_search) and semantic (pgvector) ranks are merged with
+reciprocal rank fusion (ADR-012). This is the fast pre-filter only; the live check
 (app/auth/live_check.py) has the final say.
 
 `restricted_matches` is an AUDIT-ONLY search without the filter (ADR-007): it
@@ -17,27 +17,24 @@ from datetime import datetime
 
 from sqlalchemy import Connection, text
 
-RRF_K = 60
+RRF_K = 60  # equal weights: 0.7 vector / 0.3 keyword measured worse with BM25 (ADR-012)
 
 _SEARCH_TEMPLATE = """
     WITH pool AS (
         {pool}
     ),
-    q AS (
-        -- Natural-language questions: match ANY meaningful word, rank by coverage.
-        SELECT to_tsquery(
-            'english',
-            replace(CAST(plainto_tsquery('english', :question) AS text), ' & ', ' | ')
-        ) AS query
-    ),
     kw AS (
-        SELECT c.id, row_number() OVER (ORDER BY ts_rank_cd(c.tsv, q.query) DESC, c.id) AS r
-        FROM chunks c
-        JOIN pool p ON p.id = c.document_id
-        CROSS JOIN q
-        WHERE c.tsv @@ q.query
-        ORDER BY r
-        LIMIT :chunk_limit
+        -- BM25 over title, headings and text (ADR-012): ANY meaningful word of the question matches,
+        -- rare words count for more; stemmed, English stop words ignored.
+        SELECT id, row_number() OVER (ORDER BY score DESC, id) AS r
+        FROM (
+            SELECT c.id, paradedb.score(c.id) AS score
+            FROM chunks c
+            JOIN pool p ON p.id = c.document_id
+            WHERE c.search ||| :question
+            ORDER BY score DESC, c.id
+            LIMIT :chunk_limit
+        ) best
     ),
     vec AS (
         -- Inner ORDER BY distance + LIMIT is the shape the HNSW index can serve.

@@ -310,7 +310,7 @@ def seed_company(conn, team, company_name, users, boundary, documents) -> None:
              "meta": json.dumps({"seed": True, "need_to_know": NEED_TO_KNOW.get((source, source_id), [])})},
         ).scalar_one()
         conn.execute(text("DELETE FROM chunks WHERE document_id = :d"), {"d": doc_id})
-        conn.execute(text(_INSERT_CHUNK), {"d": doc_id, "t": body, "h": digest, "k": False})
+        conn.execute(text(_INSERT_CHUNK), {"d": doc_id, "t": body, "ctx": title, "h": digest, "k": False})
 
 
 # One copy of the write SQL for the story documents and the filler, so a schema change happens in one place.
@@ -319,7 +319,8 @@ _INSERT_DOCUMENT = (
     "content_hash) VALUES (:c, :s, :sid, :scope, :t, :url, CAST(:u AS timestamptz), CAST(:acl AS text[]), "
     "CAST(:meta AS jsonb), :h) ON CONFLICT (company_id, source, source_id) "
 )
-_INSERT_CHUNK = "INSERT INTO chunks (document_id, ordinal, text, text_hash, keyword_only) VALUES (:d, 0, :t, :h, :k)"
+_INSERT_CHUNK = ("INSERT INTO chunks (document_id, ordinal, text, context, text_hash, keyword_only) "
+                 "VALUES (:d, 0, :t, :ctx, :h, :k)")  # context: the title, as app/sync.py writes it
 
 
 def _write_boundary(conn, company: int, boundary) -> None:
@@ -350,7 +351,7 @@ def seed_scale(conn, team: str) -> int:
     fresh = conn.execute(text(
         "SELECT d.id, d.source, d.source_id FROM documents d WHERE d.company_id = :c AND d.metadata->>'seed' = :m "
         "AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.document_id = d.id)"), {"c": company, "m": MARK}).all()
-    chunks = [{"d": doc_id, "t": rows[(s, i)]["body"], "h": rows[(s, i)]["h"], "k": True}
+    chunks = [{"d": doc_id, "t": rows[(s, i)]["body"], "ctx": rows[(s, i)]["t"], "h": rows[(s, i)]["h"], "k": True}
               for doc_id, s, i in fresh if (s, i) in rows]
     if chunks:
         conn.execute(text(_INSERT_CHUNK), chunks)
