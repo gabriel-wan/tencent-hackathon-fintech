@@ -127,6 +127,7 @@ class Candidate:
     synced_at: datetime | None = None  # its scope's last complete sync
     need_to_know: object = None  # metadata.need_to_know as stored: checked by app.redaction.has_need_to_know
     chunks: list[ChunkHit] = field(default_factory=list)
+    neighbours: list[ChunkHit] = field(default_factory=list)  # the chunks next to its hits (add_neighbours)
 
     @property
     def key(self) -> str:
@@ -204,6 +205,24 @@ def hybrid_search(
     """Documents the user may see, best first. This is what can reach the LLM."""
     return _ranked(conn, SEARCH_SQL, company_id, principals, question, question_embedding,
                    chunk_limit, doc_limit, chunks_per_doc)
+
+
+def add_neighbours(conn: Connection, candidates: list[Candidate]) -> None:
+    """Fills each candidate's `neighbours`: the chunks just before and after its hits that are not hits
+    themselves (ADR-012), so a small chunk reaches the LLM with the text around it. Reads only documents
+    already in `candidates`, which the permission filter let through; the live check still decides."""
+    hits = {(c.document_id, ch.ordinal) for c in candidates for ch in c.chunks}
+    wanted = {(d, o + step) for d, o in hits for step in (-1, 1)} - hits
+    if not wanted:
+        return
+    docs, ordinals = zip(*wanted)
+    by_doc = {c.document_id: c for c in candidates}
+    for row in conn.execute(text(
+            "SELECT c.id, c.document_id, c.ordinal, c.text FROM chunks c "
+            "JOIN unnest(CAST(:d AS bigint[]), CAST(:o AS integer[])) AS w(document_id, ordinal) "
+            "ON w.document_id = c.document_id AND w.ordinal = c.ordinal ORDER BY c.ordinal"),
+            {"d": list(docs), "o": list(ordinals)}):
+        by_doc[row.document_id].neighbours.append(ChunkHit(row.id, row.ordinal, row.text, 0.0))
 
 
 def restricted_matches(

@@ -197,6 +197,39 @@ def test_the_llm_gets_the_best_sources_within_the_context_budget(conn, make_user
     assert 'id="S6"' in prompt and 'id="S7"' not in prompt
 
 
+@pytest.mark.security
+def test_the_chunks_around_a_hit_reach_the_llm_but_never_another_documents(conn, make_user, add_doc, fake_llm):
+    alice = make_user("alice@co.example", ALICE)
+    doc = add_doc("slack", "C1:1", ["slack:user:U001"], "words that come before")  # ordinal 0
+    conn.execute(text("INSERT INTO chunks (document_id, ordinal, text) VALUES (:d, 1, 'gateway migration blocked'), "
+                      "(:d, 2, 'words that come after'), (:d, 4, 'words too far away')"), {"d": doc})
+    other = add_doc("slack", "C1:2", ["slack:user:U001"], "another thread")
+    conn.execute(text("INSERT INTO chunks (document_id, ordinal, text) VALUES (:d, 2, 'another neighbour')"),
+                 {"d": other})
+    llm = fake_llm(reply=json.dumps({"answer": "Blocked [S1].", "citations": ["S1"]}))
+
+    answer_question(within(conn), alice, "gateway migration", llm)
+
+    prompt = llm.all_prompt_text()
+    assert "words that come before\ngateway migration blocked\nwords that come after" in prompt  # in order, no gap
+    assert "too far away" not in prompt and "another" not in prompt
+
+
+def test_neighbours_only_get_what_the_hits_leave_of_the_budget():
+    from datetime import UTC, datetime
+
+    from app.pipeline.query import _fit
+    from app.retrieval.search import Candidate, ChunkHit
+
+    def doc(i, hit, neighbour):
+        return Candidate(i, "slack", f"C:{i}", "t", "u", datetime.now(UTC), [], 1.0,
+                         chunks=[ChunkHit(10 * i, 1, "h" * hit, 1.0)], neighbours=[ChunkHit(10 * i + 1, 2, "n" * neighbour, 0)])
+
+    # Every document's hits first: the second document's hit is not pushed out by the first one's neighbour.
+    picked = _fit([doc(1, MAX_CONTEXT_CHARS - 100, 200), doc(2, 50, 40)])
+    assert [[ch.ordinal for ch in kept] for _, kept in picked] == [[1], [1, 2]]
+
+
 def test_no_database_transaction_is_held_during_external_calls(conn, make_user, add_doc):
     alice = make_user("alice@co.example", ALICE)
     add_doc("slack", "C1:1", ["slack:user:U001"], "gateway migration blocked")
