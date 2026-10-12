@@ -147,7 +147,7 @@ One document per thread (a message with no replies is a thread of one):
 {
   "source": "slack",
   "source_id": "C123:1727741000.000100",                    // channel id + ":" + parent ts
-  "title": "#payments-oncall",                              // channel name
+  "title": "#payments-oncall · 2024-10-01",                 // channel name and the day the thread started (UTC)
   "text": "Alice: Migration blocked by Ben\nBen: Fixed, retrying",  // parent + replies, mentions → names
   "url": "https://ourteam.slack.com/archives/C123/p1727741000000100", // workspace + /archives/<channel>/p<ts without dot>
   "updated_at": "2026-09-30T22:05:00Z",                     // latest reply ts, as UTC

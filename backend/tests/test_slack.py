@@ -55,7 +55,7 @@ def test_fetch_one_document_per_thread():
     [doc] = slack.fetch(FakeSlack(), "C-PRIV")  # the join message is not a thread
     assert doc["updated_at"].startswith("2024-10-01T00:08:20")  # the latest reply, in UTC
     assert {k: v for k, v in doc.items() if k != "updated_at"} == {
-        "source": "slack", "source_id": "C-PRIV:1727741000.000100", "scope_id": "C-PRIV", "title": "#c-priv",
+        "source": "slack", "source_id": "C-PRIV:1727741000.000100", "scope_id": "C-PRIV", "title": "#c-priv · 2024-10-01",
         "url": "https://corp.slack.com/archives/C-PRIV/p1727741000000100",
         "acl": ["slack:user:U1", "slack:user:U2"],  # private: members only
         "text": "Alice: Migration blocked by @Ben\nBen: Fixed, retrying",
