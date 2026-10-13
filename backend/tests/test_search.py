@@ -183,3 +183,13 @@ def test_vector_index_search_is_not_starved_by_restricted_neighbours(conn, add_d
 
     results = hybrid_search(conn, company,ALICE, "nomatch", question_embedding=unit_vector(0), chunk_limit=5)
     assert keys(results) == ["slack:OK:1"]
+
+
+def test_bm25_search_is_not_starved_by_restricted_matches(conn, add_doc, company):
+    """The 60 best BM25 matches belong to documents the user may not see. If pg_search ever
+    applied ORDER BY score LIMIT before the pool join, the permitted match would be lost."""
+    for i in range(60):
+        add_doc("slack", f"X:{i}", ["slack:user:U999"], "keycloak keycloak keycloak")
+    add_doc("slack", "OK:1", ["slack:user:U001"], "keycloak deployment notes for the Singapore region, owned by Ben")
+
+    assert keys(hybrid_search(conn, company, ALICE, "keycloak", chunk_limit=5)) == ["slack:OK:1"]
