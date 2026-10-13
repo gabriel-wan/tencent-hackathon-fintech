@@ -700,9 +700,9 @@ Deterministic layers, in the order a question meets them:
 
 ## ADR-012: Retrieval quality: chunking, BM25 and evaluation
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-12
-- **Deciders:** Vincent (proposed); for the team to review on the pull request
+- **Deciders:** Vincent (proposed); Gabriel (security review, accepted on the pull request)
 - **Scope:** how documents are chunked and indexed, how keyword search ranks, what context the LLM receives,
   the "not found" rule, and how retrieval quality is measured. Amends ADR-005 and ADR-006. Relates to INV-5,
   ADR-010 (masking-safe cuts) and ADR-011 (injection resistance must not regress).
