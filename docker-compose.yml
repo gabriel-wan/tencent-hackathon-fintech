@@ -3,6 +3,7 @@ services:
   db:
     # Postgres 17 with pgvector and ParadeDB's pg_search (BM25, ADR-012). The preload list is given here too
     # because a data volume created by the old pgvector image keeps its own postgresql.conf without it.
+    # Only pg_search is used, but keep pg_cron: the image's init script creates it on a new volume and fails without it.
     image: paradedb/paradedb:v0.26.1-pg17
     command: postgres -c shared_preload_libraries=pg_search,pg_cron,pg_stat_statements
     env_file: backend/.env
