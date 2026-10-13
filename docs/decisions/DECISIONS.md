@@ -771,6 +771,12 @@ or "not found". WeKnora (Tencent's open-source knowledge platform) was studied f
   its old chunks stay searchable until then. Seeded documents are embedded again with their title.
 - The image change runs on the live server at the next deploy: back up first ([DEPLOYMENT.md](../DEPLOYMENT.md)).
 - `pg_search` is AGPL-3.0, used unmodified as a database extension; KnowBuddy's own code is unaffected.
+- **Accepted risk (INV-5, T9):** BM25 weighs terms (IDF, average length) over every row in `chunks_bm25_idx`,
+  including restricted documents and other companies'. Denied documents are still never returned or counted, but
+  they can shift the order of permitted ones. Scores are never shown, only which sources are used, so a user would
+  need many controlled questions to infer anything. Per-company indexes would remove it if that ever matters.
+  `test_bm25_search_is_not_starved_by_restricted_matches` checks that high-scoring restricted chunks never push a
+  permitted match out.
 - `ASSUMPTION:` limits accepted for now:
   - the evaluation's corpus is small and written by us; its questions often reuse the documents' words, which
     favours keyword search. Real questions and a labelled set from teammates would make it stronger;

@@ -287,7 +287,9 @@ channels, nested and shared Drive folders).
 **Built for it today:**
 - **Search** filters by permission inside the database, before ranking: a GIN index on each document's ACL, a BM25
   index (ParadeDB `pg_search`), and an HNSW vector index with iterative scan, so a user with narrow access still
-  gets enough permitted results (`retrieval/search.py`, migrations 0002, 0003 and 0010). Only the top results are re-checked live with
+  gets enough permitted results (`retrieval/search.py`, migrations 0002, 0003 and 0010). Denied documents are never
+  returned, but BM25's term statistics cover the whole index, so they can shift the order of permitted results
+  (accepted, ADR-012). Only the top results are re-checked live with
   each tool, so the question-time cost doesn't grow with the corpus.
 - **Sync** works scope by scope, and one scope failing never stops the others. Unchanged items are not
   downloaded again: only new or edited text is fetched, chunked and embedded (`changed()` in `app/sync.py`).

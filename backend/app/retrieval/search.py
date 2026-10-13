@@ -2,7 +2,10 @@
 
 The permission filter (ACL overlaps the user's principals) and the admin
 boundary are applied in the first CTE, before any ranking. Denied documents
-therefore never influence ranking or result counts (SECURITY.md INV-5).
+are never returned or counted. They can nudge the order of permitted ones:
+BM25 term statistics (IDF, average length) are index-wide, so every company's
+and every restricted chunk counts. Scores are never shown; accepted in ADR-012
+(SECURITY.md INV-5, T9).
 Keyword (BM25, ParadeDB's pg_search) and semantic (pgvector) ranks are merged with
 reciprocal rank fusion (ADR-012). This is the fast pre-filter only; the live check
 (app/auth/live_check.py) has the final say.
