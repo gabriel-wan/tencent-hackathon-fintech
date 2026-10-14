@@ -28,7 +28,7 @@ from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, build_messages, grou
 from app.llm.injection import find as find_injection
 from app.llm.injection import strip_blocks
 from app.redaction import Shield, has_need_to_know, mask_secrets, names_in
-from app.retrieval.search import Candidate, ChunkHit, hybrid_search, restricted_matches
+from app.retrieval.search import Candidate, ChunkHit, add_neighbours, hybrid_search, restricted_matches
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +65,8 @@ class QueryResult:
 
 
 def _fit(candidates: list[Candidate]) -> list[tuple[Candidate, list[ChunkHit]]]:
-    """Best-ranked documents, each with its best chunks, until MAX_CONTEXT_CHARS is used up."""
+    """Best-ranked documents, each with its best chunks, until MAX_CONTEXT_CHARS is used up; then, from what is
+    left and best document first, the chunks next to the ones kept (ADR-012)."""
     budget, picked = MAX_CONTEXT_CHARS, []
     for c in candidates[:MAX_DOCS_TO_LLM]:
         kept = []
@@ -75,7 +76,25 @@ def _fit(candidates: list[Candidate]) -> list[tuple[Candidate, list[ChunkHit]]]:
                 budget -= len(ch.text)
         if kept:
             picked.append((c, kept))
+    for c, kept in picked:
+        near = {ch.ordinal + step for ch in kept for step in (-1, 1)}
+        for ch in c.neighbours:
+            if ch.ordinal in near and len(ch.text) <= budget:
+                kept.append(ch)
+                budget -= len(ch.text)
     return picked
+
+
+def source_text(chunks: list[ChunkHit]) -> str:
+    """One source's chunks as the LLM reads them, in document order; "..." where text between them is left out."""
+    # ponytail: adjacent chunks keep their overlap (up to 120 repeated characters); dedupe if the budget gets tight.
+    parts, previous = [], None
+    for ch in sorted(chunks, key=lambda ch: ch.ordinal):
+        if previous is not None:
+            parts.append("\n" if ch.ordinal == previous + 1 else "\n...\n")
+        parts.append(ch.text)
+        previous = ch.ordinal
+    return "".join(parts)
 
 
 def answer_question(
@@ -119,6 +138,7 @@ def answer_question(
         # 2. Search only documents the user's stored ACL and the boundary allow.
         principals = audit["principals"] = principals_for(conn, user.id)
         candidates = hybrid_search(conn, user.company_id, principals, question, embedding)
+        add_neighbours(conn, candidates)
         colleagues = conn.execute(text("SELECT email, name FROM users WHERE company_id = :c"),
                                   {"c": user.company_id}).all()
 
@@ -160,8 +180,7 @@ def answer_question(
             cleared = has_need_to_know(principals, c.need_to_know)
             titles[c.key], in_title = shield.redact(c.title, cleared)
             urls[c.key], in_url = shield.redact(c.url, cleared)  # a link can carry the title or a token
-            body, in_body = shield.redact(
-                "\n...\n".join(ch.text for ch in sorted(chunks, key=lambda ch: ch.ordinal)), cleared)
+            body, in_body = shield.redact(source_text(chunks), cleared)
             masked = in_title + in_url + in_body
             redactions[c.key] = {"need_to_know": cleared, "masked": dict(masked)}  # counts, never values
             blocks.append(SourceBlock(

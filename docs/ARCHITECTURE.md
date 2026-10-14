@@ -23,7 +23,7 @@ and it never decides access. Every question and every admin action is written to
 | Website | Next.js, Tailwind, shadcn/ui | Where people sign in, connect tools, ask questions and (as admin) review the audit log |
 | API | FastAPI (Python) | Signs people in, enforces permissions, runs the question pipeline, writes the audit log |
 | Sync worker | Python, same code as the API | Copies each company's chosen content and its permissions every 5 minutes, so search is fast |
-| Database | PostgreSQL with pgvector | Documents, permissions, search indexes and the audit log in one place, kept consistent by transactions |
+| Database | PostgreSQL with pgvector and ParadeDB `pg_search` (BM25) | Documents, permissions, search indexes and the audit log in one place, kept consistent by transactions |
 | LLM and embeddings | Tencent Cloud TokenHub (`hy3`, `kinfra-text-embedding-0.6b`) | Writes the answer from the allowed sources; turns text into vectors for search by meaning |
 | Hosting | Docker Compose, one Tencent Cloud Lighthouse server | The same five containers locally and live (ADR-008, [DEPLOYMENT.md](DEPLOYMENT.md)) |
 
@@ -85,7 +85,7 @@ flowchart TB
     BE["backend<br/>FastAPI API, :8000"]
     SY["sync<br/>every 5 minutes"]
     MI["migrate<br/>sets up the tables"]
-    DB[("db<br/>PostgreSQL + pgvector")]
+    DB[("db<br/>PostgreSQL + pgvector + BM25")]
     TH["Tencent Cloud TokenHub<br/>LLM: answers<br/>embeddings: search"]
     TO["Slack, Google Drive,<br/>Jira, Confluence"]
 
@@ -262,7 +262,7 @@ erDiagram
 | `user_principals` | Sign-in | A person's identities in each tool; search matches them against `documents.acl` |
 | `boundary` | Admin (`PUT`/`DELETE /api/admin/boundary/…`), audited | Content outside it is never synced or searched |
 | `documents` | Sync | `acl` may list extra people but must never leave out a real reader; deleted items are soft-deleted (`deleted_at`) |
-| `chunks` | Sync | Pieces of at most 2,000 characters, with full-text and vector indexes. `keyword_only` chunks are never embedded by sync (migration 0008; today only the development seed's filler) |
+| `chunks` | Sync | Pieces of at most 800 characters, each with its `context` (title and headings), with BM25 and vector indexes (ADR-012). `keyword_only` chunks are never embedded by sync (migration 0008; today only the development seed's filler) |
 | `sync_state` | Sync | Each scope's last complete sync, shown as `synced_at` |
 | `audit_events` | Every question and admin action | Read-and-add only for the app; each record holds its company and the previous record's hash. No foreign keys, so the log outlives a deleted company |
 
@@ -270,7 +270,7 @@ erDiagram
 
 | We chose | Over | Because | What it costs |
 |---|---|---|---|
-| PostgreSQL for documents, vectors, full-text and ACLs | A separate search engine or vector store | One transaction keeps content and permissions consistent; one thing to run | Measured at 100k chunks (about Company A's size): search p95 0.9–1.1 s on a laptop, mostly keyword ranking of common words ([TESTING.md §9](TESTING.md#9-search-at-scale)). Much larger corpora would need more |
+| PostgreSQL for documents, vectors, BM25 and ACLs | A separate search engine or vector store | One transaction keeps content and permissions consistent; one thing to run | Measured at 100k chunks (about Company A's size): search p95 0.4 s on a laptop with BM25, down from 0.9–1.1 s ([TESTING.md §9](TESTING.md#9-search-at-scale)). Much larger corpora would need more |
 | Polling every 5 minutes, plus "sync now" | Webhooks | No public https endpoint or signature checks needed; works locally | New content can take up to ~5 minutes to appear |
 | Re-checking with each tool at question time | Trusting stored permissions alone | Revocations apply on the very next question | Up to 2 s added per question; a tool outage makes answers less complete, never leaky |
 | One role for admin and compliance | Separate roles | One fewer persona to build and demo (ADR-007) | No separation of duties; mitigated because admin actions are themselves in the hash chain |
@@ -285,9 +285,11 @@ Measured against the handbook's Company A (12,000+ Confluence pages in 50+ space
 channels, nested and shared Drive folders).
 
 **Built for it today:**
-- **Search** filters by permission inside the database, before ranking: a GIN index on each document's ACL, a GIN
-  full-text index, and an HNSW vector index with iterative scan, so a user with narrow access still gets enough
-  permitted results (`retrieval/search.py`, migrations 0002 and 0003). Only the top results are re-checked live with
+- **Search** filters by permission inside the database, before ranking: a GIN index on each document's ACL, a BM25
+  index (ParadeDB `pg_search`), and an HNSW vector index with iterative scan, so a user with narrow access still
+  gets enough permitted results (`retrieval/search.py`, migrations 0002, 0003 and 0010). Denied documents are never
+  returned, but BM25's term statistics cover the whole index, so they can shift the order of permitted results
+  (accepted, ADR-012). Only the top results are re-checked live with
   each tool, so the question-time cost doesn't grow with the corpus.
 - **Sync** works scope by scope, and one scope failing never stops the others. Unchanged items are not
   downloaded again: only new or edited text is fetched, chunked and embedded (`changed()` in `app/sync.py`).
@@ -312,7 +314,7 @@ Before building, the team listed the questions the design had to answer. Each is
 | 2 | How are tool permissions represented without flattening? | As each tool's own principals (`slack:user:…`, `slack:members`, `google:user:…`, `google:domain:…`, `atlassian:user:…`), matched against each document's ACL; the live check uses the tool's own rules | ADR-003 |
 | 3 | How are permission changes after ingestion handled? | The live check on every question; the next sync refreshes stored ACLs | ADR-003, ADR-005 |
 | 4 | How do we make sure stale permissions never leak? | Stored ACLs only narrow the search; the live check has the final say, and doubt means "no" | ADR-003 |
-| 5 | How are documents indexed? | Split into chunks of up to 2,000 characters, with PostgreSQL full-text and pgvector (HNSW) indexes | ADR-005 |
+| 5 | How are documents indexed? | Split into chunks of up to 800 characters at headings, each searched and embedded with its title and headings, with BM25 (ParadeDB) and pgvector (HNSW) indexes | ADR-005, ADR-012 |
 | 6 | How are embeddings tied to permissions? | Chunks belong to a document; the permission filter runs in the same query as the vector search | ADR-005 |
 | 7 | How do we retrieve and rank across tools? | One hybrid search over all tools, keyword and meaning merged by rank (reciprocal rank fusion) | ADR-004, ADR-005 |
 | 8 | How do we stop retrieved content becoming prompt injection? | Only allowed content is sent, wrapped as labelled untrusted data; the model can't act or call tools; citations are checked | ADR-006 |

@@ -51,7 +51,7 @@ This starts five services:
 
 | Service | What it does |
 |---|---|
-| `db` | PostgreSQL with pgvector: all data, permissions and the audit log |
+| `db` | PostgreSQL (ParadeDB image: pgvector and BM25 search): all data, permissions and the audit log |
 | `migrate` | Creates or updates the database tables, then exits |
 | `backend` | The API, on http://localhost:8000 (every route, with "Try it out": http://localhost:8000/docs) |
 | `sync` | Copies each company's chosen content from its tools every 5 minutes |

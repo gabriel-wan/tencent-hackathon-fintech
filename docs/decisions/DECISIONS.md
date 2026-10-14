@@ -21,6 +21,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | [009](#adr-009-frontend-architecture) | Frontend architecture | Accepted |
 | [010](#adr-010-pii-redaction-need-to-know-shield) | PII redaction (Need-to-Know Shield) | Accepted |
 | [011](#adr-011-prompt-injection-defences) | Prompt-injection defences | Accepted |
+| [012](#adr-012-retrieval-quality-chunking-bm25-and-evaluation) | Retrieval quality: chunking, BM25 and evaluation | Proposed |
 
 ---
 
@@ -280,6 +281,9 @@ Data flow and per-source check calls are described in
   so sensitive identifiers never reach the embedding model.
 - Webhooks would need a public HTTPS endpoint and signature checks. They are
   not used.
+- *Amended 2026-10-12 (ADR-012, proposed):* keyword search becomes BM25 (ParadeDB's `pg_search`), over
+  each chunk's title and headings as well as its text; chunks are at most 800 characters, cut at
+  headings, with a short overlap.
 
 ---
 
@@ -299,7 +303,8 @@ Data flow and per-source check calls are described in
 - **Grounding rules:**
   - Every claim cites a source ID.
   - When the sources do not answer the question, the model replies with a
-    fixed "not found" sentence.
+    fixed "not found" sentence. *Amended 2026-10-12 (ADR-012, proposed):* when they answer part
+    of it, the model gives that part, cited, and says what is missing.
   - When no source passes the permission check, the LLM is not called; the
     same fixed sentence is returned.
   - Any citation outside the allowed set is rejected by our code.
@@ -690,3 +695,91 @@ Deterministic layers, in the order a question meets them:
   - links written without `http(s)://` or `www.` are not checked;
   - a source that simply states something false is misinformation, not injection: the answer
     cites it, and the user can open the source.
+
+---
+
+## ADR-012: Retrieval quality: chunking, BM25 and evaluation
+
+- **Status:** Accepted
+- **Date:** 2026-10-12
+- **Deciders:** Vincent (proposed); Gabriel (security review, accepted on the pull request)
+- **Scope:** how documents are chunked and indexed, how keyword search ranks, what context the LLM receives,
+  the "not found" rule, and how retrieval quality is measured. Amends ADR-005 and ADR-006. Relates to INV-5,
+  ADR-010 (masking-safe cuts) and ADR-011 (injection resistance must not regress).
+
+### Context
+
+Teammates reported broad questions ("What is the team working on now?") answered "not found" when the answer
+existed, information missed, and answers from an old version of a ticket. Nothing measured retrieval, so none of
+it could be shown or fixed with confidence. In the code: 2,000-character chunks with no structure, Postgres
+full-text ranking without term weighting, titles and ticket keys not searchable, Jira text without the ticket's
+status or assignee, every Slack thread titled just `#channel`, and a prompt that allowed only a complete answer
+or "not found". WeKnora (Tencent's open-source knowledge platform) was studied for what production RAG does.
+
+### Decision
+
+1. **Evaluation first** (`backend/scripts/eval_retrieval.py`, [TESTING.md](../TESTING.md) §10): a fictional
+   company's long documents, written through the real sync path, among ~21,000 distractor documents; 25
+   specific, 6 broad, 5 freshness and 5 off-topic questions. It reports hit@k, MRR, whether the answer reaches
+   the LLM, stale text, leaks to a restricted persona and, with `--answers`, the whole pipeline's "not found"
+   rate. Every change below was kept only if it did not regress these numbers.
+2. **Ingestion keeps what answers depend on:** Jira text starts with `Status | Assignee | Priority | Labels`;
+   Jira and Confluence headings become Markdown `#` lines; a Slack thread's title carries the day it started.
+3. **Chunking** (`app/sync.py`): at most 800 characters; cut before a heading, else at a line break, sentence
+   end or space, never inside anything the Need-to-Know Shield detects; each chunk repeats whole lines (at most
+   120 characters) from the one before, except after a heading. Each chunk stores its **context** (title and
+   headings it sits under), embedded and searched with it; the chunk's own text is unchanged.
+4. **BM25** over context and text, with ParadeDB's `pg_search` (English stemming and stop words), replacing
+   Postgres full-text search. The database image becomes `paradedb/paradedb:v0.26.1-pg17`: the same Postgres 17
+   and pgvector 0.8.6, plus `pg_search`. Migration 0010 rebuilds indexes when the image's newer C library
+   changes the collation version.
+5. **Neighbouring chunks:** each hit brings the chunks before and after it from the same document, from the
+   budget left after every document's hits.
+6. **Partial answers:** the "not found" rule (ADR-006) gains one sentence: when the sources contain part of the
+   answer, give those facts, cited, and say what is missing.
+
+### Rejected
+
+- **Weighted RRF (0.7 vector / 0.3 keyword):** measured worse with BM25 (specific questions whose answer reached
+  the LLM 25 → 23 of 25, broad 6 → 3 of 6). Ranks stay merged with equal weight.
+- **Telling the model to prefer the newest source, or boosting recent documents:** would skew answers in
+  production (an old policy that is still correct loses to newer chatter). Freshness comes from current data.
+- **A similarity cutoff for "not found":** generic questions score low against their own answers, so it adds
+  false "not found" replies, the failure being fixed.
+- **First wording of the partial-answer rule** ("answer that part … only if no source is relevant, reply …"):
+  the injection evaluation fell from 30/30 to 27/30 (a reworded instruction in a source was obeyed 3 times out
+  of 3). The adopted wording keeps the original sentence and adds the partial case: 30/30, twice.
+- **Per-document access as WeKnora does it (per knowledge base):** KnowBuddy keeps per-document ACLs and the
+  live check (ADR-003).
+
+### Consequences
+
+- Evidence, 2026-10-12, `hy3` (baseline is `main` before this change):
+
+  | | Baseline | After |
+  |---|---|---|
+  | Broad: answer reaches the LLM | 5/6 | 6/6 |
+  | Broad: "not found" (whole pipeline) | 1/6 | 0/6 |
+  | Fresh: answer reaches the LLM | 3/5 | 5/5 |
+  | Fresh: "not found" / latest value in the answer | 2/5 / 3/5 | 0/5 / 5/5 |
+  | Specific: answer reaches the LLM / "not found" | 25/25 / 0/25 | 25/25 / 0/25 |
+  | Off-topic: "not found" | 5/5 | 5/5 |
+  | Leaks to the restricted persona / stale text | 0 / 0 | 0 / 0 |
+  | Injection evaluation (ADR-011) | 30/30 | 30/30 |
+
+- Every synced document is downloaded and chunked again after migration 0009 (its content hash is cleared);
+  its old chunks stay searchable until then. Seeded documents are embedded again with their title.
+- The image change runs on the live server at the next deploy: back up first ([DEPLOYMENT.md](../DEPLOYMENT.md)).
+- `pg_search` is AGPL-3.0, used unmodified as a database extension; KnowBuddy's own code is unaffected.
+- **Accepted risk (INV-5, T9):** BM25 weighs terms (IDF, average length) over every row in `chunks_bm25_idx`,
+  including restricted documents and other companies'. Denied documents are still never returned or counted, but
+  they can shift the order of permitted ones. Scores are never shown, only which sources are used, so a user would
+  need many controlled questions to infer anything. Per-company indexes would remove it if that ever matters.
+  `test_bm25_search_is_not_starved_by_restricted_matches` checks that high-scoring restricted chunks never push a
+  permitted match out.
+- `ASSUMPTION:` limits accepted for now:
+  - the evaluation's corpus is small and written by us; its questions often reuse the documents' words, which
+    favours keyword search. Real questions and a labelled set from teammates would make it stronger;
+  - broad questions still rank their best source in the top 5 only 4 times out of 6: distractors on the same
+    topics outrank them. An LLM query rewrite or a reranker is the next step if that matters in use;
+  - an edited Slack reply is picked up only when the thread gets a new reply (unchanged).

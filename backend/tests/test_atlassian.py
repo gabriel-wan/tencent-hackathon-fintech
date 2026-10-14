@@ -84,6 +84,21 @@ def test_adf_text_one_line_per_block():
     assert jira.adf_text(None) == ""
 
 
+def test_adf_headings_become_markdown_heading_lines():
+    heading = {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Rollback"}]}
+    assert jira.adf_text({"type": "doc", "content": [heading, *doc("Revert the deploy.")["content"]]}) == \
+        "## Rollback\nRevert the deploy.\n"
+
+
+def test_ticket_text_starts_with_its_state():
+    # A ticket moved to Done changes only these fields: they must be in the text, or the answer stays stale.
+    fields = {"summary": "Fix drift", "status": {"name": "Done"}, "assignee": {"displayName": "Daniel Ong"},
+              "priority": {"name": "High"}, "labels": ["ledger", "q4"], "description": doc("Rounding.")}
+    assert jira.issue_text(fields) == \
+        "Status: Done | Assignee: Daniel Ong | Priority: High | Labels: ledger, q4\nFix drift\nRounding."
+    assert jira.issue_text({"summary": "Fix drift", "assignee": None}).startswith("Assignee: Unassigned\n")
+
+
 def test_jira_fetch_one_document_per_ticket(atlassian_api):
     def search(request):
         body = json.loads(request.content)
@@ -106,7 +121,7 @@ def test_jira_fetch_one_document_per_ticket(atlassian_api):
     assert list(jira.fetch(http, "PAY")) == [{
         "source": "jira", "source_id": "10012", "scope_id": "PAY", "title": "PAY-12: Slow refunds",
         "url": "https://corp.atlassian.net/browse/PAY-12", "updated_at": "2026-09-30T09:00:00.000+0800",
-        "acl": acl, "text": "Slow refunds", "metadata": {"need_to_know": []},
+        "acl": acl, "text": "Assignee: Unassigned\nSlow refunds", "metadata": {"need_to_know": []},
     }, {
         "source": "jira", "source_id": "10013", "scope_id": "PAY", "title": "PAY-13: Double charge",
         "url": "https://corp.atlassian.net/browse/PAY-13", "updated_at": "2026-10-01T09:00:00.000+0800",
@@ -130,6 +145,11 @@ def test_jira_can_read_asks_for_the_users_permissions_in_one_call(atlassian_api)
 def test_storage_text():
     assert confluence.storage_text("<p>Step 1: <strong>fail over</strong> &amp; check</p><p>Done</p>") == \
         "Step 1: fail over & check\nDone"
+
+
+def test_storage_headings_become_markdown_heading_lines():
+    assert confluence.storage_text('<h1>Runbook</h1><p>Intro</p><hr/><h3 id="x">Rollback</h3><p>Revert</p>') == \
+        "# Runbook\nIntro\n\n### Rollback\nRevert"  # the blank line goes when the text is chunked
 
 
 def restricted(users=(), groups=()):

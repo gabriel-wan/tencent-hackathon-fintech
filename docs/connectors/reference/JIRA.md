@@ -88,7 +88,7 @@ as the user, one call) trims those. `source_id` is the numeric issue ID, which 4
 | | |
 |---|---|
 | Request | `POST /rest/api/3/search/jql` |
-| Body | `{ "jql": "project in (PAY) AND updated >= \"2026/10/01 13:00\" ORDER BY updated ASC", "fields": ["summary","description","comment","security","updated","project","reporter","assignee"], "maxResults": 100 }` |
+| Body | `{ "jql": "project in (PAY) AND updated >= \"2026/10/01 13:00\" ORDER BY updated ASC", "fields": ["summary","description","comment","security","updated","project","reporter","assignee","status","priority","labels"], "maxResults": 100 }` |
 
 ```json
 {
@@ -199,7 +199,9 @@ One document per ticket:
   "source": "jira",
   "source_id": "10013",                                           // issue.id (the live check, 4.9, takes IDs)
   "title": "PAY-13: Customer double-charged",                     // key + summary
-  "text": "Card ending 4242 was charged twice. Refund issued.",   // description + comments, ADF flattened
+  "text": "Status: Done | Assignee: Ben Lim | Priority: High\nCustomer double-charged\nCard ending 4242 was charged twice.\nRefund issued.",
+  // state line (status, assignee or "Unassigned", priority, labels), then summary, description and comments;
+  // ADF flattened, headings as # lines. A ticket moved to Done changes only its state, so the state is in the text.
   "url": "https://yourteam.atlassian.net/browse/PAY-13",          // site + /browse/ + key
   "updated_at": "2026-10-01T01:00:00Z",                           // fields.updated, in UTC
   "metadata": { "need_to_know": ["atlassian:user:5b10-sara"] },   // assignee + reporter: the Need-to-Know Shield (ADR-010)

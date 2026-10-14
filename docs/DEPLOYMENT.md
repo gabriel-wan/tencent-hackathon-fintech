@@ -135,6 +135,34 @@ after a crash or a server reboot. To see what's happening: `docker compose ps` a
 
 Never run `docker compose down -v` on the server: it deletes the database, including the audit log.
 
+### Changing the database image (ADR-012)
+
+The merge that brings in ADR-012 replaces the database image (`pgvector/pgvector:pg17` →
+`paradedb/paradedb:v0.26.1-pg17`, the same Postgres 17 and pgvector plus BM25) on the existing volume, and its
+migrations rebuild the indexes for the image's newer C library. Rehearsed on a copy of a development volume. On the
+server, **before merging**, back up the database:
+
+```bash
+cd ~/tencent-hackathon-fintech
+c() { docker compose -f docker-compose.yml -f docker-compose.prod.yml "$@"; }
+c exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > ~/knowbuddy-before-adr012.dump
+ls -lh ~/knowbuddy-before-adr012.dump   # not empty
+```
+
+Then merge. After the deploy: section 6's checks, `c logs migrate` ends without errors, and an admin runs
+**sync now** so every document is downloaded and chunked again (until then, answers use the old chunks).
+
+To roll back: revert the merge on GitHub (which deploys the old image; its `migrate` fails, as the database is at a
+migration the old code doesn't know), then restore the backup into a new database, so its indexes are built by the
+old image's library (anything asked in between leaves the audit log):
+
+```bash
+c stop backend sync
+c exec -T db sh -c 'dropdb -U "$POSTGRES_USER" --force "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" -T template0 "$POSTGRES_DB"'
+c exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < ~/knowbuddy-before-adr012.dump
+c up -d
+```
+
 ## 6. Check it works
 
 | Check | ✅ |

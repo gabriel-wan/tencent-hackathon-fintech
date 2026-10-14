@@ -113,6 +113,27 @@ def test_restricted_matches_lists_only_documents_the_user_cannot_see(conn, add_d
     }
 
 
+def test_keyword_search_stems_words_and_ignores_stop_words(conn, add_doc, company):
+    from app.retrieval.search import restricted_matches
+
+    add_doc("slack", "C1:8", ["slack:members"], "the refund was issued to the cardholder")
+    add_doc("slack", "C9:8", ["slack:user:U999"], "the vendor is late on the rotation")
+    assert keys(hybrid_search(conn, company, ALICE, "refunds")) == ["slack:C1:8"]
+    assert hybrid_search(conn, company, ALICE, "what is the of it") == []
+    # "the" is in the restricted document: an audit record of it would accuse the user of reaching it.
+    assert restricted_matches(conn, company, ALICE, "is the of") == []
+
+
+def test_keyword_search_finds_a_chunk_by_its_title_and_headings(conn, add_doc, company):
+    from sqlalchemy import text
+
+    doc_id = add_doc("slack", "C1:9", ["slack:members"], "Status: Done\nRound once, at settlement")
+    conn.execute(text("UPDATE chunks SET context = 'PAY-102: Fix ledger drift\n## Fix' WHERE document_id = :d"),
+                 {"d": doc_id})
+    add_doc("slack", "C1:10", ["slack:members"], "Status: In Progress\nUnrelated ticket")
+    assert keys(hybrid_search(conn, company, ALICE, "What is the status of PAY-102?"))[0] == "slack:C1:9"
+
+
 def test_restricted_matches_ignore_documents_that_are_only_semantically_near(conn, add_doc, company):
     from app.retrieval.search import restricted_matches
 
@@ -162,3 +183,13 @@ def test_vector_index_search_is_not_starved_by_restricted_neighbours(conn, add_d
 
     results = hybrid_search(conn, company,ALICE, "nomatch", question_embedding=unit_vector(0), chunk_limit=5)
     assert keys(results) == ["slack:OK:1"]
+
+
+def test_bm25_search_is_not_starved_by_restricted_matches(conn, add_doc, company):
+    """The 60 best BM25 matches belong to documents the user may not see. If pg_search ever
+    applied ORDER BY score LIMIT before the pool join, the permitted match would be lost."""
+    for i in range(60):
+        add_doc("slack", f"X:{i}", ["slack:user:U999"], "keycloak keycloak keycloak")
+    add_doc("slack", "OK:1", ["slack:user:U001"], "keycloak deployment notes for the Singapore region, owned by Ben")
+
+    assert keys(hybrid_search(conn, company, ALICE, "keycloak", chunk_limit=5)) == ["slack:OK:1"]

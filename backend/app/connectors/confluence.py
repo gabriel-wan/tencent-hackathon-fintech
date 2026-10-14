@@ -14,9 +14,13 @@ from app.connectors.atlassian import get, links_pages, pages
 
 BLOCK_END = re.compile(r"</(p|h\d|li|tr|div|pre|blockquote)>|<br\s*/?>")
 TAG = re.compile(r"<[^>]+>")
+HEADING = re.compile(r"<h([1-6])\b[^>]*>")  # \b: never <hr>
 
 
 def storage_text(storage: str) -> str:
+    """Storage format -> plain text, one line per block; headings as Markdown `#` lines, so the chunker can cut
+    at them."""
+    storage = HEADING.sub(lambda m: "\n" + "#" * int(m[1]) + " ", storage)
     return html.unescape(TAG.sub("", BLOCK_END.sub("\n", storage))).strip()
 
 

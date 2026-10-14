@@ -14,13 +14,29 @@ BLOCKS = {"paragraph", "heading", "codeBlock", "listItem", "blockquote", "tableR
 
 
 def adf_text(node: dict | None) -> str:
-    """Atlassian Document Format -> plain text, one line per block."""
+    """Atlassian Document Format -> plain text, one line per block; headings as Markdown `#` lines, so the
+    chunker can cut at them."""
     if not node:
         return ""
     if node.get("type") == "text":
         return node.get("text", "")
     inner = "".join(adf_text(c) for c in node.get("content") or [])
+    if node.get("type") == "heading":
+        inner = "#" * (node.get("attrs") or {}).get("level", 1) + " " + inner
     return inner + "\n" if node.get("type") in BLOCKS else inner
+
+
+def issue_text(f: dict) -> str:
+    """A ticket's searchable text, from its `fields`: its state first (a status or assignee change is all that
+    changed when a ticket moves to Done), then summary, description and comments."""
+    assignee = f.get("assignee")
+    state = [("Status", (f.get("status") or {}).get("name")),
+             ("Assignee", assignee.get("displayName") if assignee else "Unassigned"),
+             ("Priority", (f.get("priority") or {}).get("name")),
+             ("Labels", ", ".join(f.get("labels") or []))]
+    comments = [adf_text(c["body"]) for c in (f.get("comment") or {}).get("comments", [])]
+    return "\n".join([" | ".join(f"{k}: {v}" for k, v in state if v), f["summary"],
+                      adf_text(f.get("description")), *comments]).strip()
 
 
 def scopes(http: httpx.Client) -> list[dict]:
@@ -36,15 +52,13 @@ def fetch(http: httpx.Client, project: str, changed: Callable[[str, str], bool] 
     acl = [f"atlassian:user:{u['accountId']}" for u in pages(
         http, "/rest/api/3/user/permission/search", None, permissions="BROWSE_PROJECTS", projectKey=project)]
     body = {"jql": f'project = "{project}"',
-            "fields": ["summary", "description", "comment", "updated", "assignee", "reporter"], "maxResults": 100}
+            "fields": ["summary", "description", "comment", "updated", "assignee", "reporter", "status", "priority",
+                       "labels"], "maxResults": 100}
     while True:
         resp = request("POST", "/rest/api/3/search/jql", http=http, json=body).json()
         for issue in resp["issues"]:
             f = issue["fields"]
-            text = None
-            if changed(issue["id"], f["updated"]):
-                comments = [adf_text(c["body"]) for c in (f.get("comment") or {}).get("comments", [])]
-                text = "\n".join([f["summary"], adf_text(f.get("description")), *comments]).strip()
+            text = issue_text(f) if changed(issue["id"], f["updated"]) else None
             yield {
                 "source": "jira",
                 "source_id": issue["id"],  # numeric: what the live check (bulk permissions) takes

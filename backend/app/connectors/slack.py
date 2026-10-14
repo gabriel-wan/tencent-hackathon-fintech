@@ -26,6 +26,12 @@ def client(token: str) -> WebClient:
     return c
 
 
+def thread_title(channel_name: str, ts: str) -> str:
+    """`#channel · 2026-10-08` (the day the thread started, UTC): threads of one channel told apart in
+    citations and in what is embedded."""
+    return f"#{channel_name} · {datetime.fromtimestamp(float(ts), UTC).date().isoformat()}"
+
+
 def scopes(c: WebClient) -> list[dict]:
     """Channels this person can see, for the admin to choose the boundary from. `private`: the page groups and
     warns about these. DMs and group DMs are never listed: they stay out of the boundary on purpose."""
@@ -77,7 +83,7 @@ def fetch(c: WebClient, channel: str, changed: Callable[[str, str], bool] = lamb
                 "source": "slack",
                 "source_id": source_id,
                 "scope_id": channel,
-                "title": f"#{info['name']}",
+                "title": thread_title(info["name"], m["ts"]),
                 "url": f"{workspace}archives/{channel}/p{m['ts'].replace('.', '')}",
                 "updated_at": updated_at,
                 "acl": acl,

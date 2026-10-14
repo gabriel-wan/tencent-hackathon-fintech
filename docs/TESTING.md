@@ -251,7 +251,44 @@ Postgres's default 128 MB `shared_buffers`, so a cold cache was much slower (one
 Follow-ups: cheaper keyword ranking for common words, and sizing `shared_buffers` and memory for the production
 database before it holds this much.
 
-## 10. Not covered yet
+Measured again 12 Oct 2026 after BM25 replaced `ts_rank_cd` (ADR-012, `paradedb/paradedb:v0.26.1-pg17`, same laptop,
+100k chunks): employee 280 ms p50 / 373 ms p95, security 356 / 444 ms, contractor 75 / 162 ms; the audit-only search
+71 / 139, 72 / 125 and 52 / 102 ms. BM25 ranks only its best matches instead of every permitted match, so the
+keyword cost above is gone; the contractor, who sees little, is a little slower but still the fastest.
+
+## 10. Retrieval quality
+
+Does the right source reach the model, is it the latest version, and does an answerable question get an answer
+(ADR-012)? `backend/scripts/eval_retrieval.py` drops and recreates a database whose name must end in `_eval`,
+writes a fictional company's long documents ([eval_corpus.py](../backend/scripts/eval_corpus.py): runbooks,
+policies, Jira tickets, Slack threads, some later updated) through the real sync path, next to the ~21,000 filler
+documents as distractors (1,000 of them embedded), and asks 41 questions as a full-access persona: 25 specific,
+6 broad ("What is the team working on right now?"), 5 about something that changed, 5 off-topic. A restricted
+persona asks them too, to count leaks. It calls TokenHub (about 1,100 embeddings; with `--answers` also 41
+answers), and takes 3–5 minutes.
+
+```bash
+docker compose run --rm --build -e POSTGRES_DB=brain_eval -v ./backend/scripts:/app/scripts backend python -m scripts.eval_retrieval --answers
+```
+
+(Git Bash on Windows: prefix `MSYS_NO_PATHCONV=1`, or the mount path is rewritten.) It exits 1 on any leak or
+superseded text left in the index. Change one thing at a time and compare with the last recorded run.
+
+Measured 12 Oct 2026, `hy3`. "Reaches the LLM": a snippet that answers the question is in the text sent for a
+correct source. Before: `main` at 968eb23. After: ADR-012.
+
+| | Before | After |
+|---|---|---|
+| Specific: correct source in top 5 / reaches the LLM / answered | 25/25 / 25/25 / 25/25 | 25/25 / 25/25 / 25/25 |
+| Broad: correct source in top 5 / reaches the LLM / answered | 5/6 / 5/6 / 5/6 | 4/6 / 6/6 / 6/6 |
+| Changed: reaches the LLM / answered / answer has the new value | 3/5 / 3/5 / 3/5 | 5/5 / 5/5 / 5/5 |
+| Off-topic: answered "not found" | 5/5 | 5/5 |
+| Leaks / superseded text in the index | 0 / 0 | 0 / 0 |
+
+Prompt changes also need the injection evaluation (section 4) to stay at 30/30: the first wording of the
+partial-answer rule dropped it to 27/30 and was rejected (ADR-012).
+
+## 11. Not covered yet
 
 - No component tests for the chat page: its states are checked by hand (sections 4 and 6).
 - Signing in with real Google, Slack and Atlassian accounts is only checked by hand (section 4), never automatically.
