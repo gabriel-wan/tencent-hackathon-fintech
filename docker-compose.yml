@@ -10,7 +10,9 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      # Over TCP, as the other services connect: on a new volume the image's init scripts run on a temporary,
+      # socket-only server that a socket check would already call healthy, and migrate then gets "connection refused".
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 2s
       retries: 15
     # no ports: internal only
