@@ -3,6 +3,7 @@
 import { Check, Copy, ScrollText, Search, SearchX, ShieldAlert, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
+import { AuditAsk } from "@/components/admin/audit-ask";
 import { RecordDetail } from "@/components/admin/audit-record";
 import { Disclosure } from "@/components/disclosure";
 import { EmptyState } from "@/components/empty-state";
@@ -40,7 +41,7 @@ import { formatExact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 // /admin/audit (ADR-007): search the company's audit trail, read each record
-// in a dialog, and verify the hash chain. Admins only: the admin layout hides the page
+// in a dialog, verify the hash chain, and ask the trail in plain language (ADR-013). Admins only: the admin layout hides the page
 // from others, and the backend returns 403 to them anyway. Every search and
 // every verification is itself recorded in the trail.
 
@@ -471,23 +472,34 @@ export function AuditTrail({
 
   const records = results.status === "ready" ? results.records : [];
   const filtered = filterChips(applied).length > 0;
+  const filtersRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="grid gap-6">
       <VerifyPanel onOpenRecord={openRecord} />
+      <AuditAsk
+        onOpenRecord={openRecord}
+        onOpenInTrail={(filters) => {
+          apply(filters);
+          filtersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+        describeError={failureOf}
+      />
       {openError ? (
         <p role="alert" className="text-sm text-destructive">
           {openError}
         </p>
       ) : null}
-      <Filters
-        value={draft}
-        applied={applied}
-        onChange={setDraft}
-        onSearch={() => apply(draft)}
-        onApply={apply}
-        busy={results.status === "loading"}
-      />
+      <div ref={filtersRef} className="scroll-mt-4">
+        <Filters
+          value={draft}
+          applied={applied}
+          onChange={setDraft}
+          onSearch={() => apply(draft)}
+          onApply={apply}
+          busy={results.status === "loading"}
+        />
+      </div>
       <p className="sr-only" aria-live="polite">
         {results.status === "ready" ? `${records.length} records shown` : ""}
       </p>

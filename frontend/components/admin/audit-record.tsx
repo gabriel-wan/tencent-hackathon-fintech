@@ -5,6 +5,7 @@ import { Disclosure } from "@/components/disclosure";
 import { InfoTip } from "@/components/info-tip";
 import { Badge } from "@/components/ui/badge";
 import {
+  type AskedPayload,
   type AuditRecord,
   type DocumentRow,
   type QueryPayload,
@@ -295,6 +296,143 @@ function QueryDetail({ record, p }: { record: AuditRecord; p: QueryPayload }) {
   );
 }
 
+const ASKED_STATUS: Record<string, string> = {
+  answered: "Answered",
+  clarify: "Asked a clarifying question",
+  no_records: "No matching records",
+  unavailable: "AI unavailable",
+};
+
+const FILTER_NAMES: Record<string, string> = {
+  user: "User",
+  event_type: "Event",
+  source: "Tool",
+  scope_id: "In",
+  document: "Document",
+  since: "From",
+  until: "Before",
+};
+
+function recordList(ids: number[] | undefined): string {
+  return ids?.length ? ids.map((id) => `#${id}`).join(", ") : "none";
+}
+
+/** A question to the audit assistant (ADR-013): what it searched, what the AI was shown and cited, and its answer. */
+function AskedDetail({ record, p }: { record: AuditRecord; p: AskedPayload }) {
+  const timings = timingRows(p.timings_ms);
+  const filters = Object.entries(p.filters ?? {});
+  const dropped = Object.entries(p.plan?.dropped ?? {});
+  return (
+    <>
+      <FactTable
+        rows={[
+          ["Who", record.user_email ?? "no user"],
+          ["When", <span className="tabular-nums">{formatExact(record.ts)}</span>],
+          ["Event", eventLabel(record.event_type)],
+          ["Outcome", ASKED_STATUS[p.status ?? ""] ?? p.status ?? "unknown"],
+          ["Time zone", p.time_zone ?? "UTC"],
+          ["LLM", p.llm_error ? `failed (${p.llm_error})` : (p.model ?? "not called")],
+        ]}
+      />
+      <Section title="Question">
+        <p className="text-sm whitespace-pre-wrap">{p.question}</p>
+      </Section>
+      <Section
+        title="Search"
+        info={
+          <InfoTip label="About the search">
+            The AI turned the question into these filters; KnowBuddy checked each one and looked up names in this
+            company only. The AI never chooses the company or sees records before the search.
+          </InfoTip>
+        }
+      >
+        {filters.length ? (
+          <FactTable
+            rows={filters.map(([key, value]) => [
+              FILTER_NAMES[key] ?? key,
+              key === "since" || key === "until" ? <span className="tabular-nums">{formatExact(value)}</span> : value,
+            ])}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {p.status === "clarify" || p.llm_error ? "Nothing searched" : "The whole trail"}
+          </p>
+        )}
+        {dropped.length ? (
+          <QuietLine
+            text={`Ignored: ${dropped.map(([key, why]) => `${key} (${why})`).join(", ")}`}
+            label="About the ignored values"
+            info="Values the AI suggested that the audit search doesn't accept were dropped, not guessed."
+          />
+        ) : null}
+        {typeof p.matches === "number" ? (
+          <p className="text-sm">
+            {p.matches} matching record{p.matches === 1 ? "" : "s"}
+          </p>
+        ) : null}
+      </Section>
+      {p.llm_called ? (
+        <Section
+          title="Records the AI read"
+          info={
+            <InfoTip label="About the records the AI read">
+              The newest matching records, with their questions, answers and per-document decisions. Never their
+              hashes, people&apos;s tool identities or permission lists.
+            </InfoTip>
+          }
+        >
+          <FactTable
+            rows={[
+              ["Shown", recordList(p.sent_to_llm)],
+              ["Cited", recordList(p.citations)],
+            ]}
+          />
+          {p.injection?.length ? (
+            <QuietLine
+              text={`Instructions to the AI removed from ${recordList(p.injection.map((f) => f.record))}`}
+              label="About the removed instructions"
+              info={`A logged question or answer contained a line written to the AI; it was removed before the AI read the record. Matched: ${[...new Set(p.injection.flatMap((f) => f.rules))].join(", ")}.`}
+            />
+          ) : null}
+        </Section>
+      ) : null}
+      {timings.length ? (
+        <Section title="Timings">
+          <table className="w-full max-w-xs text-sm">
+            <tbody>
+              {timings.map((t) => (
+                <tr key={t.step} className={t.total ? "border-t font-semibold" : undefined}>
+                  <th scope="row" className={`py-1 pr-4 text-left ${t.total ? "font-semibold" : "font-normal"}`}>
+                    {t.step}
+                  </th>
+                  <td className="py-1 text-right tabular-nums">{formatMs(t.ms)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      ) : null}
+      <Section title="Answer">
+        <p className="text-sm whitespace-pre-wrap">{p.answer}</p>
+        {p.removed_links ? (
+          <QuietLine
+            text={`${p.removed_links} link${p.removed_links === 1 ? "" : "s"} removed from the answer`}
+            label="About the removed links"
+            info="Links the AI wasn't shown in the records are removed."
+          />
+        ) : null}
+        {p.removed_citations?.length ? (
+          <QuietLine
+            text={`Invented citations removed: ${p.removed_citations.join(", ")}`}
+            label="About the removed citations"
+            info="The AI cited a record label it wasn't given; the citation was removed."
+          />
+        ) : null}
+      </Section>
+    </>
+  );
+}
+
 function OtherDetail({ record }: { record: AuditRecord }) {
   return (
     <FactTable
@@ -316,6 +454,8 @@ export function RecordDetail({ record }: { record: AuditRecord }) {
     <div className="grid gap-5">
       {record.event_type === "query" ? (
         <QueryDetail record={record} p={record.payload as QueryPayload} />
+      ) : record.event_type === "audit_asked" ? (
+        <AskedDetail record={record} p={record.payload as AskedPayload} />
       ) : (
         <OtherDetail record={record} />
       )}

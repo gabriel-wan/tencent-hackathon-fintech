@@ -1,5 +1,5 @@
 /**
- * MOCK MODE (development only). Fake replies for POST /api/query, so the chat
+ * MOCK MODE (development only). Fake replies for POST /api/query and POST /api/admin/audit/ask, so the chat
  * states can be built without spending LLM tokens and states that cannot be
  * triggered on demand (unavailable, network error) can be seen. Everything
  * else (sign-in, /api/me, dev routes) stays real.
@@ -12,7 +12,7 @@
 import { NOT_FOUND_ANSWER, UNAVAILABLE_ANSWER } from "@/lib/answers";
 
 import { ApiError, BackendUnreachableError, NotSignedInError } from "./errors";
-import type { Citation, QueryResponse } from "./types";
+import type { AskResponse, Citation, QueryResponse } from "./types";
 
 // Default arguments keep the literal process.env.NEXT_PUBLIC_API_MOCK
 // reference, which Next.js inlines at build time.
@@ -162,4 +162,88 @@ export async function mockAnswer(question: string): Promise<QueryResponse> {
   const key = keywordIn(question);
   if (key in ERRORS) throw ERRORS[key]();
   return FIXTURES[key]();
+}
+
+// ---- The audit assistant (POST /api/admin/audit/ask) ----
+// Its record numbers are made up: opening one finds no such record in the real trail.
+
+const MOCK_FILTERS = {
+  user: "ben@merlionpay.example",
+  event_type: "query",
+  source: "confluence",
+  scope_id: "PAYGW",
+  since: "2026-09-15T00:00:00+08:00",
+};
+
+const AUDIT_FIXTURES: Record<string, () => AskResponse> = {
+  answered: () => ({
+    status: "answered",
+    answer:
+      "Ben asked 3 questions about the payment-gateway space [S1][S2][S3]. The gateway runbook was allowed and " +
+      "cited each time [S1][S2]; the Q3 breach report matched once but was withheld, as it is outside his access [S3].",
+    filters: MOCK_FILTERS,
+    choices: [],
+    facts: {
+      matches: 3,
+      more_than_shown: false,
+      summarised: 3,
+      newest: "2026-10-14T09:12:00Z",
+      oldest: "2026-10-02T03:40:00Z",
+      by_event_type: { query: 3 },
+      by_user: { "ben@merlionpay.example": 3 },
+      documents: [
+        { document: "confluence:98765", allowed: 3, denied: 0, sent: 3, cited: 2, restricted: 0 },
+        { document: "confluence:SEC-Q3", allowed: 0, denied: 0, sent: 0, cited: 0, restricted: 1 },
+      ],
+      documents_total: 2,
+    },
+    citations: [
+      { label: "S1", record_id: 9001 },
+      { label: "S2", record_id: 9000 },
+      { label: "S3", record_id: 8999 },
+    ],
+    audit_id: MOCK_AUDIT_ID,
+  }),
+  clarify: () => ({
+    status: "clarify",
+    answer: '"Ben" matches more than one person in your company. Which one do you mean?',
+    filters: {},
+    choices: [
+      { kind: "user", value: "ben@merlionpay.example", label: "Ben Tan (ben@merlionpay.example)", source: null },
+      { kind: "user", value: "benny@merlionpay.example", label: "Benny Lim (benny@merlionpay.example)", source: null },
+    ],
+    facts: null,
+    citations: [],
+    audit_id: MOCK_AUDIT_ID,
+  }),
+  "no-records": () => ({
+    status: "no_records",
+    answer: "No audit records match that search.",
+    filters: { event_type: "sync_requested" },
+    choices: [],
+    facts: {
+      matches: 0, more_than_shown: false, summarised: 0, newest: null, oldest: null,
+      by_event_type: {}, by_user: {}, documents: [], documents_total: 0,
+    },
+    citations: [],
+    audit_id: MOCK_AUDIT_ID,
+  }),
+  unavailable: () => ({
+    status: "unavailable",
+    answer: "The audit assistant is unavailable right now. Please use the filters below, or try again shortly.",
+    filters: {},
+    choices: [],
+    facts: null,
+    citations: [],
+    audit_id: MOCK_AUDIT_ID,
+  }),
+};
+
+/** A fake POST /api/admin/audit/ask. "mock:<state>" picks the state, as for the chat; "mock:fast" skips the delay. */
+export async function mockAudit(question: string): Promise<AskResponse> {
+  if (!question.includes("mock:fast")) await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY_MS / 3));
+  const keys = [...Object.keys(AUDIT_FIXTURES), ...Object.keys(ERRORS)].sort((a, b) => b.length - a.length);
+  const key = keys.find((k) => question.includes(`mock:${k}`)) ?? "answered";
+  if (key in ERRORS) throw ERRORS[key]();
+  return AUDIT_FIXTURES[key]();
 }
