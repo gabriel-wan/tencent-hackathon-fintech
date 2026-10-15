@@ -22,7 +22,7 @@ speculatively. Superseded decisions are kept, not deleted.
 | [010](#adr-010-pii-redaction-need-to-know-shield) | PII redaction (Need-to-Know Shield) | Accepted |
 | [011](#adr-011-prompt-injection-defences) | Prompt-injection defences | Accepted |
 | [012](#adr-012-retrieval-quality-chunking-bm25-and-evaluation) | Retrieval quality: chunking, BM25 and evaluation | Proposed |
-| [013](#adr-013-audit-assistant-asking-the-audit-trail-in-plain-language) | Audit assistant (asking the audit trail in plain language) | Proposed |
+| [013](#adr-013-audit-assistant-asking-the-audit-trail-in-plain-language) | Audit assistant (asking the audit trail in plain language) | Accepted |
 
 ---
 
@@ -789,9 +789,10 @@ or "not found". WeKnora (Tencent's open-source knowledge platform) was studied f
 
 ## ADR-013: Audit assistant (asking the audit trail in plain language)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-15
-- **Deciders:** Zewei (proposed); Gabriel and Vincent to review, as it changes what the LLM receives
+- **Deciders:** Zewei (proposed and built); Gabriel (security review, accepted on PR #44 once document titles were
+  limited to what the admin can read)
 - **Scope:** a chat on the admin Audit page that answers questions about the company's audit trail; what the LLM
   is given, what it decides, and what is recorded. Amends ADR-007 (query interface) and SECURITY.md §3. Relates to
   INV-2, INV-6, INV-9, INV-11, T1.
@@ -842,6 +843,12 @@ Option 4. One endpoint, `POST /api/admin/audit/ask {question, time_zone}`, admin
    words around its name ("the #eng channel" → "eng"). Nothing found, or more than one match, returns a clarifying
    question listing the choices, and the LLM is not called again. The company always comes from the session, never
    from the plan.
+   - **Document titles only where the admin can read** (added after the review of PR #44, Gabriel): a document
+     is matched by its key in the whole company, but by its title only among documents whose ACL shares one of the
+     admin's principals (`principals_for`, as search's Gate 1 checks), and a document named by key is shown by its
+     key. So asking about "the layoff doc" never matches or shows the title of an HR file the admin can't open:
+     the reply is the one for a document that doesn't exist. This follows PROJECT.md's open question (may the audit
+     page show titles of documents the admin can't read?), which stays open for the audit page as a whole.
    - **Days are the officer's** (added in phase D): the request carries the browser's IANA time zone (`time_zone`,
      default UTC), and a day in the plan runs midnight to midnight there, as the audit table reads its dates.
      Without it, "Open in audit trail" disagreed with the answer by the zone's offset. A zone the server doesn't
@@ -917,7 +924,7 @@ company's own audit records sent by the audit assistant to its admin, as above.
 - The summary must treat restricted matches as withheld when asked about denials (the first wording answered "No
   one was denied" while 646 restricted matches were in the facts). "[facts]", which the model sometimes writes as if
   it were a citation, is removed from the answer in code.
-- Tests (`test_audit_assistant.py`, 74): plan validation (bad values dropped, the company never taken from the
+- Tests (`test_audit_assistant.py`, 77): plan validation (bad values dropped, the company never taken from the
   plan), names resolved in the company only and ambiguous names, time zones, the facts, what a record block holds
   and omits, an injected logged question, fake tags in any spelling, invented labels and links, the endpoint
   (admins only, strict body) and the `audit_asked` event on success and on each failure. Frontend: `audit.test.ts`

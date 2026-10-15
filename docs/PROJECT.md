@@ -134,13 +134,13 @@ and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 | 11–12 Oct | 1 | Final testing on a clean machine | **Not started** |
 | 11–12 Oct | 2 | Project description and diagrams | **Not started** |
 | 11–12 Oct | 3 | Collect the CodeBuddy/WorkBuddy screenshots and submit | **In progress**: the minimum is met (3 CodeBuddy sessions, 6 screenshots, [tool-usage.md](hackathon/tool-usage.md)), plus a Miora session for the cover; the submission itself is not done |
-| 15–16 Oct | 2 | Audit assistant: ask the audit trail in plain language (ADR-013, [build plan](#planned-audit-assistant)) | **Built** (15 Oct): `POST /api/admin/audit/ask` and the Ask panel on `/admin/audit`; ADR-013 proposed, waiting for review |
+| 15–16 Oct | 2 | Audit assistant: ask the audit trail in plain language (ADR-013, [build plan](#planned-audit-assistant)) | **Built** (15 Oct): `POST /api/admin/audit/ask` and the Ask panel on `/admin/audit` (#44); ADR-013 accepted after Gabriel's security review |
 | 13–16 Oct | | Buffer | |
 
 ### Planned: audit assistant
 
-ADR-013 (Proposed) says what it does and why; this is the order it was built in. All five phases are done (15 Oct),
-waiting for review. Branch `feat/audit-assistant`, one
+ADR-013 (Accepted) says what it does and why; this is the order it was built in. All five phases are done (15 Oct),
+reviewed on #44. Branch `feat/audit-assistant`, one
 sub-branch per phase, merged `--no-ff` ([CONTRIBUTING.md](../CONTRIBUTING.md)). Zewei builds every phase, backend
 and frontend; Gabriel and Vincent review the pull request, since it changes what the LLM receives.
 
@@ -203,7 +203,7 @@ become a GitHub issue labelled `question`):
 
 | For | Question |
 |---|---|
-| Whole team | May the audit page show titles of documents the admin cannot read? (the original ARCHITECTURE.md §3.12 vs ADR-007.) Until decided, documents are shown by key |
+| Whole team | May the audit page show titles of documents the admin cannot read? (the original ARCHITECTURE.md §3.12 vs ADR-007.) Until decided, documents are shown by key, and the audit assistant matches and shows titles only of documents the admin can read (ADR-013) |
 | Whole team | Demo accounts: which Google accounts are OAuth test users (Testing-mode tokens expire after 7 days)? A Google-only contractor no longer works (Google names no company), and Slack guests need a paid plan: how does the demo show the contractor? |
 | Query pipeline | Add `label` and `status` to the query response; should a 503 "LLM is not configured" become the fixed "unavailable" reply? |
 | Query pipeline | Without an LLM configured, `/api/query` returns 503 before the pipeline runs, so the question is not audited. Should it be? |

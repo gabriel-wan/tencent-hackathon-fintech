@@ -195,21 +195,58 @@ def test_another_companys_scope_never_resolves(conn, company, make_company, add_
     assert "can't find" in resolved.clarify
 
 
-def test_document_by_key_or_title_including_deleted(conn, company, add_doc):
-    add_doc("jira", "10042", [], "body", title="Payment outage follow-up")
-    add_doc("drive", "D_OLD", [], "body", title="Old breach notes", deleted=True)
+ADMIN = ["slack:user:U_PRIYA", "slack:members"]
 
-    assert resolve(conn, company, Plan(names={"document": "jira:10042"})).filters == {"document": "jira:10042"}
-    assert resolve(conn, company, Plan(names={"document": "payment outage"})).filters == {"document": "jira:10042"}
-    resolved = resolve(conn, company, Plan(names={"document": "Old breach notes"}))
-    assert resolved.filters == {"document": "drive:D_OLD"}
+
+def test_document_by_key_or_title_including_deleted(conn, company, add_doc):
+    add_doc("jira", "10042", ["slack:members"], "body", title="Payment outage follow-up")
+    add_doc("drive", "D_OLD", ["slack:user:U_PRIYA"], "body", title="Old breach notes", deleted=True)
+
+    def found(name):
+        return resolve(conn, company, Plan(names={"document": name}), ADMIN).filters
+
+    assert found("jira:10042") == {"document": "jira:10042"}
+    assert found("payment outage") == {"document": "jira:10042"}
+    assert found("Old breach notes") == {"document": "drive:D_OLD"}
+
+
+@pytest.mark.security
+def test_titles_match_only_documents_the_admin_can_read(conn, company, add_doc):
+    """PROJECT.md "Open items": the audit page doesn't show titles of documents the admin can't read (PR #44 review)."""
+    add_doc("drive", "D_LAYOFFS", ["google:user:hr@co.example"], "body", title="Layoff plan Q4")
+    add_doc("drive", "D_TEAM", ["slack:members"], "body", title="Team offsite plan")
+
+    for name in ("Layoff plan Q4", "layoff", "plan"):
+        resolved = resolve(conn, company, Plan(names={"document": name}), ADMIN)
+        assert resolved.filters.get("document") != "drive:D_LAYOFFS", name
+        assert "Layoff" not in "".join(c.label for c in resolved.choices), name
+    # The reply is the one for a document that doesn't exist (it only repeats the admin's own words).
+    hidden = resolve(conn, company, Plan(names={"document": "Layoff plan Q4"}), ADMIN)
+    missing = resolve(conn, company, Plan(names={"document": "Nothing like this"}), ADMIN)
+    assert hidden.clarify == missing.clarify.replace("Nothing like this", "Layoff plan Q4")
+    assert hidden.choices == missing.choices == []
+    # "plan" fits only the one the admin can read, so it resolves without asking.
+    assert resolve(conn, company, Plan(names={"document": "plan"}), ADMIN).filters == {"document": "drive:D_TEAM"}
+    # Without the admin's principals, no title matches at all.
+    assert resolve(conn, company, Plan(names={"document": "Team offsite plan"})).filters == {}
+
+
+@pytest.mark.security
+def test_any_document_can_be_named_by_its_key_and_is_shown_by_it(conn, company, add_doc):
+    add_doc("drive", "D_LAYOFFS", ["google:user:hr@co.example"], "body", title="Layoff plan Q4")
+    resolved = resolve(conn, company, Plan(names={"document": "drive:D_LAYOFFS"}), ADMIN)
+    assert resolved.filters == {"document": "drive:D_LAYOFFS"} and resolved.clarify is None
+
+    from app.audit.assistant import _resolve_document
+    (choice,) = _resolve_document(conn, company, "drive:D_LAYOFFS", None, None, ADMIN)
+    assert choice.label == "drive:D_LAYOFFS (Google Drive)"  # the key, never the title
 
 
 @pytest.mark.security
 def test_another_companys_document_never_resolves(conn, company, make_company, add_doc):
-    add_doc("confluence", "999", [], "body", title="Q3 breach report", company_id=make_company("Other"))
+    add_doc("confluence", "999", ["slack:members"], "body", title="Q3 breach report", company_id=make_company("Other"))
     for name in ("confluence:999", "Q3 breach report", "breach"):
-        resolved = resolve(conn, company, Plan(names={"document": name}))
+        resolved = resolve(conn, company, Plan(names={"document": name}), ADMIN)  # even with a shared principal
         assert "document" not in resolved.filters, name
         assert resolved.choices == [], name
 
@@ -705,3 +742,16 @@ def test_a_facts_mark_is_not_left_in_the_answer(fake_llm):
     llm = fake_llm(reply=reply("Nobody was denied [facts]. Ben asked once [S1] [Facts].", ["S1"]))
     s = summarise(llm, "q", [rec(5, payload=QUERY)], truncated=False)
     assert s.answer == "Nobody was denied. Ben asked once [S1]."
+
+
+@pytest.mark.security
+def test_the_api_never_shows_a_title_the_admin_cannot_read(conn, team, add_doc):
+    conn.execute(text("INSERT INTO user_principals VALUES (:u, 'slack:user:U_PRIYA')"), {"u": team["admin"].id})
+    add_doc("drive", "D_LAYOFFS", ["google:user:hr@co.example"], "body", title="Layoff plan Q4")
+    llm = FakeLLM(replies=[plan_reply(document="the layoff doc")])
+    resp = ask_as(conn, team["admin"], llm)("Who opened the layoff doc?")
+    body = resp.json()
+    assert body["status"] == "clarify" and body["choices"] == []
+    assert "Layoff plan" not in resp.text and "D_LAYOFFS" not in resp.text
+    (_, payload), = asked_events(conn, team["admin"])
+    assert "Layoff plan" not in json.dumps(payload)
