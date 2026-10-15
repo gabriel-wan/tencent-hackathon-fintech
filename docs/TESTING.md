@@ -46,6 +46,7 @@ docker compose run --rm --build --user root -e POSTGRES_DB=brain_test -v ./backe
 | `test_sync.py` | Chunking, upserts, soft deletes, embedding catch-up, live checks as the user |
 | `test_admin.py` | Admin-only boundary and sync API, scoped to the admin's company, audited |
 | `test_audit.py` | Per-company hash chains, tampering detected, the app role can't change the log, concurrent writes, admin search and verify |
+| `test_audit_assistant.py` | Audit assistant (ADR-013): the model's plan can only narrow a search of the admin's own company, bad values are dropped, names resolve inside that company or turn into a clarifying question |
 | `test_seed.py` | The demo seed's permission cases (who finds which story document: the private `#db-team` thread, the contract terms, the breach report, the other company's ticket) and the Company A filler (its size, the same every run, added once, removed cleanly) |
 
 ## 2. Frontend checks

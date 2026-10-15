@@ -21,11 +21,16 @@ def unit_vector(index: int) -> list[float]:
 
 
 class FakeLLM:
-    """Records every chat call so tests can assert what the model was (not) shown."""
+    """Records every chat call so tests can assert what the model was (not) shown.
+
+    `replies`: one reply per chat call, in order (the audit assistant calls twice: plan, then summary); after the
+    last, `reply` is returned."""
 
     def __init__(self, reply: str = "", embedding: Sequence[float] | None = None,
-                 embed_error: Exception | None = None, chat_error: Exception | None = None):
+                 embed_error: Exception | None = None, chat_error: Exception | None = None,
+                 replies: Sequence[str] = ()):
         self.reply = reply
+        self.replies = list(replies)
         self.embedding = list(embedding) if embedding is not None else unit_vector(0)
         self.embed_error = embed_error
         self.chat_error = chat_error
@@ -36,7 +41,7 @@ class FakeLLM:
         self.chat_calls.append(messages)
         if self.chat_error:
             raise self.chat_error
-        return ChatResult(self.reply, "fake-model", 100, 20)
+        return ChatResult(self.replies.pop(0) if self.replies else self.reply, "fake-model", 100, 20)
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         self.embed_calls.append(list(texts))
