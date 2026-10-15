@@ -196,6 +196,8 @@ const AUDIT_FIXTURES: Record<string, () => AskResponse> = {
         { document: "confluence:SEC-Q3", allowed: 0, denied: 0, sent: 0, cited: 0, restricted: 1 },
       ],
       documents_total: 2,
+      totals: { allowed: 3, denied: 0, restricted: 1, sent: 3, cited: 2 },
+      records_with: { denied: 0, restricted: 1, instruction_removed: 0 },
     },
     citations: [
       { label: "S1", record_id: 9001 },
@@ -224,6 +226,8 @@ const AUDIT_FIXTURES: Record<string, () => AskResponse> = {
     facts: {
       matches: 0, more_than_shown: false, summarised: 0, newest: null, oldest: null,
       by_event_type: {}, by_user: {}, documents: [], documents_total: 0,
+      totals: { allowed: 0, denied: 0, restricted: 0, sent: 0, cited: 0 },
+      records_with: { denied: 0, restricted: 0, instruction_removed: 0 },
     },
     citations: [],
     audit_id: MOCK_AUDIT_ID,

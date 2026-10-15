@@ -500,6 +500,14 @@ export interface components {
             documents: components["schemas"]["DocumentFact"][];
             /** Documents Total */
             documents_total: number;
+            /** Totals */
+            totals: {
+                [key: string]: number;
+            };
+            /** Records With */
+            records_with: {
+                [key: string]: number;
+            };
         };
         /** HTTPValidationError */
         HTTPValidationError: {

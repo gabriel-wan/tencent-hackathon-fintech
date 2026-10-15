@@ -843,11 +843,19 @@ Option 4. One endpoint, `POST /api/admin/audit/ask {question, time_zone}`, admin
    question listing the choices, and the LLM is not called again. The company always comes from the session, never
    from the plan.
    - **Days are the officer's** (added in phase D): the request carries the browser's IANA time zone (`time_zone`,
-     checked against the known list, default UTC), and a day in the plan runs midnight to midnight there, as the
-     audit table reads its dates. Without it, "Open in audit trail" disagreed with the answer by the zone's offset.
+     default UTC), and a day in the plan runs midnight to midnight there, as the audit table reads its dates.
+     Without it, "Open in audit trail" disagreed with the answer by the zone's offset. A zone the server doesn't
+     know (a browser's newer time-zone data, or nonsense) is never loaded: it becomes UTC, rather than failing.
+   - **Several event types** (added after the production check): "changes to the boundary" is
+     `["boundary_added", "boundary_removed"]`; each type is searched on its own and the results merged, so a busy
+     type can't crowd a quiet one out of the 200-record limit. Denials are decisions inside questions, so the
+     planner is told "denied", "withheld" or "restricted" means `query` events, and to ask back only when it can't
+     tell what to search.
 3. **Search and count (code).** The existing `search_events`, up to `SEARCH_LIMIT` records. Code computes the
    facts: number of records, by event type and by person, distinct documents, and per document how often it was
-   allowed, denied, a restricted match, sent to the LLM or cited. These counts are shown to the officer as computed, never as the
+   allowed, denied, a restricted match, sent to the LLM or cited (the 20 busiest documents), plus totals of each
+   decision over every document and how many records had a denial, a restricted match or a removed instruction.
+   Without the totals the model read only the top 20 and once reported "0 restricted" for records that had them. These counts are shown to the officer as computed, never as the
    model restates them.
 4. **Summarise (LLM).** The model gets the question, the facts, and the newest records (at most 30, within the
    12,000-character budget of ADR-006), and writes a short answer citing records by label: at most 5 sentences,
@@ -903,8 +911,13 @@ company's own audit records sent by the audit assistant to its admin, as above.
   `SEARCH_LIMIT`, and the answer says when there were more.
 - `ASSUMPTION:` INV-11 says questions and answers are stored fully masked. That holds for the knowledge chat's
   `query` events; `audit_asked` masks only secrets, for the reason above.
-- About 5 seconds per answer on `hy3` (plan ~2 s, summary ~3 s), measured on 15 Oct.
-- Tests (`test_audit_assistant.py`, 67): plan validation (bad values dropped, the company never taken from the
+- About 5 seconds per answer on `hy3` (plan ~2 s, summary ~3 s), measured on 15 Oct. The frontend's `/api` proxy
+  gives up after 30 s, as for the chat; each TokenHub call may take up to 60 s, so a very slow TokenHub shows "backend
+  timed out" while the question is still recorded.
+- The summary must treat restricted matches as withheld when asked about denials (the first wording answered "No
+  one was denied" while 646 restricted matches were in the facts). "[facts]", which the model sometimes writes as if
+  it were a citation, is removed from the answer in code.
+- Tests (`test_audit_assistant.py`, 74): plan validation (bad values dropped, the company never taken from the
   plan), names resolved in the company only and ambiguous names, time zones, the facts, what a record block holds
   and omits, an injected logged question, fake tags in any spelling, invented labels and links, the endpoint
   (admins only, strict body) and the `audit_asked` event on success and on each failure. Frontend: `audit.test.ts`
