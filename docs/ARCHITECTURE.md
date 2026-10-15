@@ -113,7 +113,8 @@ What each backend module does: [backend/README.md](../backend/README.md).
 - **The frontend decides nothing.** It forwards the session cookie through its `/api` proxy and shows what the
   backend returns ([architecture/FRONTEND.md](architecture/FRONTEND.md)).
 - **Two database logins:** `migrate` uses the owner; `backend` and `sync` log in as `knowbuddy_app`, which can read
-  and add audit records but never change or delete them (migrations 0006 and 0007).
+  and add audit records but never change or delete them (migrations 0006 and 0007). In production they don't even
+  receive the owner's password (`docker-compose.prod.yml`, ADR-007).
 - **Many companies share one deployment.** Every query, sync and audit search is limited to one company.
 
 Any pull request that adds, removes or rewires a part updates this diagram.

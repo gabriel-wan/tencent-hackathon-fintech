@@ -80,7 +80,7 @@ existing files. Then fill in `LLM_API_KEY` and the sign-in apps (section 4) in `
 |---|---|
 | `APP_ENV` | `production`. Development mode refuses to start on any address but `localhost`, so its persona sign-in can never be reachable on a server |
 | `APP_URL`, `FRONTEND_URL` | Both `https://<your address>` |
-| `POSTGRES_PASSWORD` | A new, long random password |
+| `POSTGRES_PASSWORD` | A new, long random password. Only `db` and `migrate` receive it: `docker-compose.prod.yml` blanks it for `backend` and `sync`, which never use the owner's login (ADR-007) |
 | `APP_DB_PASSWORD` | Another new, long random password, different from the one above |
 | `TOKEN_ENCRYPTION_KEY` | A new key ([RUNNING.md](RUNNING.md) §2 shows how). Changing it later makes stored tokens unreadable, so everyone would have to connect again |
 | `LLM_API_KEY` | The TokenHub key. Turn on pay-as-you-go so the free quota can't run out mid-demo (ADR-006) |
