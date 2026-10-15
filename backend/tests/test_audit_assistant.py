@@ -157,6 +157,25 @@ def test_scope_by_title_sets_its_tool(conn, company, add_scope):
     assert resolved.filters == {"source": "confluence", "scope_id": "PAY"}
 
 
+@pytest.mark.parametrize("name", ["payment-gateway space", "the payment-gateway space", "Payment-Gateway Space"])
+def test_scope_words_around_the_name_are_ignored(conn, company, add_scope, name):
+    add_scope("confluence", "PGW", "payment-gateway")
+    assert resolve(conn, company, Plan(names={"scope": name})).filters == {"source": "confluence", "scope_id": "PGW"}
+
+
+def test_a_channel_name_with_its_hash(conn, company, add_scope):
+    add_scope("slack", "C_ENG", "eng")
+    assert resolve(conn, company, Plan(names={"scope": "the #eng channel"})).filters == {"source": "slack",
+                                                                                       "scope_id": "C_ENG"}
+
+
+def test_a_title_that_ends_in_space_still_matches_as_written(conn, company, add_scope):
+    add_scope("drive", "F1", "Office space")
+    add_scope("drive", "F2", "Office")
+    assert resolve(conn, company, Plan(names={"scope": "Office space"})).filters == {"source": "drive",
+                                                                                   "scope_id": "F1"}
+
+
 def test_scope_by_part_of_its_title_and_limited_by_tool(conn, company, add_scope):
     add_scope("confluence", "PAY", "payment-gateway")
     add_scope("jira", "PAYG", "Payment gateway rollout")
@@ -590,3 +609,37 @@ def test_an_admin_never_reaches_another_companys_records(conn, team):
     body = ask_as(conn, team["admin"], llm)("Every question ever asked").json()
     assert body["facts"]["by_user"].get("olga@other.example") is None
     assert f"Record: {theirs}" not in llm.all_prompt_text()
+
+
+# ---- The officer's time zone (phase D: the table reads days in the browser's zone) ----
+
+from zoneinfo import ZoneInfo  # noqa: E402
+
+
+def test_days_are_the_officers_days():
+    sgt = ZoneInfo("Asia/Singapore")
+    plan = validate({"since": "2026-10-14", "until": "2026-10-14"}, sgt)
+    assert plan.filters == {"since": datetime(2026, 10, 14, tzinfo=sgt), "until": datetime(2026, 10, 15, tzinfo=sgt)}
+    assert plan.filters["since"].astimezone(UTC) == datetime(2026, 10, 13, 16, tzinfo=UTC)
+
+
+def test_the_planner_is_told_the_zone(fake_llm):
+    llm = fake_llm(reply=plan_reply(since="2026-10-01"))
+    plan, _ = plan_question(llm, "since 1 Oct", TODAY, "Asia/Singapore")
+    assert "time zone Asia/Singapore" in llm.chat_calls[0][0]["content"]
+    assert plan.filters["since"].utcoffset() == timedelta(hours=8)
+
+
+def test_the_api_takes_the_browsers_zone(conn, team):
+    llm = FakeLLM(replies=[plan_reply(since="2026-10-14")])
+    body = ask_as(conn, team["admin"], llm)("Since 14 Oct", time_zone="Asia/Singapore").json()
+    assert body["filters"] == {"since": "2026-10-14T00:00:00+08:00"}
+    (_, payload), = asked_events(conn, team["admin"])
+    assert payload["time_zone"] == "Asia/Singapore"
+
+
+@pytest.mark.security
+def test_an_unknown_zone_is_refused(conn, team):
+    ask = ask_as(conn, team["admin"], FakeLLM(reply=plan_reply()))
+    for zone in ("Mars/Olympus", "../../etc/passwd", ""):
+        assert ask("q", time_zone=zone).status_code == 422, zone
