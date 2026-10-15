@@ -21,7 +21,7 @@ FastAPI, Python 3.12, dependencies managed with uv (ADR-001). The `backend` and 
 | `app/llm/` | TokenHub client (chat and the shared `embed()`), grounding rules, the prompt-injection scanner and its live check (`injection_eval.py`) |
 | `app/pipeline/query.py` | Question to answer, end to end, with one audit event |
 | `app/redaction.py` | Need-to-Know Shield (ADR-010): masks identifiers and secrets in the LLM prompt, citations, answers, embeddings and the audit |
-| `app/audit/` | Tamper-evident audit log: per-company hash chain, verify and search (`log.py`), admin API (`api.py`) |
+| `app/audit/` | Tamper-evident audit log: per-company hash chain, verify and search (`log.py`), admin API (`api.py`), the audit assistant that answers plain-language questions about the trail (`assistant.py`, ADR-013) |
 | `app/db.py` | Database engines: the app logs in as `knowbuddy_app` (`APP_DB_PASSWORD`); `owner_engine()` is for migrations and tests only |
 | `app/seed.py` | Fictional development data (the demo personas). Not connector data |
 | `migrations/` | Alembic schema migrations, applied by the `migrate` service |
