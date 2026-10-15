@@ -392,7 +392,13 @@ Data flow and per-source check calls are described in
   `SET ROLE NONE` switched back to the owner, a superuser in Docker; with its
   own login there is nothing more powerful to return to (tested). The owner's
   password is only needed by migrations and tests; a production server can
-  leave it out of the backend's environment.
+  leave it out of the backend's environment. *Amended 2026-10-15 (Gabriel):*
+  production now does. `db`, `migrate`, `backend` and `sync` all load
+  `backend/.env`, so the backend and sync containers held the owner's password
+  without using it, and a compromised backend could have logged in as the owner
+  and turned the triggers off. `docker-compose.prod.yml` blanks
+  `POSTGRES_PASSWORD` for `backend` and `sync`; only `db` and `migrate` keep it.
+  Development and the tests still use it (tests create their own database).
 - **The chain lock** (added 2026-10-08, review of PR #11): `record_event` holds
   its company's lock until the caller's transaction ends, so it is the last
   statement of a short transaction (every caller today). Lock keys are 32-bit,

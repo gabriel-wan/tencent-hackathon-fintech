@@ -12,12 +12,19 @@ services:
   db:
     restart: unless-stopped
 
+  # backend and sync log in as knowbuddy_app and never use the database owner's login (app/db.py), but they load the
+  # same backend/.env as db and migrate. Blank the owner's password here, so a compromised backend or sync can't log in
+  # as the owner and turn off the audit log's triggers (ADR-007). Only db and migrate keep it.
   backend:
     ports: !reset []
     restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ""
 
   sync:
     restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ""
 
   frontend:
     ports: !reset []
