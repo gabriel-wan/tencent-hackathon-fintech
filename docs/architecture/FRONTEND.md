@@ -19,7 +19,7 @@ are ADR-009 in [DECISIONS.md](../decisions/DECISIONS.md).
 | `/` | Signed in only. The chat (see below) |
 | `/login` | Sign-in: "Sign in with Slack" first, Google and Atlassian as logo buttons (links to the backend's OAuth), a collapsed "How accounts work"; development sign-in box and Slack token form when the backend is in development mode |
 | `/connectors` | Signed in only (it checks its own session, see Connections). Connect, test and disconnect Google Drive, Slack, Jira and Confluence. The page the OAuth callback returns to |
-| `/admin/audit` | Admins only. Search the audit trail, read each record, verify the hash chain (see "Admin pages") |
+| `/admin/audit` | Admins only. Search the audit trail, ask it in plain language, read each record, verify the hash chain (see "Admin pages") |
 | `/admin/boundary` | Admins only. Choose which channels, folders, projects and spaces KnowBuddy may read; sync now (see "Admin pages") |
 | `/status` | The backend's `/health` (database, pgvector), fetched server-side from `BACKEND_SERVER_URL`, a green or red dot per value. For developers. The deploy's live check reads `Database</dt><dd …>ok</dd>` here (`.github/workflows/deploy.yml`), so the value stays plain text in its `<dd>` |
 | Any other URL | "Page not found" (`app/not-found.tsx`, HTTP 404) with "Back to KnowBuddy". A page that throws shows "Something went wrong" (`app/error.tsx`) with Try again; the error goes to the console and server log, never onto the page |
@@ -206,8 +206,27 @@ menu (name and email, theme, Sign out).
   (Audit trail, Boundary) for admins. Both are UX only: every admin API
   route checks `is_admin` itself and returns 403.
 - **Audit trail** (`/admin/audit`, `components/admin/audit-trail.tsx`). Calls
-  `GET /api/admin/audit` and `POST /api/admin/audit/verify`
-  (`backend/app/audit/api.py`) through the `/api` proxy.
+  `GET /api/admin/audit`, `POST /api/admin/audit/verify` and
+  `POST /api/admin/audit/ask` (`backend/app/audit/api.py`) through the `/api` proxy.
+  - **Ask the audit trail** (`components/admin/audit-ask.tsx`, ADR-013): a card
+    between the hash chain and the filter bar. Three example questions until
+    the first is asked; Enter asks, Shift+Enter is a new line, one question at
+    a time. The browser's time zone goes with each question (`browserTimeZone`),
+    so its days match the table's. Each reply, under the question's bubble:
+    - **answered:** the answer as plain text, each `[S<n>]` a small `#<record>`
+      chip that opens that record in the record dialog;
+    - **clarify:** the question back, and each choice as a button that asks
+      again with "(I mean <value>)";
+    - **no records** or **unavailable** (red): the fixed sentence;
+    - the counts the backend made: "N matching records · N people · N documents
+      · N withheld" (denied plus restricted, when any) with an ⓘ, a note when the summary or the counts don't cover every match
+      (`coverageNote`), and **Counts in detail** (by person, by event, records with a
+      denial, a restricted match or a removed instruction, and a per-document table that scrolls sideways on a phone);
+    - **Searched:** the search as chips (`askFiltersToPage`, `filterChips`) and
+      **Open in audit trail**, which applies it to the table and scrolls there;
+    - **Ref #N**, which opens the question's own `audit_asked` record.
+
+    Failures use the page's messages, with **Try again**.
   - **Filter bar:** user, from and to (whole days in the viewer's time zone;
     "to" is inclusive) in view; event type, tool (+ channel, folder, project or
     space ID) and document behind **More filters** (a popover; its button
@@ -244,6 +263,13 @@ menu (name and email, theme, Sign out).
       in full" for a handler, instructions removed (ADR-011). Restricted
       matches are its denied rows. On a phone it scrolls sideways inside its
       box.
+
+    For a question to the assistant (`audit_asked`): Details (who, when,
+    outcome, time zone, LLM), the question, the **Search** it ran (and any
+    value it ignored), the matching count, the records the AI read and cited,
+    instructions removed from them, timings (plan, search, summary) and the
+    answer. Its table row reads *Asked the audit assistant "…" (N matches)*
+    with an outcome chip: Answered, Asked back, No records or LLM failed.
 
     Other events: the Details table with their own fields. Every record: its
     hash and the previous one, and the raw JSON.
@@ -379,8 +405,9 @@ Rerun it whenever a backend route or response changes, and commit the result.
 
 ### Mock mode (development only)
 
-`NEXT_PUBLIC_API_MOCK=1` fakes `askQuestion` (`POST /api/query`) with labelled fixtures from `lib/api/mock.ts`, so
-the chat states can be built without spending LLM tokens. It is ignored in production builds. How to use it:
+`NEXT_PUBLIC_API_MOCK=1` fakes `askQuestion` (`POST /api/query`) and `askAudit` (`POST /api/admin/audit/ask`) with
+labelled fixtures from `lib/api/mock.ts`, so the chat and audit assistant states can be built without spending LLM
+tokens. The audit assistant's mock records are made up, so opening one finds nothing; its Ref # reads "(mock)". It is ignored in production builds. How to use it:
 [docs/TESTING.md](../TESTING.md) section 6.
 
 ## Design principles

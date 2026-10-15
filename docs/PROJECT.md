@@ -96,7 +96,8 @@ by tests; see [SECURITY.md](SECURITY.md) for the invariants behind them):
 - [x] Audit log: complete (who / query / retrieved IDs / decisions / answer /
       timestamp), tamper-evident (per-company hash chain), queryable (search API)
 - [x] Audit inquiry interface for a compliance persona: the admin Audit page
-      searches, pages and verifies the trail through the API
+      searches, pages and verifies the trail through the API, and answers
+      plain-language questions about it with cited records (ADR-013)
 - [x] LLM leakage / hallucination mitigation (untrusted source blocks,
       citation checking, fixed reply when nothing is permitted)
 - [ ] Trust-boundary diagram and architecture diagram for the submission
@@ -133,7 +134,26 @@ and Task 3 Gabriel's ([CONTRIBUTING.md](../CONTRIBUTING.md) §7).
 | 11–12 Oct | 1 | Final testing on a clean machine | **Not started** |
 | 11–12 Oct | 2 | Project description and diagrams | **Not started** |
 | 11–12 Oct | 3 | Collect the CodeBuddy/WorkBuddy screenshots and submit | **In progress**: the minimum is met (3 CodeBuddy sessions, 6 screenshots, [tool-usage.md](hackathon/tool-usage.md)), plus a Miora session for the cover; the submission itself is not done |
+| 15–16 Oct | 2 | Audit assistant: ask the audit trail in plain language (ADR-013, [build plan](#planned-audit-assistant)) | **Built** (15 Oct): `POST /api/admin/audit/ask` and the Ask panel on `/admin/audit` (#44); ADR-013 accepted after Gabriel's security review |
 | 13–16 Oct | | Buffer | |
+
+### Planned: audit assistant
+
+ADR-013 (Accepted) says what it does and why; this is the order it was built in. All five phases are done (15 Oct),
+reviewed on #44. Branch `feat/audit-assistant`, one
+sub-branch per phase, merged `--no-ff` ([CONTRIBUTING.md](../CONTRIBUTING.md)). Zewei builds every phase, backend
+and frontend; Gabriel and Vincent review the pull request, since it changes what the LLM receives.
+
+| Phase | What | Files | Done when |
+|---|---|---|---|
+| A. Plan and resolve | The planner prompt and its JSON parse; validate each value as `GET /api/admin/audit` does; resolve people, scopes and documents within the admin's company, or return a clarifying question | `backend/app/audit/assistant.py`, `backend/tests/test_audit_assistant.py`; `FakeLLM` takes a list of replies (plan, then summary) | Tests: bad values dropped, a `company_id` in the plan is ignored, another company's names never resolve, an ambiguous name asks |
+| B. Facts and summary | Count the matches; build `<record>` blocks (masked text, decisions; no hashes, principals or ACLs); fence and `strip_blocks`; the summary prompt; `ground()`; labels back to record numbers | the same files | Tests: what a block holds and omits, an injected logged question is removed and reported, invented labels removed, no valid citation gives the fixed reply |
+| C. Endpoint and audit event | `POST /api/admin/audit/ask`, admins only; one `audit_asked` event per question, also when the LLM fails | `backend/app/audit/api.py`, `backend/tests/test_audit.py` | Tests: 403 for non-admins, the event's fields, an LLM error still records the event; `schema.d.ts` regenerated |
+| D. Ask panel | Ask box above the table on `/admin/audit`; answer with `[S<n>]` chips opening the record dialog, the facts, the filters used as chips, "Open in audit trail"; `audit_asked` in the event list and record dialog; mock mode labelled as mocked | `frontend/components/admin/audit-ask.tsx`, `frontend/lib/audit.ts`, `frontend/lib/api/client.ts`, `frontend/lib/api/mock.ts` | Vitest for label mapping and filters-to-URL; checked in the browser with the seeded personas |
+| E. Docs and live check | SECURITY.md §3, INV-6 and INV-9; ARCHITECTURE.md; QUERY_PIPELINE.md; FEATURES.md scenario 5; FRONTEND.md. Run the challenge's audit inquiry and a planted-instruction question against `hy3` and note the results in ADR-013 | `docs/` | `python3 scripts/check_doc_links.py` passes; ADR-013 accepted after review |
+
+If time runs out, A–C with the table's existing filters still answer scenario 5 through the API; D is what the demo
+shows.
 
 ### Planned UI work
 
@@ -183,7 +203,7 @@ become a GitHub issue labelled `question`):
 
 | For | Question |
 |---|---|
-| Whole team | May the audit page show titles of documents the admin cannot read? (the original ARCHITECTURE.md §3.12 vs ADR-007.) Until decided, documents are shown by key |
+| Whole team | May the audit page show titles of documents the admin cannot read? (the original ARCHITECTURE.md §3.12 vs ADR-007.) Until decided, documents are shown by key, and the audit assistant matches and shows titles only of documents the admin can read (ADR-013) |
 | Whole team | Demo accounts: which Google accounts are OAuth test users (Testing-mode tokens expire after 7 days)? A Google-only contractor no longer works (Google names no company), and Slack guests need a paid plan: how does the demo show the contractor? |
 | Query pipeline | Add `label` and `status` to the query response; should a 503 "LLM is not configured" become the fixed "unavailable" reply? |
 | Query pipeline | Without an LLM configured, `/api/query` returns 503 before the pipeline runs, so the question is not audited. Should it be? |

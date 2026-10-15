@@ -34,6 +34,30 @@ export type QueryPayload = {
   timings_ms?: Record<string, number>;
 };
 
+/** An audit_asked record (ADR-013, backend/app/audit/assistant.py ask()): one question to the audit assistant. */
+export type AskedPayload = {
+  question?: string; // secrets masked
+  time_zone?: string;
+  status?: "answered" | "clarify" | "no_records" | "unavailable";
+  plan?: { names?: Record<string, string>; dropped?: Record<string, string> };
+  filters?: Record<string, string>; // as GET /api/admin/audit query parameters
+  choices?: string[];
+  matches?: number;
+  sent_to_llm?: number[]; // record ids
+  citations?: number[]; // record ids
+  removed_citations?: string[];
+  removed_links?: number;
+  injection?: { record: number; rules: string[]; removed: number }[];
+  grounding_note?: string;
+  llm_called?: boolean;
+  llm_error?: string;
+  model?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  answer?: string;
+  timings_ms?: Record<string, number>;
+};
+
 export type AuditRecord = {
   id: number;
   ts: string;
@@ -64,6 +88,7 @@ export const EVENT_TYPES: { value: string; label: string }[] = [
   { value: "sync_requested", label: "Sync requested" },
   { value: "audit_searched", label: "Audit searched" },
   { value: "audit_verified", label: "Chain verified" },
+  { value: "audit_asked", label: "Assistant asked" },
 ];
 
 export const SOURCES: { value: SourceName; label: string }[] = [
@@ -181,10 +206,12 @@ function str(value: unknown): string {
 // ---- The record dialog's tables ----
 
 const TIMING_STEPS: [string, string][] = [
+  ["plan", "Plan"], // the audit assistant (audit_asked)
   ["embed", "Embed"],
   ["search", "Search"],
   ["live_check", "Live check"],
   ["llm", "LLM"],
+  ["summary", "Summary"], // the audit assistant (audit_asked)
 ];
 
 /**
@@ -232,6 +259,7 @@ const EVENT_NAMES: Record<string, string> = {
   sync_requested: "Sync requested",
   audit_searched: "Audit searched",
   audit_verified: "Chain verified",
+  audit_asked: "Assistant asked",
 };
 
 /** An event type in words ("Question"); an unknown type as written. */
@@ -334,6 +362,11 @@ export function summarise(record: AuditRecord): string {
       return p.ok
         ? `Verified the chain: intact (${plural(typeof p.checked === "number" ? p.checked : 0, "record")})`
         : `Verified the chain: broken at #${String(p.first_broken_id)}`;
+    case "audit_asked": {
+      const a = p as AskedPayload;
+      const matches = typeof a.matches === "number" ? ` (${a.matches} ${a.matches === 1 ? "match" : "matches"})` : "";
+      return `Asked the audit assistant "${a.question ?? ""}"${matches}`;
+    }
     default:
       return record.event_type;
   }
@@ -369,6 +402,13 @@ export type Outcome = { text: string; tone: "neutral" | "success" | "danger" };
  * documents were denied is in the record itself, not the table (Zewei, 12 Oct).
  */
 export function outcomes(record: AuditRecord): Outcome[] {
+  if (record.event_type === "audit_asked") {
+    const status = (record.payload as AskedPayload).status;
+    if (status === "unavailable") return [{ text: "LLM failed", tone: "danger" }];
+    if (status === "clarify") return [{ text: "Asked back", tone: "neutral" }];
+    if (status === "no_records") return [{ text: "No records", tone: "neutral" }];
+    return status === "answered" ? [{ text: "Answered", tone: "success" }] : [];
+  }
   if (record.event_type !== "query") return [];
   const p = record.payload as QueryPayload;
   return [
@@ -383,4 +423,54 @@ export function outcomes(record: AuditRecord): Outcome[] {
 /** The table's line for a record: the question itself for questions (its outcome is shown as chips), else summarise. */
 export function rowText(record: AuditRecord): string {
   return record.event_type === "query" ? `"${(record.payload as QueryPayload).question ?? ""}"` : summarise(record);
+}
+
+// ---- The audit assistant (ADR-013) ----
+
+/** The browser's IANA time zone, sent with each question so its days are the viewer's, as the table's are. */
+export function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+/** YYYY-MM-DD of an instant, in the viewer's time zone (the table's date inputs). */
+function localDate(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * The assistant's search (GET /api/admin/audit query parameters) as the table's filters, for "Open in audit trail":
+ * `since` is the first day, and `until` (exclusive midnight) becomes the day before it, as "To (inclusive)". The
+ * backend computed both in this browser's time zone, so they land on whole days here.
+ */
+export function askFiltersToPage(filters: Record<string, string>): AuditFilters {
+  const day = (iso: string | undefined, back = 0) => {
+    const ms = iso ? Date.parse(iso) : Number.NaN;
+    return Number.isNaN(ms) ? "" : localDate(ms - back);
+  };
+  return {
+    user: filters.user ?? "",
+    from: day(filters.since),
+    to: day(filters.until, 1),
+    event_type: filters.event_type ?? "",
+    source: filters.source ?? "",
+    scope_id: filters.source ? (filters.scope_id ?? "") : "",
+    document: filters.document ?? "",
+  };
+}
+
+/** What the assistant's answer says about how much it read, when that isn't everything. Null when it read it all. */
+export function coverageNote(facts: { matches: number; summarised: number; more_than_shown: boolean }): string | null {
+  if (facts.more_than_shown) {
+    return `More than ${facts.matches} records match: the counts cover the newest ${facts.matches}, the summary the newest ${facts.summarised}. Narrow the question to see everything.`;
+  }
+  if (facts.summarised < facts.matches) {
+    return `The counts cover all ${facts.matches} matching records; the summary was written from the newest ${facts.summarised}.`;
+  }
+  return null;
 }

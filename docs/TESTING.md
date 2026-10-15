@@ -46,6 +46,7 @@ docker compose run --rm --build --user root -e POSTGRES_DB=brain_test -v ./backe
 | `test_sync.py` | Chunking, upserts, soft deletes, embedding catch-up, live checks as the user |
 | `test_admin.py` | Admin-only boundary and sync API, scoped to the admin's company, audited |
 | `test_audit.py` | Per-company hash chains, tampering detected, the app role can't change the log, concurrent writes, admin search and verify |
+| `test_audit_assistant.py` | Audit assistant (ADR-013): the model's plan can only narrow a search of the admin's own company, bad values are dropped, names resolve inside that company or turn into a clarifying question; counts come from code; a record shown to the model holds no hashes, principals or ACLs; a logged question can't plant an instruction or fake our tags; invented citations and links are removed; `POST /api/admin/audit/ask` is admins only, answers the challenge's audit inquiry, and records one `audit_asked` event even when the LLM fails |
 | `test_seed.py` | The demo seed's permission cases (who finds which story document: the private `#db-team` thread, the contract terms, the breach report, the other company's ticket) and the Company A filler (its size, the same every run, added once, removed cleanly) |
 
 ## 2. Frontend checks
@@ -170,10 +171,14 @@ Shows every chat state without spending LLM tokens. Development only.
 
 1. Add `NEXT_PUBLIC_API_MOCK=1` to `frontend/.env`, and run the frontend dev server (section 2's link). Mock mode
    is ignored by production builds, including the Docker image.
-2. Sign in as usual: only chat answers are faked, so the backend must still be running.
+2. Sign in as usual: only chat answers and the audit assistant's answers are faked, so the backend must still be
+   running.
 3. Put a keyword in the question to choose the reply: `mock:answered` (default), `mock:long`, `mock:markers`,
    `mock:bad-url`, `mock:no-citations`, `mock:not-found`, `mock:unavailable`, `mock:401`, `mock:422`, `mock:503`,
    `mock:offline`. Replies take about 6 seconds; add `mock:fast` to skip the wait.
+4. On `/admin/audit` (as an admin), **Ask the audit trail** takes `mock:answered` (default), `mock:clarify`,
+   `mock:no-records`, `mock:unavailable` and the same error keywords. Replies take about 2 seconds. Its record
+   numbers are made up, so opening one says it isn't in your company's trail.
 
 ✅ A **MOCK DATA** badge shows at the top of the sidebar (in the top bar on phones), and mocked answers say "Ref # — (mock)". Fixtures are in
 `frontend/lib/api/mock.ts`. Remove the setting when you're done.

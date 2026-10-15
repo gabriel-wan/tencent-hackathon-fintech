@@ -87,8 +87,9 @@ def neutralise(value: str) -> str:
     return _TAG_RE.sub("&lt;", visible(value))
 
 
-def build_messages(question: str, blocks: list[SourceBlock]) -> list[dict]:
-    rendered = "\n\n".join(
+def render_sources(blocks: list[SourceBlock]) -> str:
+    """The <source> blocks, each fenced: shared with the audit assistant (app/audit/assistant.py, ADR-013)."""
+    return "\n\n".join(
         f'<source id="{b.label}">\n'
         f"Platform: {b.platform}\n"
         f"Title: {neutralise(b.title)}\n"
@@ -97,6 +98,10 @@ def build_messages(question: str, blocks: list[SourceBlock]) -> list[dict]:
         f"</source>"
         for b in blocks
     )
+
+
+def build_messages(question: str, blocks: list[SourceBlock]) -> list[dict]:
+    rendered = render_sources(blocks)
     # Question first and the rules restated last, so the sources sit between our own instructions.
     return [
         {"role": "system", "content": SYSTEM_PROMPT},

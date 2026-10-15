@@ -20,7 +20,7 @@ and it never decides access. Every question and every admin action is written to
 
 | Part | Built with | Why it exists |
 |---|---|---|
-| Website | Next.js, Tailwind, shadcn/ui | Where people sign in, connect tools, ask questions and (as admin) review the audit log |
+| Website | Next.js, Tailwind, shadcn/ui | Where people sign in, connect tools, ask questions and (as admin) review and ask the audit log |
 | API | FastAPI (Python) | Signs people in, enforces permissions, runs the question pipeline, writes the audit log |
 | Sync worker | Python, same code as the API | Copies each company's chosen content and its permissions every 5 minutes, so search is fast |
 | Database | PostgreSQL with pgvector and ParadeDB `pg_search` (BM25) | Documents, permissions, search indexes and the audit log in one place, kept consistent by transactions |
@@ -72,6 +72,7 @@ flowchart TB
 | LLM | Answers only from the sources it was given, citing them | Decide who may see what (INV-2) |
 | Answer check | Drops citations to anything not sent, and links the model wasn't shown; with no valid citation, returns the fixed "not found" reply | Reveal whether a restricted document exists: "not found" looks the same either way (INV-5) |
 | Audit log | Records the question, every candidate with its decision and reason, what was sent, the answer and timings | Be changed silently: records are hash-chained and the app's database login can only add them (INV-7) |
+| Audit assistant (admins only) | Turns the admin's question into an audit search with the LLM, then runs and counts it in code; the LLM summarises the newest matching records, fenced as untrusted, and cites each one (ADR-013) | Choose the company, see another company's records, or see hashes, principals or ACLs; a logged question is users' text and is treated like a document (INV-9) |
 
 ## 3. The parts
 
@@ -325,7 +326,8 @@ Before building, the team listed the questions the design had to answer. Each is
 | 12 | What freshness window do we commit to? | About 5 minutes for content; the next question for revocations | ADR-005 |
 | 13 | What if a tool is unavailable? | Its live checks fail, so its documents are dropped: a less complete answer, never a leak | ADR-003 |
 | 14 | How are citations shown? | Each `[S<n>]` in the answer is a numbered chip that jumps to its source; a Sources list under each answer: title, tool, link (http/https only), when it was last updated and synced (`synced_at`), and how many identifiers were masked in it (`redacted`) | ADR-006, ADR-009 |
-| 15 | What must the LLM never see? | Anything the asker may not see, credentials, other users' questions or answers, raw ACLs, audit internals | SECURITY.md §3 |
+| 15 | What must the LLM never see? | Anything the asker may not see, credentials, other users' questions or answers (except the company's own audit records, for its admin's audit question), raw ACLs, audit internals | SECURITY.md §3, ADR-013 |
+| 16 | How does a compliance officer query the audit trail? | By filters on the Audit page (`GET /api/admin/audit`), or in plain language: the LLM proposes the filters, code checks them, resolves names in the company, searches and counts; the LLM summarises the matching records and cites each one | ADR-007, ADR-013 |
 
 ## 10. Deep dives
 

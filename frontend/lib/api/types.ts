@@ -11,6 +11,9 @@ export type QueryResponse = Schemas["QueryResponse"];
 export type Citation = Schemas["CitationOut"];
 export type Me = Schemas["MeResponse"];
 export type DevUser = Schemas["DevUser"];
+export type AskRequest = Schemas["AskRequest"];
+export type AskResponse = Schemas["AskResponse"];
+export type AskFacts = Schemas["Facts"];
 
 // The backend types `source` as a plain string; these are the values it uses
 // (documents.source CHECK constraint, migration 0002).

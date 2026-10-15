@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   type AuditRecord,
   NO_FILTERS,
+  askFiltersToPage,
+  browserTimeZone,
+  coverageNote,
   filterChips,
   moreFiltersCount,
   outcomes,
@@ -278,5 +281,62 @@ describe("outcomes and row text", () => {
     const r: AuditRecord = { ...query({}), event_type: "sync_requested" };
     expect(outcomes(r)).toEqual([]);
     expect(rowText(r)).toBe("Asked for a sync now");
+  });
+});
+
+describe("the audit assistant", () => {
+  it("labels and summarises audit_asked records", () => {
+    expect(eventLabel("audit_asked")).toBe("Assistant asked");
+    expect(summarise(record("audit_asked", { question: "Who was denied?", matches: 3 }))).toBe(
+      'Asked the audit assistant "Who was denied?" (3 matches)',
+    );
+    expect(summarise(record("audit_asked", { question: "q", matches: 1 }))).toContain("(1 match)");
+    expect(summarise(record("audit_asked", { question: "q" }))).toBe('Asked the audit assistant "q"');
+  });
+
+  it("shows each outcome as a chip", () => {
+    const of = (status: string) => outcomes(record("audit_asked", { status }));
+    expect(of("answered")).toEqual([{ text: "Answered", tone: "success" }]);
+    expect(of("clarify")).toEqual([{ text: "Asked back", tone: "neutral" }]);
+    expect(of("no_records")).toEqual([{ text: "No records", tone: "neutral" }]);
+    expect(of("unavailable")).toEqual([{ text: "LLM failed", tone: "danger" }]);
+    expect(of("something new")).toEqual([]);
+  });
+
+  it("opens the assistant's search in the table as the same days", () => {
+    // The backend computes since/until as midnights in this browser's zone, as toApiQuery does for the table:
+    // going through the table's own query and back gives the same filters, whatever the zone.
+    const page = { ...NO_FILTERS, user: "jdoe@co.example", from: "2026-09-15", to: "2026-10-14", source: "confluence", scope_id: "GATEWAY" };
+    const api = Object.fromEntries(new URLSearchParams(toApiQuery(page)));
+    expect(askFiltersToPage(api)).toEqual(page);
+  });
+
+  it("keeps only filters the table has, and a scope only with its tool", () => {
+    expect(askFiltersToPage({ event_type: "query", document: "jira:1", scope_id: "X" })).toEqual({
+      ...NO_FILTERS,
+      event_type: "query",
+      document: "jira:1",
+    });
+    expect(askFiltersToPage({ since: "not a date" }).from).toBe("");
+  });
+
+  it("says when the summary or the counts don't cover every match", () => {
+    expect(coverageNote({ matches: 3, summarised: 3, more_than_shown: false })).toBeNull();
+    expect(coverageNote({ matches: 0, summarised: 0, more_than_shown: false })).toBeNull();
+    expect(coverageNote({ matches: 40, summarised: 30, more_than_shown: false })).toContain("newest 30");
+    expect(coverageNote({ matches: 200, summarised: 12, more_than_shown: true })).toContain("More than 200");
+  });
+
+  it("lists the assistant's timings in the order they ran", () => {
+    expect(timingRows({ total: 5149, summary: 3282, search: 7, plan: 1859 }).map((t) => t.step)).toEqual([
+      "Plan",
+      "Search",
+      "Summary",
+      "Total",
+    ]);
+  });
+
+  it("names the browser's time zone", () => {
+    expect(browserTimeZone()).toMatch(/^[A-Za-z_]+(\/[A-Za-z_+-]+)*$|^UTC$/);
   });
 });

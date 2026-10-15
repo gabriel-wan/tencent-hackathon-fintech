@@ -5,8 +5,8 @@
 // No function takes a user ID: who is asking comes only from the session
 // cookie (SECURITY.md INV-3).
 import { ApiError, BackendUnreachableError, NotSignedInError, readResponse } from "./errors";
-import { isMockEnabled, mockAnswer } from "./mock";
-import type { DevUser, Me, QueryRequest, QueryResponse, SourceName } from "./types";
+import { isMockEnabled, mockAnswer, mockAudit } from "./mock";
+import type { AskRequest, AskResponse, DevUser, Me, QueryRequest, QueryResponse, SourceName } from "./types";
 import type { AuditPage, VerifyResult } from "@/lib/audit";
 import { type BoundaryEntry, type Scope, type ScopesProblem, scopesProblem } from "@/lib/boundary";
 
@@ -55,6 +55,17 @@ export async function signOut(): Promise<void> {
  */
 export function searchAudit(query: string): Promise<AuditPage> {
   return request<AuditPage>(`/admin/audit${query ? `?${query}` : ""}`);
+}
+
+/**
+ * POST /api/admin/audit/ask: ask the audit trail in plain language (ADR-013). Admins only; itself audited.
+ * Sends the browser's time zone, so "last week" means the admin's days, as the table's dates do.
+ * In mock mode (development only) the reply is a labelled fixture.
+ */
+export function askAudit(question: string, timeZone: string): Promise<AskResponse> {
+  if (isMockEnabled()) return mockAudit(question);
+  const body: AskRequest = { question, time_zone: timeZone };
+  return request<AskResponse>("/admin/audit/ask", { method: "POST", body });
 }
 
 /** POST /api/admin/audit/verify: recompute the company's hash chain. Admins only; itself audited. */
