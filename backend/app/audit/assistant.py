@@ -16,7 +16,9 @@ The company never comes from the plan: the caller passes the admin's own.
    A record block never holds hashes, principals, ACLs, tokens or timings (SECURITY.md §3).
 """
 import json
+import logging
 import re
+import time as clock
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -25,11 +27,16 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
-from app.audit.log import SEARCH_LIMIT, search_events
+from app.audit.log import SEARCH_LIMIT, record_event, search_events
+from app.auth.session import User
 from app.connectors.admin import SCOPE_ID_PATTERN
 from app.llm.client import ChatResult
 from app.llm.grounding import FALLBACK_ANSWER, SourceBlock, ground, neutralise, render_sources, visible
+from app.db import Tx
 from app.llm.injection import strip_blocks
+from app.redaction import mask_secrets
+
+log = logging.getLogger(__name__)
 
 SOURCES = ("slack", "drive", "jira", "confluence")
 SOURCE_NAMES = {"slack": "Slack", "drive": "Google Drive", "jira": "Jira", "confluence": "Confluence"}
@@ -502,3 +509,110 @@ def summarise(llm: Any, question: str, records: Sequence[Mapping[str, Any]], tru
     summary.removed_links = grounded.removed_links
     summary.note = grounded.note
     return summary
+
+
+# ---- The whole question, as POST /api/admin/audit/ask runs it ----
+
+PLAN_UNAVAILABLE = "The audit assistant is unavailable right now. Please use the filters below, or try again shortly."
+SUMMARY_UNAVAILABLE = ("The audit assistant could not write a summary right now. The counts and matching records "
+                       "below are complete.")
+
+# search_events' keyword -> GET /api/admin/audit's query parameter, so the UI can open the same search in the table.
+API_FILTER_NAMES = {"user_email": "user", "event_type": "event_type", "since": "since", "until": "until",
+                    "source": "source", "scope_id": "scope_id", "document": "document"}
+
+
+@dataclass
+class AskResult:
+    status: str  # "answered", "clarify", "no_records" or "unavailable"
+    answer: str
+    audit_id: int
+    filters: dict[str, str] = field(default_factory=dict)  # as GET /api/admin/audit's query parameters
+    choices: list[Choice] = field(default_factory=list)
+    facts: dict[str, Any] | None = None
+    citations: list[tuple[str, int]] = field(default_factory=list)
+
+
+def api_filters(plan: Plan) -> dict[str, str]:
+    return {API_FILTER_NAMES[k]: v.isoformat() if isinstance(v, datetime) else str(v)
+            for k, v in plan.filters.items() if k in API_FILTER_NAMES}
+
+
+def ask(tx: Tx, admin: User, question: str, llm: Any, today: date | None = None) -> AskResult:
+    """Plan, resolve, search, count, summarise; one `audit_asked` record whatever happens, committed before the
+    reply. No database connection is held while the LLM is called."""
+    question = mask_secrets(question)  # credentials never reach TokenHub or the log
+    today = today or datetime.now(UTC).date()
+    audit: dict[str, Any] = {"question": question}
+    timings = audit["timings_ms"] = {}
+    tokens = {"prompt_tokens": 0, "completion_tokens": 0}
+    started = last = clock.perf_counter()
+
+    def lap(step: str) -> None:
+        nonlocal last
+        now = clock.perf_counter()
+        timings[step], last = round((now - last) * 1000), now
+
+    def used(result: ChatResult | None) -> None:
+        if result is not None:
+            audit["model"] = result.model
+            tokens["prompt_tokens"] += result.prompt_tokens
+            tokens["completion_tokens"] += result.completion_tokens
+
+    result = AskResult(status="answered", answer="", audit_id=0)
+    plan: Plan | None = None
+    try:
+        plan, plan_result = plan_question(llm, question, today)
+        used(plan_result)
+    except Exception as exc:
+        log.error("audit assistant plan failed: %s", exc)
+        audit["llm_error"] = f"plan: {type(exc).__name__}"
+        result.status, result.answer = "unavailable", PLAN_UNAVAILABLE
+    lap("plan")
+
+    records: list[dict[str, Any]] = []
+    truncated = False
+    if plan is not None:
+        with tx() as conn:
+            plan = resolve(conn, admin.company_id, plan)
+            if not plan.clarify:
+                records, truncated = search(conn, admin.company_id, plan)
+        audit["plan"] = {"names": plan.names, "dropped": plan.dropped}
+        result.filters = audit["filters"] = api_filters(plan)
+        lap("search")
+        if plan.clarify:
+            result.status, result.answer, result.choices = "clarify", plan.clarify, plan.choices
+            audit["choices"] = [c.value for c in plan.choices]
+        else:
+            audit["matches"] = len(records)
+            try:
+                summary = summarise(llm, question, records, truncated)
+            except Exception as exc:
+                log.error("audit assistant summary failed: %s", exc)
+                audit["llm_error"] = f"summary: {type(exc).__name__}"
+                result.status, result.answer = "unavailable", SUMMARY_UNAVAILABLE
+                result.facts = facts(records, truncated) | {"summarised": 0}
+                # The records were sent before the call failed: record which.
+                audit.update(sent_to_llm=list(record_blocks(records)[1].values()), llm_called=True)
+            else:
+                used(summary.result)
+                result.facts = summary.facts
+                result.citations = summary.citations
+                result.answer = summary.answer
+                result.status = "no_records" if not records else "answered"
+                audit.update(
+                    sent_to_llm=summary.sent,
+                    citations=[record_id for _, record_id in summary.citations],
+                    removed_citations=summary.removed_citations,
+                    removed_links=summary.removed_links,
+                    injection=summary.injection,
+                    grounding_note=summary.note,
+                    llm_called=summary.llm_called,
+                )
+            lap("summary")
+
+    audit.update(status=result.status, answer=mask_secrets(result.answer), **tokens)
+    timings["total"] = round((clock.perf_counter() - started) * 1000)
+    with tx() as conn:  # committed before the answer is returned
+        result.audit_id = record_event(conn, admin.id, "audit_asked", audit)
+    return result

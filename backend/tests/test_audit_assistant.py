@@ -422,3 +422,171 @@ def test_search_returns_only_the_admins_company(conn, company, make_company, mak
 
     records, _ = search(conn, company, resolve(conn, company, validate({"user": "Ben", "event_type": "query"})))
     assert [r["id"] for r in records] == [mine]
+
+
+# ---- POST /api/admin/audit/ask (phase C) ----
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.api.deps import get_conn, get_llm, get_tx  # noqa: E402
+from app.main import create_app  # noqa: E402
+from tests.helpers import FakeLLM, within  # noqa: E402
+
+
+class SummaryFails(FakeLLM):
+    """The plan call works; the summary call fails."""
+
+    def chat(self, messages):
+        if self.chat_calls:
+            self.chat_calls.append(messages)
+            raise RuntimeError("TokenHub down")
+        return super().chat(messages)
+
+
+def ask_as(conn, user, llm):
+    app = create_app("development")
+    app.dependency_overrides[get_conn] = lambda: conn
+    app.dependency_overrides[get_tx] = lambda: within(conn)
+    app.dependency_overrides[get_llm] = lambda: llm
+    client = TestClient(app)
+    client.post("/api/dev/session", json={"user_id": user.id})
+    return lambda question, **extra: client.post("/api/admin/audit/ask", json={"question": question, **extra})
+
+
+def asked_events(conn, admin):
+    return conn.execute(text("SELECT event_type, payload FROM audit_events WHERE user_id = :u ORDER BY id"),
+                        {"u": admin.id}).all()
+
+
+@pytest.fixture
+def team(make_user, make_company, add_scope):
+    add_scope("confluence", "GATEWAY", "payment-gateway")
+    return {
+        "admin": make_user("priya@co.example", [], is_admin=True, name="Priya Raman"),
+        "jdoe": make_user("jdoe@co.example", [], name="John Doe"),
+        "alice": make_user("alice@co.example", [], name="Alice Ng"),
+        "outsider": make_user("olga@other.example", [], is_admin=True, company_id=make_company("Other")),
+    }
+
+
+def query_in_gateway(conn, add_doc, user, allowed=True):
+    """A question of `user` that reached the gateway runbook (confluence:101, in the GATEWAY space)."""
+    if not conn.execute(text("SELECT 1 FROM documents WHERE source = 'confluence' AND source_id = '101'")).first():
+        add_doc("confluence", "101", [], "runbook", scope_id="GATEWAY", in_boundary=False, title="Gateway runbook")
+    return record_event(conn, user.id, "query", {
+        **QUERY, "user_email": user.email, "restricted_matches": [],
+        "candidates": [{"document": "confluence:101", "allowed": allowed, "reason": "allowed by confluence check"
+                        if allowed else "denied by confluence check"}],
+        "sent_to_llm": ["confluence:101"] if allowed else [], "citations": ["confluence:101"] if allowed else [],
+    })
+
+
+@pytest.mark.security
+def test_only_admins_can_ask(conn, team):
+    llm = FakeLLM(reply=plan_reply())
+    assert ask_as(conn, team["jdoe"], llm)("What did Priya do?").status_code == 403
+    assert llm.chat_calls == []
+    app = create_app("development")
+    app.dependency_overrides[get_tx] = lambda: within(conn)
+    assert TestClient(app).post("/api/admin/audit/ask", json={"question": "hi"}).status_code == 401
+
+
+@pytest.mark.security
+def test_the_request_cannot_carry_a_company_or_be_blank(conn, team):
+    ask = ask_as(conn, team["admin"], FakeLLM(reply=plan_reply()))
+    assert ask("What happened?", company_id=1).status_code == 422
+    assert ask("   ").status_code == 422
+    assert ask("x" * 2001).status_code == 422
+
+
+@pytest.mark.security
+def test_the_challenges_audit_inquiry_by_asking(conn, team, add_doc):
+    """ "Show me everything jdoe accessed related to the payment-gateway space in the last 30 days." """
+    opened = query_in_gateway(conn, add_doc, team["jdoe"])
+    denied = query_in_gateway(conn, add_doc, team["jdoe"], allowed=False)
+    query_in_gateway(conn, add_doc, team["alice"])  # another person
+    record_event(conn, team["outsider"].id, "query", QUERY)  # another company
+
+    llm = FakeLLM(replies=[
+        plan_reply(user="jdoe", event_type="query", scope="payment-gateway", since="2026-09-15"),
+        reply("jdoe asked twice in payment-gateway [S1][S2]; the runbook was denied once [S1].", ["S1", "S2"]),
+    ])
+    resp = ask_as(conn, team["admin"], llm)(
+        "Show me everything jdoe accessed related to the payment-gateway space in the last 30 days")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "answered"
+    assert body["filters"] == {"user": "jdoe@co.example", "event_type": "query", "source": "confluence",
+                               "scope_id": "GATEWAY", "since": "2026-09-15T00:00:00+00:00"}
+    assert body["citations"] == [{"label": "S1", "record_id": denied}, {"label": "S2", "record_id": opened}]
+    assert body["facts"]["matches"] == 2 and body["facts"]["by_user"] == {"jdoe@co.example": 2}
+    assert body["facts"]["documents"] == [{"document": "confluence:101", "allowed": 1, "denied": 1, "sent": 1,
+                                           "cited": 1, "restricted": 0}]
+    assert "hash" not in resp.text
+
+    (event_type, payload), = asked_events(conn, team["admin"])
+    assert event_type == "audit_asked" and body["audit_id"]
+    assert payload["status"] == "answered"
+    assert payload["filters"] == body["filters"]
+    assert payload["plan"]["names"] == {"user": "jdoe", "scope": "payment-gateway"}
+    assert payload["matches"] == 2
+    assert payload["sent_to_llm"] == [denied, opened] and payload["citations"] == [denied, opened]
+    assert payload["model"] == "fake-model" and payload["prompt_tokens"] == 200
+    assert set(payload["timings_ms"]) == {"plan", "search", "summary", "total"}
+
+
+@pytest.mark.security
+def test_an_ambiguous_name_asks_back_and_searches_nothing(conn, team, make_user):
+    make_user("johnny@co.example", [], name="Johnny Tan")
+    llm = FakeLLM(replies=[plan_reply(user="john")])
+    body = ask_as(conn, team["admin"], llm)("What did John open?").json()
+    assert body["status"] == "clarify" and "more than one" in body["answer"]
+    assert {c["value"] for c in body["choices"]} == {"jdoe@co.example", "johnny@co.example"}
+    assert body["facts"] is None and body["citations"] == []
+    assert len(llm.chat_calls) == 1  # no summary: nothing was searched
+    (_, payload), = asked_events(conn, team["admin"])
+    assert payload["status"] == "clarify" and "matches" not in payload
+
+
+def test_no_matching_records(conn, team):
+    llm = FakeLLM(replies=[plan_reply(event_type="sync_requested")])
+    body = ask_as(conn, team["admin"], llm)("Who pressed sync now?").json()
+    assert body["status"] == "no_records" and body["facts"]["matches"] == 0
+    assert len(llm.chat_calls) == 1
+
+
+@pytest.mark.security
+def test_a_failed_plan_is_still_audited(conn, team):
+    body = ask_as(conn, team["admin"], FakeLLM(chat_error=RuntimeError("down")))("What did jdoe do?").json()
+    assert body["status"] == "unavailable" and body["filters"] == {} and body["facts"] is None
+    (event_type, payload), = asked_events(conn, team["admin"])
+    assert event_type == "audit_asked" and payload["llm_error"] == "plan: RuntimeError"
+
+
+@pytest.mark.security
+def test_a_failed_summary_still_shows_the_counts_and_is_audited(conn, team, add_doc):
+    opened = query_in_gateway(conn, add_doc, team["jdoe"])
+    llm = SummaryFails(reply=plan_reply(user="jdoe@co.example"))
+    body = ask_as(conn, team["admin"], llm)("What did jdoe do?").json()
+    assert body["status"] == "unavailable" and body["facts"]["matches"] == 1
+    assert body["filters"] == {"user": "jdoe@co.example"}
+    (_, payload), = asked_events(conn, team["admin"])
+    assert payload["llm_error"] == "summary: RuntimeError" and payload["sent_to_llm"] == [opened]
+
+
+@pytest.mark.security
+def test_secrets_in_the_question_reach_neither_the_llm_nor_the_log(conn, team):
+    llm = FakeLLM(replies=[plan_reply()], reply=reply("x [S1]", ["S1"]))
+    ask_as(conn, team["admin"], llm)("Who typed password: hunter2 into a question?")
+    assert "hunter2" not in llm.all_prompt_text()
+    (_, payload), = asked_events(conn, team["admin"])
+    assert "hunter2" not in json.dumps(payload)
+
+
+@pytest.mark.security
+def test_an_admin_never_reaches_another_companys_records(conn, team):
+    theirs = record_event(conn, team["outsider"].id, "query", QUERY)
+    llm = FakeLLM(replies=[plan_reply(event_type="query")], reply=reply("x [S1]", ["S1"]))
+    body = ask_as(conn, team["admin"], llm)("Every question ever asked").json()
+    assert body["facts"]["by_user"].get("olga@other.example") is None
+    assert f"Record: {theirs}" not in llm.all_prompt_text()
