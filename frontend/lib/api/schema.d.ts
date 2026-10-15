@@ -360,6 +360,11 @@ export interface components {
         AskRequest: {
             /** Question */
             question: string;
+            /**
+             * Time Zone
+             * @default UTC
+             */
+            time_zone: string;
         };
         /** AskResponse */
         AskResponse: {

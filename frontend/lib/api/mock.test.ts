@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { NOT_FOUND_ANSWER, UNAVAILABLE_ANSWER } from "@/lib/answers";
 
 import { ApiError, BackendUnreachableError, NotSignedInError } from "./errors";
-import { isMockEnabled, mockAnswer, MOCK_AUDIT_ID } from "./mock";
+import { isMockEnabled, mockAnswer, mockAudit, MOCK_AUDIT_ID } from "./mock";
 
 describe("isMockEnabled", () => {
   it("is false in production even when the variable is set", () => {
@@ -58,5 +58,22 @@ describe("mockAnswer", () => {
     ["mock:offline", BackendUnreachableError],
   ])("%s throws the matching error", async (keyword, ErrorType) => {
     await expect(mockAnswer(`${keyword} mock:fast`)).rejects.toBeInstanceOf(ErrorType);
+  });
+});
+
+describe("mockAudit", () => {
+  it("answers with citations to records, never audited", async () => {
+    const reply = await mockAudit("what did ben do? mock:fast");
+    expect(reply.status).toBe("answered");
+    expect(reply.audit_id).toBe(MOCK_AUDIT_ID);
+    for (const c of reply.citations) expect(reply.answer).toContain(`[${c.label}]`);
+    expect(reply.facts?.matches).toBe(3);
+  });
+
+  it("covers every state", async () => {
+    expect((await mockAudit("mock:clarify mock:fast")).choices).toHaveLength(2);
+    expect((await mockAudit("mock:no-records mock:fast")).status).toBe("no_records");
+    expect((await mockAudit("mock:unavailable mock:fast")).facts).toBeNull();
+    await expect(mockAudit("mock:offline mock:fast")).rejects.toThrow();
   });
 });

@@ -11,6 +11,7 @@ last 30 days"):  GET /api/admin/audit?user=jdoe@co.com&source=confluence&scope_i
 """
 from datetime import datetime
 from typing import Annotated, Literal
+from zoneinfo import available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -27,11 +28,21 @@ router = APIRouter(prefix="/api/admin/audit", tags=["audit"])
 Source = Literal["slack", "drive", "jira", "confluence"]
 
 MAX_ASK_CHARS = 2000  # as the knowledge chat's questions
+_ZONES = available_timezones() | {"UTC"}
 
 
 class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")  # e.g. a "company_id" field is rejected, not ignored
     question: str = Field(max_length=MAX_ASK_CHARS)
+    # The officer's IANA time zone (the browser's), so "last week" and "14 Oct" mean their days, as in the table.
+    time_zone: str = Field(default="UTC", max_length=64)
+
+    @field_validator("time_zone")
+    @classmethod
+    def known_zone(cls, value: str) -> str:
+        if value not in _ZONES:
+            raise ValueError("unknown time zone")
+        return value
 
     @field_validator("question")
     @classmethod
@@ -127,7 +138,7 @@ def verify(admin: User = Depends(require_admin), tx: Tx = Depends(get_tx)):
 
 @router.post("/ask", response_model=AskResponse)
 def ask(body: AskRequest, admin: User = Depends(require_admin), tx: Tx = Depends(get_tx), llm=Depends(get_llm)):
-    result = ask_assistant(tx, admin, body.question, llm)
+    result = ask_assistant(tx, admin, body.question, llm, zone=body.time_zone)
     return AskResponse(
         status=result.status,
         answer=result.answer,
