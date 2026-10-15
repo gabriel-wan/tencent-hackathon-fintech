@@ -29,6 +29,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Connection, text
 
 from app.audit.log import SEARCH_LIMIT, record_event, search_events
+from app.auth.principals import principals_for
 from app.auth.session import User
 from app.connectors.admin import SCOPE_ID_PATTERN
 from app.llm.client import ChatResult
@@ -266,32 +267,40 @@ def _scope_matches(conn: Connection, company_id: int, name: str, source: str | N
 
 
 def _resolve_document(conn: Connection, company_id: int, name: str, source: str | None,
-                      scope_id: str | None) -> list[Choice]:
+                      scope_id: str | None, principals: Sequence[str]) -> list[Choice]:
     """Documents of the admin's company, deleted ones included (the trail still refers to them): by key, else by
-    title, else by part of the title."""
+    title, else by part of the title.
+
+    Titles stay with documents the admin may read (their ACL shares one of the admin's principals, as search's Gate 1
+    checks): a title is matched, and shown as a choice, only for those. Any document can still be named by its key,
+    copied from the table, and is then shown by its key (PROJECT.md "Open items": until the team decides, the audit
+    page doesn't show titles of documents the admin can't read)."""
+    readable = "acl && CAST(:p AS text[])"
     if DOCUMENT_KEY_RE.match(name):
         conditions = ["source || ':' || source_id = :v"]
     else:
-        conditions = ["lower(title) = lower(:v)", "title ILIKE :like"]
+        conditions = [f"lower(title) = lower(:v) AND {readable}", f"title ILIKE :like AND {readable}"]
     for condition in conditions:
         rows = conn.execute(
-            text("SELECT source, source_id, title, deleted_at IS NOT NULL AS deleted FROM documents "
-                 "WHERE company_id = :c AND (CAST(:s AS text) IS NULL OR source = :s) "
+            text(f"SELECT source, source_id, title, deleted_at IS NOT NULL AS deleted, {readable} AS readable "
+                 "FROM documents WHERE company_id = :c AND (CAST(:s AS text) IS NULL OR source = :s) "
                  "AND (CAST(:scope AS text) IS NULL OR scope_id = :scope) AND (" + condition + ") "
                  "ORDER BY title, source, source_id LIMIT :n"),
             {"c": company_id, "s": source, "scope": scope_id, "v": name, "like": _like(name),
-             "n": MAX_CHOICES + 1},
+             "p": list(principals), "n": MAX_CHOICES + 1},
         ).all()
         if rows:
             return [Choice("document", f"{r.source}:{r.source_id}",
-                           f"{r.title} ({SOURCE_NAMES[r.source]}{', deleted' if r.deleted else ''})")
+                           f"{r.title if r.readable else f'{r.source}:{r.source_id}'} "
+                           f"({SOURCE_NAMES[r.source]}{', deleted' if r.deleted else ''})")
                     for r in rows]
     return []
 
 
-def resolve(conn: Connection, company_id: int, plan: Plan) -> Plan:
+def resolve(conn: Connection, company_id: int, plan: Plan, principals: Sequence[str] = ()) -> Plan:
     """Turn the plan's names into exact search values, in `company_id` only. Each name must match exactly one
-    thing; otherwise the plan gets a clarifying question and its choices, and must not be searched."""
+    thing; otherwise the plan gets a clarifying question and its choices, and must not be searched. `principals`:
+    the admin's own (principals_for); document titles are matched only among documents they share with them."""
     filters, names = dict(plan.filters), plan.names
     resolved = Plan(filters=filters, names=dict(names), event_types=list(plan.event_types),
                     dropped=dict(plan.dropped), clarify=plan.clarify)
@@ -315,7 +324,8 @@ def resolve(conn: Connection, company_id: int, plan: Plan) -> Plan:
         filters["source"], filters["scope_id"] = scope.source, scope.value
     if "document" in names and (doc := one("document", names["document"],
                                            _resolve_document(conn, company_id, names["document"],
-                                                             filters.get("source"), filters.get("scope_id")))):
+                                                             filters.get("source"), filters.get("scope_id"),
+                                                             principals))):
         filters["document"] = doc.value
 
     if problems:
@@ -636,7 +646,7 @@ def ask(tx: Tx, admin: User, question: str, llm: Any, today: date | None = None,
     truncated = False
     if plan is not None:
         with tx() as conn:
-            plan = resolve(conn, admin.company_id, plan)
+            plan = resolve(conn, admin.company_id, plan, principals_for(conn, admin.id))
             if not plan.clarify:
                 records, truncated = search(conn, admin.company_id, plan)
         audit["plan"] = {"names": plan.names, "dropped": plan.dropped}
