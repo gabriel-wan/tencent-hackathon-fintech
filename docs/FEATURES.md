@@ -175,6 +175,22 @@ only`. Each search and verification is itself written to the log, so it appears 
 listed, and its record shows, per document, what was allowed, sent and cited (11 Oct: the outage post-mortem, the
 vendor decision record), and what was denied (the contract terms, Priya only).
 
+**Or ask it in plain language** (ADR-013). On the same page, type into **Ask the audit trail**: *Show me everything
+Ben accessed related to the payment-gateway space in the last 30 days*. On 15 Oct (`hy3`, seeded data) the answer
+was: *Ben accessed 22 payment-gateway documents in the last 30 days via 1 query on 2026-10-11 [#314]. Named
+documents include jira:10601, confluence:030207, and drive:D_RUNBOOK; 19 others are listed in the record [#314].*
+Under it: **1 matching record · 1 person · 22 documents**, the search it ran as chips (User ben@merlionpay.example,
+From 2026-09-15, To 2026-10-15, Event: Question, Tool: Confluence, In: PGW) and **Open in audit trail**, which shows
+the same record in the table. Each `#314` chip opens that record. Record numbers differ on your machine. A name that
+fits several people asks back: *"a" matches more than one person in your company. Which one do you mean?*, with
+Alice, Ben, Charlie and Priya as buttons (never Dana, who is in Kopi Labs). Each question is itself recorded
+(**Assistant asked**), with the search it ran and the records the AI read and cited.
+
+The AI decides nothing here: it turns the question into filters, and code checks them, looks names up in Priya's
+company only, searches and counts. The AI then summarises the newest matching records, which are fenced as
+untrusted text like documents (people typed those questions), and must cite each one. A planted instruction in a
+logged question didn't change the answer in a live check ([ADR-013](decisions/DECISIONS.md#adr-013-audit-assistant-asking-the-audit-trail-in-plain-language)).
+
 **What happened underneath:** every question writes one record with the user, time, question, every candidate with
 its decision and reason, what the question matched but the user may not see ("restricted matches", recorded only
 here, never shown to them), what was sent, the answer and timings. Each record holds the hash of the previous one in
@@ -182,7 +198,10 @@ its company's chain, so changing or deleting any record breaks the chain, and th
 records.
 
 **Tested by:** `test_the_challenges_audit_inquiry`, `test_a_changed_record_is_detected`, `test_a_deleted_record_is_detected`,
-`test_the_app_can_never_switch_to_a_more_powerful_role`, `test_only_admins_can_search_or_verify` (`test_audit.py`).
+`test_the_app_can_never_switch_to_a_more_powerful_role`, `test_only_admins_can_search_or_verify` (`test_audit.py`);
+the assistant by `test_the_challenges_audit_inquiry_by_asking`, `test_only_admins_can_ask`,
+`test_an_instruction_planted_in_a_logged_question_is_removed_and_reported`, `test_a_logged_question_cannot_fake_our_tags`
+and `test_an_admin_never_reaches_another_companys_records` (`test_audit_assistant.py`).
 
 **Limits:** documents appear by key, not title, until the team decides
 whether an admin may see titles of documents they can't read. Someone with full database access could rewrite and
