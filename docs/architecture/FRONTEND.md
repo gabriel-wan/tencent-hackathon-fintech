@@ -218,10 +218,10 @@ menu (name and email, theme, Sign out).
     - **clarify:** the question back, and each choice as a button that asks
       again with "(I mean <value>)";
     - **no records** or **unavailable** (red): the fixed sentence;
-    - the counts the backend made: "N matching records · N people · N documents"
-      with an ⓘ, a note when the summary or the counts don't cover every match
-      (`coverageNote`), and **Counts in detail** (by person, by event, and a
-      per-document table that scrolls sideways on a phone);
+    - the counts the backend made: "N matching records · N people · N documents
+      · N withheld" (denied plus restricted, when any) with an ⓘ, a note when the summary or the counts don't cover every match
+      (`coverageNote`), and **Counts in detail** (by person, by event, records with a
+      denial, a restricted match or a removed instruction, and a per-document table that scrolls sideways on a phone);
     - **Searched:** the search as chips (`askFiltersToPage`, `filterChips`) and
       **Open in audit trail**, which applies it to the table and scrolls there;
     - **Ref #N**, which opens the question's own `audit_asked` record.

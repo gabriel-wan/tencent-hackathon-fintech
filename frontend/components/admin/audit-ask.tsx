@@ -76,12 +76,15 @@ function FactsView({ facts }: { facts: AskFacts }) {
   const note = coverageNote(facts);
   const people = Object.entries(facts.by_user);
   const events = Object.entries(facts.by_event_type);
+  // Documents kept from someone: refused by the live check (denied) or never shown (restricted matches).
+  const withheld = (facts.totals.denied ?? 0) + (facts.totals.restricted ?? 0);
   return (
     <div className="grid gap-2 text-sm">
       <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-muted-foreground">
         <span className="font-medium text-foreground">{count(facts.matches, "matching record")}</span>
         {people.length ? <span>· {count(people.length, "person", "people")}</span> : null}
         {facts.documents_total ? <span>· {count(facts.documents_total, "document")}</span> : null}
+        {withheld ? <span>· {withheld.toLocaleString()} withheld</span> : null}
         <InfoTip label="About these counts">
           Counted by KnowBuddy over every matching record, not by the AI. The summary above is written from the newest
           records and cites each one.
@@ -96,6 +99,11 @@ function FactsView({ facts }: { facts: AskFacts }) {
               <dd>{people.map(([who, n]) => `${who} (${n})`).join(", ")}</dd>
               <dt className="text-muted-foreground">By event</dt>
               <dd>{events.map(([type, n]) => `${eventLabel(type)} (${n})`).join(", ")}</dd>
+              <dt className="text-muted-foreground">Records with</dt>
+              <dd>
+                {facts.records_with.denied ?? 0} denied, {facts.records_with.restricted ?? 0} restricted,{" "}
+                {facts.records_with.instruction_removed ?? 0} with an instruction removed
+              </dd>
             </dl>
             {facts.documents.length ? (
               <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
