@@ -76,7 +76,7 @@ def test_one_day_range_is_allowed():
 @pytest.mark.parametrize("raw, key", [
     ({"event_type": "DROP TABLE"}, "event_type"),
     ({"event_type": "login"}, "event_type"),
-    ({"event_type": ["query"]}, "event_type"),
+    ({"event_type": ["DROP TABLE"]}, "event_type"),
     ({"source": "github"}, "source"),
     ({"since": "last week"}, "since"),
     ({"until": 20261014}, "until"),
@@ -639,7 +639,69 @@ def test_the_api_takes_the_browsers_zone(conn, team):
 
 
 @pytest.mark.security
-def test_an_unknown_zone_is_refused(conn, team):
-    ask = ask_as(conn, team["admin"], FakeLLM(reply=plan_reply()))
+def test_an_unknown_zone_becomes_utc_and_is_never_loaded(conn, team):
+    """A browser can know a zone this server doesn't: the question still works, in UTC days."""
     for zone in ("Mars/Olympus", "../../etc/passwd", ""):
-        assert ask("q", time_zone=zone).status_code == 422, zone
+        llm = FakeLLM(replies=[plan_reply(since="2026-10-14")])
+        body = ask_as(conn, team["admin"], llm)("Since 14 Oct", time_zone=zone).json()
+        assert body["filters"] == {"since": "2026-10-14T00:00:00+00:00"}, zone
+        assert "time zone UTC" in llm.chat_calls[0][0]["content"]
+    payloads = [p for _, p in asked_events(conn, team["admin"])]
+    assert {p["time_zone"] for p in payloads} == {"UTC"}
+    assert ask_as(conn, team["admin"], FakeLLM(reply=plan_reply()))("q", time_zone="x" * 65).status_code == 422
+
+
+def test_the_planner_is_told_denials_are_inside_questions():
+    prompt = plan_messages("Who was denied a document?", TODAY)[0]["content"]
+    assert '"denied"' in prompt and 'use event_type "query"' in prompt
+    assert '["boundary_added", "boundary_removed"]' in prompt
+
+
+def test_the_summary_counts_restricted_matches_as_withheld():
+    from app.audit.assistant import SUMMARY_PROMPT
+    assert "report both kinds" in SUMMARY_PROMPT
+
+
+# ---- Found by the production check (15 Oct) ----
+
+def test_facts_total_every_decision_not_just_the_top_documents():
+    many = {**QUERY, "restricted_matches": [{"document": f"confluence:R{i}", "reason": "acl"} for i in range(25)]}
+    f = facts([rec(2, payload=many), rec(1, payload={"question": "q"})], truncated=False)
+    assert len(f["documents"]) == 20 and f["documents_total"] > 20
+    assert f["totals"]["restricted"] == 25 and f["totals"]["denied"] == 1 and f["totals"]["allowed"] == 1
+    assert f["records_with"] == {"denied": 1, "restricted": 1, "instruction_removed": 1}
+
+
+def test_several_event_types_are_kept_as_a_list():
+    plan = validate({"event_type": ["boundary_added", "boundary_removed"]})
+    assert plan.event_types == ["boundary_added", "boundary_removed"] and "event_type" not in plan.filters
+    plan = validate({"event_type": ["boundary_added", "DROP"]})
+    assert plan.filters == {"event_type": "boundary_added"} and "event_type" in plan.dropped
+    assert validate({"event_type": []}).dropped["event_type"]
+
+
+@pytest.mark.security
+def test_several_event_types_are_each_searched_in_the_company_only(conn, company, make_company, make_user):
+    priya = make_user("priya@co.example", [], is_admin=True)
+    other = make_user("eve@other.example", [], is_admin=True, company_id=make_company("Other"))
+    added = record_event(conn, priya.id, "boundary_added", {"source": "slack", "scope_id": "C1"})
+    removed = record_event(conn, priya.id, "boundary_removed", {"source": "slack", "scope_id": "C1"})
+    record_event(conn, other.id, "boundary_added", {"source": "slack", "scope_id": "C9"})
+    for _ in range(3):
+        record_event(conn, priya.id, "audit_searched", {"filters": {}, "results": 0})  # noise, not asked for
+    records, truncated = search(conn, company, validate({"event_type": ["boundary_added", "boundary_removed"]}))
+    assert [r["id"] for r in records] == [removed, added] and truncated is False
+
+
+def test_the_api_records_several_event_types(conn, team):
+    llm = FakeLLM(replies=[plan_reply(event_type=["boundary_added", "boundary_removed"])])
+    body = ask_as(conn, team["admin"], llm)("What changed in the boundary?").json()
+    assert "event_type" not in body["filters"]  # the table filters one type; the record keeps both
+    (_, payload), = asked_events(conn, team["admin"])
+    assert payload["event_types"] == ["boundary_added", "boundary_removed"]
+
+
+def test_a_facts_mark_is_not_left_in_the_answer(fake_llm):
+    llm = fake_llm(reply=reply("Nobody was denied [facts]. Ben asked once [S1] [Facts].", ["S1"]))
+    s = summarise(llm, "q", [rec(5, payload=QUERY)], truncated=False)
+    assert s.answer == "Nobody was denied. Ben asked once [S1]."

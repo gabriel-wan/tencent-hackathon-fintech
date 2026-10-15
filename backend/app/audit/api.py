@@ -40,9 +40,9 @@ class AskRequest(BaseModel):
     @field_validator("time_zone")
     @classmethod
     def known_zone(cls, value: str) -> str:
-        if value not in _ZONES:
-            raise ValueError("unknown time zone")
-        return value
+        # A zone this server doesn't know (a browser's newer time-zone data, or nonsense) is never loaded: the days
+        # become UTC days rather than the question failing. The audit record shows which zone was used.
+        return value if value in _ZONES else "UTC"
 
     @field_validator("question")
     @classmethod
@@ -80,6 +80,8 @@ class Facts(BaseModel):
     by_user: dict[str, int]
     documents: list[DocumentFact]  # the 20 documents in the most decisions
     documents_total: int
+    totals: dict[str, int]  # each decision over every document: allowed, denied, restricted, sent, cited
+    records_with: dict[str, int]  # records with at least one: denied, restricted, instruction_removed
 
 
 class RecordCitation(BaseModel):
