@@ -209,6 +209,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/boundary/{source}/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk
+         * @description Several scopes of one tool at once, all or nothing, each change its own audit event (as one at a time).
+         */
+        post: operations["bulk_api_admin_boundary__source__bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/sync": {
         parameters: {
             query?: never;
@@ -254,6 +274,23 @@ export interface paths {
         put?: never;
         /** Verify */
         post: operations["verify_api_admin_audit_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/audit/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask */
+        post: operations["ask_api_admin_audit_ask_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -319,6 +356,63 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AskRequest */
+        AskRequest: {
+            /** Question */
+            question: string;
+        };
+        /** AskResponse */
+        AskResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "clarify" | "no_records" | "unavailable";
+            /** Answer */
+            answer: string;
+            /** Filters */
+            filters: {
+                [key: string]: string;
+            };
+            /** Choices */
+            choices: components["schemas"]["ChoiceOut"][];
+            facts: components["schemas"]["Facts"] | null;
+            /** Citations */
+            citations: components["schemas"]["RecordCitation"][];
+            /** Audit Id */
+            audit_id: number;
+        };
+        /** Bulk */
+        Bulk: {
+            /** Add */
+            add?: components["schemas"]["BulkScope"][];
+            /** Remove */
+            remove?: string[];
+        };
+        /** BulkScope */
+        BulkScope: {
+            /** Scope Id */
+            scope_id: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /** ChoiceOut */
+        ChoiceOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "user" | "scope" | "document";
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Source */
+            source: string | null;
+        };
         /** CitationOut */
         CitationOut: {
             /** Id */
@@ -359,6 +453,49 @@ export interface components {
             /** Is Admin */
             is_admin: boolean;
         };
+        /** DocumentFact */
+        DocumentFact: {
+            /** Document */
+            document: string;
+            /** Allowed */
+            allowed: number;
+            /** Denied */
+            denied: number;
+            /** Sent */
+            sent: number;
+            /** Cited */
+            cited: number;
+            /** Restricted */
+            restricted: number;
+        };
+        /**
+         * Facts
+         * @description Counted by code over every matching record (never by the model).
+         */
+        Facts: {
+            /** Matches */
+            matches: number;
+            /** More Than Shown */
+            more_than_shown: boolean;
+            /** Summarised */
+            summarised: number;
+            /** Newest */
+            newest: string | null;
+            /** Oldest */
+            oldest: string | null;
+            /** By Event Type */
+            by_event_type: {
+                [key: string]: number;
+            };
+            /** By User */
+            by_user: {
+                [key: string]: number;
+            };
+            /** Documents */
+            documents: components["schemas"]["DocumentFact"][];
+            /** Documents Total */
+            documents_total: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -388,6 +525,13 @@ export interface components {
             audit_id: number;
             /** Instructions Removed */
             instructions_removed: number;
+        };
+        /** RecordCitation */
+        RecordCitation: {
+            /** Label */
+            label: string;
+            /** Record Id */
+            record_id: number;
         };
         /** Scope */
         Scope: {
@@ -776,6 +920,41 @@ export interface operations {
             };
         };
     };
+    bulk_api_admin_boundary__source__bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Bulk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sync_now_api_admin_sync_post: {
         parameters: {
             query?: never;
@@ -853,6 +1032,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    ask_api_admin_audit_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
