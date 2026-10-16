@@ -2,8 +2,8 @@
 
 The text for the submission form's project description. The handbook asks for four parts (§8): an overview, real-world
 insights, the solution design (including how prompts drive the AI) and the business value. The form's text box takes
-plain text, so what we paste is [description-form.txt](description-form.txt); this page is the same text with links.
-Measured numbers name their source; estimates are marked **estimate**.
+plain text, so the pasted version is this text without the Markdown, with each link spelled out as a full URL.
+Measured numbers name their source; the time saving is an estimate, and its assumptions are stated.
 
 ---
 
@@ -63,7 +63,8 @@ content fresh within minutes; revocations applied on the next question; a tamper
 - Answers list their sources. The admin searches the audit trail or asks it in plain language, and verifies its hash
   chain.
 
-**Technical architecture** (diagrams in the architecture deck and [ARCHITECTURE.md](../ARCHITECTURE.md))
+**Technical architecture** (diagrams in the architecture deck submitted with this form, and in
+[ARCHITECTURE.md](../ARCHITECTURE.md))
 - A Next.js website; a FastAPI API and sync worker in Python; PostgreSQL (the ParadeDB build) with pgvector for search
   by meaning and `pg_search` for BM25 keyword search. All of it runs on one Tencent Cloud Lighthouse server with Docker
   Compose, with Caddy for HTTPS.
@@ -84,7 +85,8 @@ content fresh within minutes; revocations applied on the next question; a tamper
   AI is not called.
 - **Need-to-Know Shield:** personal data (cards, NRIC/FIN, bank accounts, IBANs, passports, dates of birth, phones,
   Singapore addresses, and emails and names of anyone who isn't a registered colleague) is masked before the AI sees
-  it, except for the people a document names as handling it. Secrets are masked for everyone.
+  it, except for the people a document names as handling it. Secrets are masked for everyone
+  ([example](../FEATURES.md#need-to-know-shield-personal-data-only-for-the-people-handling-it)).
 - **Audit:** every question writes one record: who, when, the question, every candidate with its decision and reason,
   what was sent and the answer. Records are hash-chained per company, and the app's database login can only add them.
   In production the app doesn't even receive the database owner's password.
@@ -105,7 +107,8 @@ content fresh within minutes; revocations applied on the next question; a tamper
   as JSON.
 - The sources sit between the question and a restated rule, each wrapped as a labelled block. Before that, look-alike
   tags and hidden characters are neutralised, and lines addressed to the AI ("ignore previous instructions", "note to
-  AI assistants:") are removed and recorded in the audit.
+  AI assistants:") are removed and recorded in the audit
+  ([example](../FEATURES.md#grounded-answers-and-retrieved-text-kept-in-its-place)).
 - After the AI replies, code removes citations to anything it wasn't sent and links it wasn't shown. With no valid
   citation, the answer becomes "not found".
 - The audit assistant's prompts: the planning prompt sees only the admin's question and today's date, no records or
@@ -127,7 +130,8 @@ content fresh within minutes; revocations applied on the next question; a tamper
 - **Freshness:** new or changed content within about 5 minutes (the sync interval), or at once with "sync now"; a
   revoked permission on the very next question.
 - **Footprint:** on the live 2 vCPU, 2 GB Lighthouse server, the five running containers used about 330 MB of memory
-  in total (`docker stats`, 11 Oct, before the database moved to the ParadeDB image for BM25 search). A typical answer
+  in total with 23 pieces of text indexed (`docker stats`, 11 Oct, before the database moved to the ParadeDB image for
+  BM25 search). A typical answer
   used about 1,300 to 1,600 TokenHub tokens (TokenHub request log, 11 Oct, before answers began sending the pieces
   either side of each match, so answers now send more text).
 - **Scale:** with 100,000 indexed pieces of text, permission-filtered search takes 280 ms at the median and 373 ms at
@@ -136,7 +140,9 @@ content fresh within minutes; revocations applied on the next question; a tamper
 - **Answer quality:** on our retrieval evaluation (41 questions among about 21,000 distractor documents, 12 Oct,
   [TESTING.md §10](../TESTING.md#10-retrieval-quality)), the answer reached the AI for 25 of 25 specific, 6 of 6 broad
   and 5 of 5 freshness questions, and all 5 freshness answers gave the latest value; all 5 off-topic questions got
-  "not found"; 0 restricted documents leaked; 30 of 30 prompt-injection attempts failed.
+  "not found"; 0 restricted documents leaked. Our prompt-injection evaluation, re-run after the answer prompt changed,
+  still resisted 30 of 30 attacks
+  ([ADR-012](../decisions/DECISIONS.md#adr-012-retrieval-quality-chunking-bm25-and-evaluation)).
 - **Tests:** 600 backend and 199 frontend automated tests run on every pull request, including tests for each security
   invariant ([SECURITY.md](../SECURITY.md)).
 
@@ -149,6 +155,11 @@ content fresh within minutes; revocations applied on the next question; a tamper
   code and a verifiable chain, instead of collecting four tools' logs by hand, where they exist at all.
 - **Risk:** content a person may not see is never sent to the AI, so no answer can leak it. A regulated FinTech needs
   that guarantee before it can let an AI near internal knowledge.
+
+## Built with
+
+Tencent Cloud TokenHub (`hy3`, `kinfra-text-embedding-0.6b`) and Tencent Cloud Lighthouse; CodeBuddy during
+development ([evidence](tool-usage.md)); Miora for the cover.
 
 ## Current limits on the live site
 
