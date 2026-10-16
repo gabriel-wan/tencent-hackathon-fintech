@@ -25,6 +25,7 @@
 
 ```
 README.md            what KnowBuddy is, in one page
+README.zh-CN.md      the same page in Chinese (keep it in step with README.md)
 CONTRIBUTING.md      how the team works and decides
 AGENTS.md            rules for AI coding agents (CLAUDE.md points to it)
 LICENSE              MIT

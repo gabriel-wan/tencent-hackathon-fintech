@@ -34,6 +34,10 @@
   <a href="#documentation">Docs</a>
 </p>
 
+<p align="center">
+  English · <a href="README.zh-CN.md">中文</a>
+</p>
+
 ---
 
 KnowBuddy answers questions from a company's **Slack, Google Drive, Jira and Confluence** in one place, with
