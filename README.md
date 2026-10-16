@@ -130,21 +130,28 @@ Every field and step: [QUERY_PIPELINE.md](docs/architecture/QUERY_PIPELINE.md).
 
 ## See it in action
 
-<h3 align="center">1 · Ask a question</h3>
+<h3 align="center">1 · Connect your tools</h3>
+<p align="center">Sign in with the tools you already use. KnowBuddy reads them as you, so answers only include what you can already see.</p>
+<p align="center">
+  <img src="docs/public/knowbuddy-connections.png" alt="The Connections page with Google Drive, Slack, Jira and Confluence connected, each with Test and Disconnect buttons" width="520">
+</p>
+<br>
+
+<h3 align="center">2 · Ask a question</h3>
 <p align="center">Get one answer that cites its sources and says when each was last synced.</p>
 <p align="center">
   <img src="docs/public/answer.png" alt="An answer about the payment gateway vendor, citing a Confluence page, with when it was synced" width="720">
 </p>
 <br>
 
-<h3 align="center">2 · Ask the audit trail</h3>
+<h3 align="center">3 · Ask the audit trail</h3>
 <p align="center">Admins ask who accessed what in plain language, or filter by person and date.</p>
 <p align="center">
   <img src="docs/public/audit-ask.png" alt="The admin's audit trail: the Ask panel above the list of recorded questions and actions" width="720">
 </p>
 <br>
 
-<h3 align="center">3 · Open any record</h3>
+<h3 align="center">4 · Open any record</h3>
 <p align="center">Who asked, how long each step took, and every document's decision and reason.</p>
 <p align="center">
   <img src="docs/public/audit-trail.png" alt="Audit record 149: who asked, timings, the question, and each document's decision" width="440">
@@ -220,7 +227,8 @@ Each is worked through with real output in [FEATURES.md](docs/FEATURES.md).
 
 ## Architecture
 
-Five containers, the same Docker Compose stack locally and on one Tencent Cloud Lighthouse server.
+One Docker Compose stack, locally and on one Tencent Cloud Lighthouse server: `db`, `backend`, `sync` and `frontend`
+keep running, `migrate` sets up the tables and exits, and production adds a Caddy `proxy` for HTTPS.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 360}}}%%
@@ -267,15 +275,15 @@ Why each choice was made: [DECISIONS.md](docs/decisions/DECISIONS.md).
 
 <table align="center">
   <tr>
-    <td align="center"><h3>21 ms</h3><sub>permission-filtered keyword<br>search, 21,000 documents</sub></td>
-    <td align="center"><h3>109 ms</h3><sub>the same, with<br>search by meaning</sub></td>
+    <td align="center"><h3>280 ms</h3><sub>median permission-filtered<br>search, 100,000 pieces</sub></td>
+    <td align="center"><h3>373 ms</h3><sub>the same search,<br>95th percentile</sub></td>
     <td align="center"><h3>~5 min</h3><sub>content freshness,<br>or at once with "sync now"</sub></td>
-    <td align="center"><h3>~330 MB</h3><sub>memory for all five<br>live containers</sub></td>
-    <td align="center"><h3>470+</h3><sub>automated tests<br>on every pull request</sub></td>
+    <td align="center"><h3>~330 MB</h3><sub>memory for the five<br>live containers</sub></td>
+    <td align="center"><h3>799</h3><sub>automated tests<br>on every pull request</sub></td>
   </tr>
 </table>
 
-<p align="center"><sub>Search measured at the handbook's Company A size (pull request #35). Memory from <code>docker stats</code> on the 2 vCPU, 2 GB server (11 Oct). Tests: 350+ backend, 120+ frontend.</sub></p>
+<p align="center"><sub>Search: load test on a laptop, for an employee who may see 42% of the pieces (12 Oct, <a href="docs/TESTING.md#9-search-at-scale">TESTING.md §9</a>). Memory: <code>docker stats</code> on the 2 vCPU, 2 GB server (11 Oct, before the database moved to the ParadeDB image). Tests: 600 backend, 199 frontend.</sub></p>
 
 ## Security guarantees
 
@@ -290,7 +298,9 @@ Each rule, the threat model and the test that guards it: [SECURITY.md](docs/SECU
 
 ## Try it
 
-**Live:** <https://knowbuddy.xyz>. Sign in with Slack, Google or Atlassian.
+**Live:** <https://knowbuddy.xyz>. Sign in with Slack, Google or Atlassian. For now, Google sign-in is in testing
+mode (listed test users only), and only the Atlassian app's owner can connect Jira and Confluence
+([DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 **On your computer**, with Git and Docker Desktop:
 
@@ -307,7 +317,7 @@ docker compose up --build
 docker compose run --rm backend python -m app.seed   # in a second terminal
 ```
 
-✅ http://localhost:3000/status shows `db: ok`.
+✅ http://localhost:3000/status shows "Database ok".
 
 Open http://localhost:3000/login and sign in as one of the seeded users. Then try:
 
@@ -365,5 +375,6 @@ The full map and a glossary: [docs/README.md](docs/README.md).
 ---
 
 <p align="center">
-  <sub>Built in Singapore for the Tencent Cloud AI CAN DO IT Hackathon 2026 · FinTech track · <a href="LICENSE">MIT License</a></sub>
+  <sub>Built in Singapore for the Tencent Cloud AI CAN DO IT Hackathon 2026 · FinTech track · <a href="LICENSE">MIT License</a></sub><br>
+  <sub>Slack, Google Drive, Jira and Confluence names and logos are trademarks of their owners and are not covered by the licence.</sub>
 </p>
