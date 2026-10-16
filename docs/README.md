@@ -25,8 +25,10 @@
 
 ```
 README.md            what KnowBuddy is, in one page
+README.zh-CN.md      the same page in Chinese (keep it in step with README.md)
 CONTRIBUTING.md      how the team works and decides
 AGENTS.md            rules for AI coding agents (CLAUDE.md points to it)
+LICENSE              MIT
 .github/             the pull request template
 docs/
 ├── README.md        this map
@@ -39,6 +41,7 @@ docs/
 ├── architecture/    how it's built: overview, what's built now, query pipeline, connectors
 ├── connectors/      setting up each tool (SETUP.md) and each tool's API (reference/)
 ├── decisions/       the decision log (DECISIONS.md) and the ADR template
+├── public/          images shown in the main README
 └── hackathon/       the challenge, requirements, submission checklist, tool-usage evidence
 backend/             FastAPI app: app/ (code), tests/, migrations/
 frontend/            Next.js app (its README covers frontend conventions)
